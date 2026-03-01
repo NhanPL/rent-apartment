@@ -1,7 +1,7 @@
-import { BuildingsPage } from './features/buildings/pages/BuildingsPage'
+import { AppRoutes } from './routes/AppRoutes'
 
 function App() {
-  return <BuildingsPage />
+  return <AppRoutes />
 }
 
 export default App
