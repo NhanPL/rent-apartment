@@ -1,7 +1,7 @@
-import { LoginPage } from './features/auth/pages/LoginPage'
+import { BuildingsPage } from './features/buildings/pages/BuildingsPage'
 
 function App() {
-  return <LoginPage />
+  return <BuildingsPage />
 }
 
 export default App
