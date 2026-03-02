@@ -1,8 +1,12 @@
-import { useMemo, useState } from 'react'
+import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons'
+import { Button, Drawer, Grid, Layout, Menu, Space, Typography } from 'antd'
+import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { RouteConfig } from '../routes/routeConfig'
-import { useBreakpoint } from '../utils/responsive'
 import './AppLayout.css'
+
+const { Header, Sider, Content, Footer } = Layout
+const SIDEBAR_STORAGE_KEY = 'app_sidebar_collapsed'
 
 interface AppLayoutProps {
   pathname: string
@@ -13,69 +17,74 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({ pathname, onNavigate, items, pageTitle, content }: AppLayoutProps) {
-  const { xs } = useBreakpoint()
-  const [collapsed, setCollapsed] = useState(false)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const screens = Grid.useBreakpoint()
+  const isDesktop = Boolean(screens.lg)
 
-  const breadcrumb = useMemo(() => ['Home', pageTitle], [pageTitle])
+  const [collapsed, setCollapsed] = useState<boolean>(() => localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true')
+  const [mobileOpen, setMobileOpen] = useState(false)
 
-  const menu = (
-    <ul className="menu-list">
-      {items.map((item) => (
-        <li key={item.path}>
-          <button
-            type="button"
-            className={`menu-item ${pathname === item.path ? 'active' : ''}`}
-            onClick={() => {
-              onNavigate(item.path)
-              setMobileMenuOpen(false)
-            }}
-          >
-            {item.label}
-          </button>
-        </li>
-      ))}
-    </ul>
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_STORAGE_KEY, String(collapsed))
+  }, [collapsed])
+
+
+  const menuItems = useMemo(
+    () =>
+      items.map((item) => ({
+        key: item.path,
+        icon: item.icon,
+        label: item.label,
+        title: item.label,
+      })),
+    [items],
+  )
+
+  const navMenu = (
+    <Menu
+      mode="inline"
+      selectedKeys={[pathname]}
+      items={menuItems}
+      onClick={(info: { key: string }) => {
+        onNavigate(info.key)
+        setMobileOpen(false)
+      }}
+    />
   )
 
   return (
-    <div className="app-shell">
-      {!xs && <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>{menu}</aside>}
-
-      {xs && mobileMenuOpen && (
-        <div className="mobile-overlay" onClick={() => setMobileMenuOpen(false)}>
-          <aside className="mobile-sidebar" onClick={(event) => event.stopPropagation()}>
-            {menu}
-          </aside>
-        </div>
+    <Layout className="app-layout">
+      {isDesktop ? (
+        <Sider theme="light" collapsible collapsed={collapsed} trigger={null} width={240} collapsedWidth={80} className="app-sider">
+          <div className="logo-wrap">{collapsed ? 'RA' : 'Rent Apartment'}</div>
+          {navMenu}
+        </Sider>
+      ) : (
+        <Drawer title="Rent Apartment" placement="left" open={mobileOpen} onClose={() => setMobileOpen(false)} width={280} styles={{ body: { padding: 0 } }}>
+          {navMenu}
+        </Drawer>
       )}
 
-      <div className="main-shell">
-        <header className="header">
-          <div className="header-left">
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={() => (xs ? setMobileMenuOpen((current) => !current) : setCollapsed((current) => !current))}
-            >
-              ☰
-            </button>
-            <div>
-              <h1>Rent Apartment</h1>
-              <p>{breadcrumb.join(' / ')}</p>
+      <Layout>
+        <Header className="app-header">
+          <Space className="header-space" size={12}>
+            <Button
+              type="text"
+              icon={isDesktop ? (collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />) : <MenuUnfoldOutlined />}
+              onClick={() => (isDesktop ? setCollapsed((current) => !current) : setMobileOpen((current) => !current))}
+            />
+            <div className="header-text">
+              <Typography.Title level={4} className="header-title" ellipsis={{ tooltip: pageTitle }}>
+                {pageTitle}
+              </Typography.Title>
+              <Typography.Text type="secondary" className="header-subtitle" ellipsis>
+                Rent Apartment Management
+              </Typography.Text>
             </div>
-          </div>
-
-          <div className="avatar-dropdown">
-            <span className="avatar">AD</span>
-            <span>Admin ▾</span>
-          </div>
-        </header>
-
-        <main className="content">{content}</main>
-
-        <footer className="footer">© {new Date().getFullYear()} Rent Apartment Management</footer>
-      </div>
-    </div>
+          </Space>
+        </Header>
+        <Content className="app-content">{content}</Content>
+        <Footer className="app-footer">© {new Date().getFullYear()} Rent Apartment Management</Footer>
+      </Layout>
+    </Layout>
   )
 }
