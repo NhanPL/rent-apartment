@@ -1,5 +1,10 @@
-import { DeleteOutlined, EditOutlined, ExclamationCircleOutlined } from '@ant-design/icons'
-import { Button, Descriptions, Empty, Grid, Modal, Skeleton, Space, Table, Tabs, Tag, Timeline, Typography } from 'antd'
+import { DeleteOutlined, EditOutlined, ExclamationCircleOutlined, PlusOutlined } from '@ant-design/icons'
+import { Button, Descriptions, Empty, Grid, Input, Modal, Select, Skeleton, Space, Tabs, Tag, Timeline, Typography, message } from 'antd'
+import { useEffect, useMemo, useState } from 'react'
+import { createRoom, deleteRoom, listRoomsByBuildingId, listTenantsByRoomId, updateRoom } from './roomService'
+import { RoomsTable } from './RoomsTable'
+import { RoomsUpsertDrawer } from './RoomsUpsertDrawer'
+import type { Room } from './roomTypes'
 import type { BuildingEntity } from './types'
 
 interface DetailPanelProps {
@@ -19,6 +24,51 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
   const isMobile = !screens.md
   const isTablet = Boolean(screens.md) && !screens.lg
 
+  const [roomsLoading, setRoomsLoading] = useState(false)
+  const [roomsData, setRoomsData] = useState<Room[]>([])
+  const [roomsSearchInput, setRoomsSearchInput] = useState('')
+  const [roomsSearch, setRoomsSearch] = useState('')
+  const [roomsFilter, setRoomsFilter] = useState<Room['status'] | 'ALL'>('ALL')
+  const [tenantCountByRoomId, setTenantCountByRoomId] = useState<Record<string, number>>({})
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('create')
+  const [editingRoom, setEditingRoom] = useState<Room | null>(null)
+  const [savingRoom, setSavingRoom] = useState(false)
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setRoomsSearch(roomsSearchInput.trim()), 300)
+    return () => window.clearTimeout(timer)
+  }, [roomsSearchInput])
+
+  const loadRooms = async (buildingId: string) => {
+    setRoomsLoading(true)
+    try {
+      const rooms = await listRoomsByBuildingId({ building_id: buildingId, search: roomsSearch, status: roomsFilter })
+      setRoomsData(rooms)
+      const entries = await Promise.all(
+        rooms.map(async (room) => {
+          const tenants = await listTenantsByRoomId(room.id)
+          return [room.id, tenants.length] as const
+        }),
+      )
+      setTenantCountByRoomId(Object.fromEntries(entries))
+    } finally {
+      setRoomsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!item) {
+      setRoomsData([])
+      setRoomsSearchInput('')
+      setRoomsSearch('')
+      setRoomsFilter('ALL')
+      setEditingRoom(null)
+      return
+    }
+    loadRooms(item.id)
+  }, [item?.id, roomsSearch, roomsFilter])
+
   if (!item && !loading) {
     return <Empty description="Select an item from the list to see details" style={{ marginTop: 90 }} />
   }
@@ -26,6 +76,10 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
   if (loading || !item) {
     return <Skeleton active paragraph={{ rows: 10 }} />
   }
+
+  const existingRoomCodes = roomsData
+    .filter((room) => (drawerMode === 'edit' && editingRoom ? room.id !== editingRoom.id : true))
+    .map((room) => room.code)
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -85,20 +139,72 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
             key: 'related',
             label: 'Related',
             children: (
-              <Table
-                pagination={false}
-                rowKey="key"
-                scroll={{ x: 640 }}
-                columns={[
-                  { title: 'Unit', dataIndex: 'unit' },
-                  { title: 'Tenant', dataIndex: 'tenant' },
-                  { title: 'Amount', dataIndex: 'amount' },
-                ]}
-                dataSource={[
-                  { key: '1', unit: 'A-101', tenant: 'Nguyen Van A', amount: '$420' },
-                  { key: '2', unit: 'B-203', tenant: 'Tran Thi B', amount: '$510' },
-                ]}
-              />
+              <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                <Typography.Title level={5} style={{ margin: 0 }}>
+                  Rooms in this building
+                </Typography.Title>
+                <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
+                  <Space wrap>
+                    <Input.Search
+                      value={roomsSearchInput}
+                      placeholder="Search room code"
+                      allowClear
+                      onChange={(event) => setRoomsSearchInput(event.target.value)}
+                      style={{ width: isMobile ? '100%' : 260 }}
+                    />
+                    <Select
+                      value={roomsFilter}
+                      onChange={setRoomsFilter}
+                      style={{ width: 180 }}
+                      options={[
+                        { label: 'All statuses', value: 'ALL' },
+                        { label: 'Active', value: 'ACTIVE' },
+                        { label: 'Maintenance', value: 'MAINTENANCE' },
+                        { label: 'Inactive', value: 'INACTIVE' },
+                      ]}
+                    />
+                  </Space>
+                  <Button
+                    type="primary"
+                    icon={<PlusOutlined />}
+                    onClick={() => {
+                      setDrawerMode('create')
+                      setEditingRoom(null)
+                      setDrawerOpen(true)
+                    }}
+                  >
+                    Add Room
+                  </Button>
+                </Space>
+
+                <RoomsTable
+                  loading={roomsLoading}
+                  data={roomsData}
+                  tenantCountByRoomId={tenantCountByRoomId}
+                  onView={(room) => {
+                    window.history.pushState(null, '', `/rooms/${room.id}?buildingId=${item.id}`)
+                    window.dispatchEvent(new PopStateEvent('popstate'))
+                  }}
+                  onEdit={(room) => {
+                    setDrawerMode('edit')
+                    setEditingRoom(room)
+                    setDrawerOpen(true)
+                  }}
+                  onDelete={(room) => {
+                    Modal.confirm({
+                      title: `Delete room ${room.code}?`,
+                      icon: <ExclamationCircleOutlined />,
+                      okText: 'Delete',
+                      okButtonProps: { danger: true },
+                      onOk: async () => {
+                        await deleteRoom(room.id)
+                        await loadRooms(item.id)
+                        message.success('Room deleted successfully')
+                      },
+                    })
+                  }}
+                />
+              </Space>
             ),
           },
           {
@@ -115,6 +221,29 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
             ),
           },
         ]}
+      />
+
+      <RoomsUpsertDrawer
+        open={drawerOpen}
+        mode={drawerMode}
+        room={editingRoom}
+        building_id={item.id}
+        existingCodes={existingRoomCodes}
+        loading={savingRoom}
+        onClose={() => setDrawerOpen(false)}
+        onSubmit={async (payload) => {
+          setSavingRoom(true)
+          if (drawerMode === 'create') {
+            await createRoom(payload)
+            message.success('Room created successfully')
+          } else if (editingRoom) {
+            await updateRoom(editingRoom.id, payload)
+            message.success('Room updated successfully')
+          }
+          await loadRooms(item.id)
+          setSavingRoom(false)
+          setDrawerOpen(false)
+        }}
       />
     </Space>
   )

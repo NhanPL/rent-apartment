@@ -5,32 +5,9 @@ import { DetailPanel } from './components/DetailPanel'
 import { MasterListPanel } from './components/MasterListPanel'
 import { UpsertDrawer } from './components/UpsertDrawer'
 import type { BuildingEntity, BuildingFormValues, StatusFilter } from './components/types'
+import { mockBuildings } from './mockData'
 import './EntitySplitPage.css'
 
-const mockBuildings: BuildingEntity[] = [
-  {
-    id: '1',
-    code: 'BLD-001',
-    name: 'Sunrise Riverside',
-    address: '12 Nguyễn Văn Cừ, Quận 5, TP.HCM',
-    note: 'Near downtown district',
-    status: 'active',
-    units: 56,
-    manager: 'Thanh Nguyen',
-    createdAt: '2024-01-10',
-  },
-  {
-    id: '2',
-    code: 'BLD-002',
-    name: 'Green Valley',
-    address: '88 Phạm Văn Đồng, TP. Thủ Đức',
-    note: 'High occupancy rate',
-    status: 'inactive',
-    units: 42,
-    manager: 'Minh Tran',
-    createdAt: '2024-02-05',
-  },
-]
 
 export function EntitySplitPage() {
   const screens = Grid.useBreakpoint()
@@ -52,7 +29,9 @@ export function EntitySplitPage() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setItems(mockBuildings)
-      setSelectedId(mockBuildings[0]?.id)
+      const selectedFromQuery = new URLSearchParams(window.location.search).get('buildingId')
+      const exists = mockBuildings.some((item) => item.id === selectedFromQuery)
+      setSelectedId(exists ? selectedFromQuery ?? undefined : mockBuildings[0]?.id)
       setLoadingList(false)
     }, 400)
     return () => window.clearTimeout(timer)
@@ -92,6 +71,9 @@ export function EntitySplitPage() {
 
   const handleSelect = (id: string) => {
     setSelectedId(id)
+    const search = new URLSearchParams(window.location.search)
+    search.set('buildingId', id)
+    window.history.replaceState(null, '', `/buildings?${search.toString()}`)
     setLoadingDetail(true)
     if (isMobile) {
       setShowMobileDetail(true)
