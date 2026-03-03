@@ -1,5 +1,5 @@
 import { DeleteOutlined, EditOutlined, EyeOutlined } from '@ant-design/icons'
-import { Button, Popconfirm, Space, Table, Tag } from 'antd'
+import { Button, Space, Table, Tag } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import type { Room } from './roomTypes'
 
@@ -56,11 +56,9 @@ export function RoomsTable({ loading, data, tenantCountByRoomId, onView, onEdit,
           <Button icon={<EditOutlined />} onClick={() => onEdit(record)}>
             Edit
           </Button>
-          <Popconfirm title="Delete this room?" description="This action cannot be undone." okButtonProps={{ danger: true }} onConfirm={() => onDelete(record)}>
-            <Button icon={<DeleteOutlined />} danger>
-              Delete
-            </Button>
-          </Popconfirm>
+          <Button icon={<DeleteOutlined />} danger onClick={() => onDelete(record)}>
+            Delete
+          </Button>
         </Space>
       ),
     },

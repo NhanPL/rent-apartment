@@ -1,4 +1,4 @@
-import { DeleteOutlined, EditOutlined, ExclamationCircleOutlined, PlusOutlined } from '@ant-design/icons'
+import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import { Button, Descriptions, Empty, Grid, Input, Modal, Select, Skeleton, Space, Tabs, Tag, Timeline, Typography, message } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
 import { createRoom, deleteRoom, listRoomsByBuildingId, listTenantsByRoomId, updateRoom } from './roomService'
@@ -30,10 +30,14 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
   const [roomsSearch, setRoomsSearch] = useState('')
   const [roomsFilter, setRoomsFilter] = useState<Room['status'] | 'ALL'>('ALL')
   const [tenantCountByRoomId, setTenantCountByRoomId] = useState<Record<string, number>>({})
+
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('create')
   const [editingRoom, setEditingRoom] = useState<Room | null>(null)
   const [savingRoom, setSavingRoom] = useState(false)
+
+  const [deleteBuildingModalOpen, setDeleteBuildingModalOpen] = useState(false)
+  const [roomToDelete, setRoomToDelete] = useState<Room | null>(null)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setRoomsSearch(roomsSearchInput.trim()), 300)
@@ -64,9 +68,11 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
       setRoomsSearch('')
       setRoomsFilter('ALL')
       setEditingRoom(null)
+      setRoomToDelete(null)
+      setDeleteBuildingModalOpen(false)
       return
     }
-    loadRooms(item.id)
+    void loadRooms(item.id)
   }, [item?.id, roomsSearch, roomsFilter])
 
   if (!item && !loading) {
@@ -82,169 +88,185 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
     .map((room) => room.code)
 
   return (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
-        <Space wrap>
-          <Typography.Title level={isMobile ? 5 : isTablet ? 4 : 3} style={{ margin: 0 }}>
-            {item.name}
-          </Typography.Title>
-          <Tag color={statusColor[item.status]}>{item.status.toUpperCase()}</Tag>
+    <>
+      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+        <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
+          <Space wrap>
+            <Typography.Title level={isMobile ? 5 : isTablet ? 4 : 3} style={{ margin: 0 }}>
+              {item.name}
+            </Typography.Title>
+            <Tag color={statusColor[item.status]}>{item.status.toUpperCase()}</Tag>
+          </Space>
+          <Space wrap>
+            <Button size={isMobile ? 'large' : 'middle'} icon={<EditOutlined />} onClick={() => onEdit(item)}>
+              Edit
+            </Button>
+            <Button size={isMobile ? 'large' : 'middle'} danger icon={<DeleteOutlined />} onClick={() => setDeleteBuildingModalOpen(true)}>
+              Delete
+            </Button>
+          </Space>
         </Space>
-        <Space wrap>
-          <Button size={isMobile ? 'large' : 'middle'} icon={<EditOutlined />} onClick={() => onEdit(item)}>
-            Edit
-          </Button>
-          <Button
-            size={isMobile ? 'large' : 'middle'}
-            danger
-            icon={<DeleteOutlined />}
-            onClick={() =>
-              Modal.confirm({
-                title: 'Delete this building?',
-                icon: <ExclamationCircleOutlined />,
-                content: 'This action cannot be undone.',
-                okText: 'Delete',
-                okButtonProps: { danger: true },
-                onOk: () => onDelete(item.id),
-              })
-            }
-          >
-            Delete
-          </Button>
-        </Space>
-      </Space>
 
-      <Tabs
-        defaultActiveKey="overview"
-        items={[
-          {
-            key: 'overview',
-            label: 'Overview',
-            children: (
-              <Descriptions bordered column={isMobile ? 1 : 2}>
-                <Descriptions.Item label="Code">{item.code}</Descriptions.Item>
-                <Descriptions.Item label="Status">{item.status}</Descriptions.Item>
-                <Descriptions.Item label="Manager">{item.manager}</Descriptions.Item>
-                <Descriptions.Item label="Units">{item.units}</Descriptions.Item>
-                <Descriptions.Item label="Address" span={isMobile ? 1 : 2}>
-                  {item.address}
-                </Descriptions.Item>
-                <Descriptions.Item label="Note" span={isMobile ? 1 : 2}>
-                  {item.note || '-'}
-                </Descriptions.Item>
-              </Descriptions>
-            ),
-          },
-          {
-            key: 'related',
-            label: 'Related',
-            children: (
-              <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                <Typography.Title level={5} style={{ margin: 0 }}>
-                  Rooms in this building
-                </Typography.Title>
-                <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
-                  <Space wrap>
-                    <Input.Search
-                      value={roomsSearchInput}
-                      placeholder="Search room code"
-                      allowClear
-                      onChange={(event) => setRoomsSearchInput(event.target.value)}
-                      style={{ width: isMobile ? '100%' : 260 }}
-                    />
-                    <Select
-                      value={roomsFilter}
-                      onChange={setRoomsFilter}
-                      style={{ width: 180 }}
-                      options={[
-                        { label: 'All statuses', value: 'ALL' },
-                        { label: 'Active', value: 'ACTIVE' },
-                        { label: 'Maintenance', value: 'MAINTENANCE' },
-                        { label: 'Inactive', value: 'INACTIVE' },
-                      ]}
-                    />
+        <Tabs
+          defaultActiveKey="overview"
+          items={[
+            {
+              key: 'overview',
+              label: 'Overview',
+              children: (
+                <Descriptions bordered column={isMobile ? 1 : 2}>
+                  <Descriptions.Item label="Code">{item.code}</Descriptions.Item>
+                  <Descriptions.Item label="Status">{item.status}</Descriptions.Item>
+                  <Descriptions.Item label="Manager">{item.manager}</Descriptions.Item>
+                  <Descriptions.Item label="Units">{item.units}</Descriptions.Item>
+                  <Descriptions.Item label="Address" span={isMobile ? 1 : 2}>
+                    {item.address}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Note" span={isMobile ? 1 : 2}>
+                    {item.note || '-'}
+                  </Descriptions.Item>
+                </Descriptions>
+              ),
+            },
+            {
+              key: 'related',
+              label: 'Related',
+              children: (
+                <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                  <Typography.Title level={5} style={{ margin: 0 }}>
+                    Rooms in this building
+                  </Typography.Title>
+                  <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
+                    <Space wrap>
+                      <Input.Search
+                        value={roomsSearchInput}
+                        placeholder="Search room code"
+                        allowClear
+                        onChange={(event) => setRoomsSearchInput(event.target.value)}
+                        style={{ width: isMobile ? '100%' : 260 }}
+                      />
+                      <Select
+                        value={roomsFilter}
+                        onChange={setRoomsFilter}
+                        style={{ width: 180 }}
+                        options={[
+                          { label: 'All statuses', value: 'ALL' },
+                          { label: 'Active', value: 'ACTIVE' },
+                          { label: 'Maintenance', value: 'MAINTENANCE' },
+                          { label: 'Inactive', value: 'INACTIVE' },
+                        ]}
+                      />
+                    </Space>
+                    <Button
+                      type="primary"
+                      icon={<PlusOutlined />}
+                      onClick={() => {
+                        setDrawerMode('create')
+                        setEditingRoom(null)
+                        setDrawerOpen(true)
+                      }}
+                    >
+                      Add Room
+                    </Button>
                   </Space>
-                  <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    onClick={() => {
-                      setDrawerMode('create')
-                      setEditingRoom(null)
+
+                  <RoomsTable
+                    loading={roomsLoading}
+                    data={roomsData}
+                    tenantCountByRoomId={tenantCountByRoomId}
+                    onView={(room) => {
+                      window.history.pushState(null, '', `/rooms/${room.id}?buildingId=${item.id}`)
+                      window.dispatchEvent(new PopStateEvent('popstate'))
+                    }}
+                    onEdit={(room) => {
+                      setDrawerMode('edit')
+                      setEditingRoom(room)
                       setDrawerOpen(true)
                     }}
-                  >
-                    Add Room
-                  </Button>
+                    onDelete={(room) => {
+                      setRoomToDelete(room)
+                    }}
+                  />
                 </Space>
-
-                <RoomsTable
-                  loading={roomsLoading}
-                  data={roomsData}
-                  tenantCountByRoomId={tenantCountByRoomId}
-                  onView={(room) => {
-                    window.history.pushState(null, '', `/rooms/${room.id}?buildingId=${item.id}`)
-                    window.dispatchEvent(new PopStateEvent('popstate'))
-                  }}
-                  onEdit={(room) => {
-                    setDrawerMode('edit')
-                    setEditingRoom(room)
-                    setDrawerOpen(true)
-                  }}
-                  onDelete={(room) => {
-                    Modal.confirm({
-                      title: `Delete room ${room.code}?`,
-                      icon: <ExclamationCircleOutlined />,
-                      okText: 'Delete',
-                      okButtonProps: { danger: true },
-                      onOk: async () => {
-                        await deleteRoom(room.id)
-                        await loadRooms(item.id)
-                        message.success('Room deleted successfully')
-                      },
-                    })
-                  }}
+              ),
+            },
+            {
+              key: 'history',
+              label: 'History',
+              children: (
+                <Timeline
+                  items={[
+                    { children: `${item.name} updated by admin` },
+                    { children: `${item.name} synced with billing` },
+                    { children: `${item.name} was created` },
+                  ]}
                 />
-              </Space>
-            ),
-          },
-          {
-            key: 'history',
-            label: 'History',
-            children: (
-              <Timeline
-                items={[
-                  { children: `${item.name} updated by admin` },
-                  { children: `${item.name} synced with billing` },
-                  { children: `${item.name} was created` },
-                ]}
-              />
-            ),
-          },
-        ]}
-      />
+              ),
+            },
+          ]}
+        />
 
-      <RoomsUpsertDrawer
-        open={drawerOpen}
-        mode={drawerMode}
-        room={editingRoom}
-        building_id={item.id}
-        existingCodes={existingRoomCodes}
-        loading={savingRoom}
-        onClose={() => setDrawerOpen(false)}
-        onSubmit={async (payload) => {
-          setSavingRoom(true)
-          if (drawerMode === 'create') {
-            await createRoom(payload)
-            message.success('Room created successfully')
-          } else if (editingRoom) {
-            await updateRoom(editingRoom.id, payload)
-            message.success('Room updated successfully')
-          }
-          await loadRooms(item.id)
-          setSavingRoom(false)
-          setDrawerOpen(false)
+        <RoomsUpsertDrawer
+          open={drawerOpen}
+          mode={drawerMode}
+          room={editingRoom}
+          building_id={item.id}
+          existingCodes={existingRoomCodes}
+          loading={savingRoom}
+          onClose={() => setDrawerOpen(false)}
+          onSubmit={async (payload) => {
+            setSavingRoom(true)
+            try {
+              if (drawerMode === 'create') {
+                await createRoom(payload)
+                message.success('Room created successfully')
+              } else if (editingRoom) {
+                await updateRoom(editingRoom.id, payload)
+                message.success('Room updated successfully')
+              }
+              await loadRooms(item.id)
+            } finally {
+              setSavingRoom(false)
+            }
+          }}
+        />
+      </Space>
+
+      <Modal
+        open={deleteBuildingModalOpen}
+        title="Delete this building?"
+        onCancel={() => setDeleteBuildingModalOpen(false)}
+        onOk={() => {
+          onDelete(item.id)
+          setDeleteBuildingModalOpen(false)
         }}
-      />
-    </Space>
+        okText="Delete"
+        okButtonProps={{ danger: true }}
+        cancelText="Cancel"
+        maskClosable
+      >
+        This action cannot be undone.
+      </Modal>
+
+      <Modal
+        open={Boolean(roomToDelete)}
+        title={roomToDelete ? `Delete room ${roomToDelete.code}?` : 'Delete room'}
+        onCancel={() => setRoomToDelete(null)}
+        onOk={async () => {
+          if (!roomToDelete) return
+          const id = roomToDelete.id
+          setRoomToDelete(null)
+          await deleteRoom(id)
+          await loadRooms(item.id)
+          message.success('Room deleted successfully')
+        }}
+        okText="Delete"
+        okButtonProps={{ danger: true }}
+        cancelText="Cancel"
+        maskClosable
+      >
+        This action cannot be undone.
+      </Modal>
+    </>
   )
 }
