@@ -1,10 +1,11 @@
-import { Card, Grid, message } from 'antd'
+import { ArrowLeftOutlined } from '@ant-design/icons'
+import { Button, Card, Grid, message } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
-import type { BuildingFormValues } from './components/types'
-import type { BuildingEntity, StatusFilter } from './components/types'
 import { DetailPanel } from './components/DetailPanel'
 import { MasterListPanel } from './components/MasterListPanel'
 import { UpsertDrawer } from './components/UpsertDrawer'
+import type { BuildingEntity, BuildingFormValues, StatusFilter } from './components/types'
+import './EntitySplitPage.css'
 
 const mockBuildings: BuildingEntity[] = [
   {
@@ -33,6 +34,9 @@ const mockBuildings: BuildingEntity[] = [
 
 export function EntitySplitPage() {
   const screens = Grid.useBreakpoint()
+  const isMobile = !screens.md
+  const isTablet = Boolean(screens.md) && !screens.lg
+
   const [loadingList, setLoadingList] = useState(true)
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [items, setItems] = useState<BuildingEntity[]>([])
@@ -43,6 +47,7 @@ export function EntitySplitPage() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('create')
   const [saving, setSaving] = useState(false)
+  const [showMobileDetail, setShowMobileDetail] = useState(false)
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -50,7 +55,6 @@ export function EntitySplitPage() {
       setSelectedId(mockBuildings[0]?.id)
       setLoadingList(false)
     }, 400)
-
     return () => window.clearTimeout(timer)
   }, [])
 
@@ -59,16 +63,19 @@ export function EntitySplitPage() {
     return () => window.clearTimeout(timer)
   }, [searchInput])
 
-  const filteredItems = useMemo(() => {
-    return items.filter((item) => {
-      const searchMatched =
-        debouncedSearch.length === 0 ||
-        item.name.toLowerCase().includes(debouncedSearch) ||
-        item.code.toLowerCase().includes(debouncedSearch)
-      const statusMatched = statusFilter === 'all' || item.status === statusFilter
-      return searchMatched && statusMatched
-    })
-  }, [items, debouncedSearch, statusFilter])
+
+  const filteredItems = useMemo(
+    () =>
+      items.filter((item) => {
+        const searchMatched =
+          debouncedSearch.length === 0 ||
+          item.name.toLowerCase().includes(debouncedSearch) ||
+          item.code.toLowerCase().includes(debouncedSearch)
+        const statusMatched = statusFilter === 'all' || item.status === statusFilter
+        return searchMatched && statusMatched
+      }),
+    [items, debouncedSearch, statusFilter],
+  )
 
   const selectedItem = useMemo(() => items.find((item) => item.id === selectedId) ?? null, [items, selectedId])
 
@@ -86,15 +93,20 @@ export function EntitySplitPage() {
   const handleSelect = (id: string) => {
     setSelectedId(id)
     setLoadingDetail(true)
+    if (isMobile) {
+      setShowMobileDetail(true)
+    }
     window.setTimeout(() => setLoadingDetail(false), 250)
   }
 
   const handleDelete = (id: string) => {
-    setItems((current) => current.filter((item) => item.id !== id))
-    if (selectedId === id) {
-      const remain = items.filter((item) => item.id !== id)
-      setSelectedId(remain[0]?.id)
-    }
+    setItems((current) => {
+      const next = current.filter((item) => item.id !== id)
+      if (selectedId === id) {
+        setSelectedId(next[0]?.id)
+      }
+      return next
+    })
     message.success('Building deleted successfully')
   }
 
@@ -111,6 +123,9 @@ export function EntitySplitPage() {
       }
       setItems((current) => [next, ...current])
       setSelectedId(next.id)
+      if (isMobile) {
+        setShowMobileDetail(true)
+      }
       message.success('Building created successfully')
     } else if (selectedItem) {
       setItems((current) => current.map((item) => (item.id === selectedItem.id ? { ...item, ...values } : item)))
@@ -130,29 +145,30 @@ export function EntitySplitPage() {
   }, [drawerMode, items, selectedItem])
 
   return (
-    <div style={{ display: 'flex', gap: 16, minHeight: 'calc(100vh - 200px)' }}>
-      <Card style={{ width: screens.md ? 340 : '100%' }} bodyStyle={{ padding: 16 }}>
-        <MasterListPanel
-          loading={loadingList}
-          items={filteredItems}
-          selectedId={selectedId}
-          searchValue={searchInput}
-          statusFilter={statusFilter}
-          onSearchChange={setSearchInput}
-          onStatusFilterChange={setStatusFilter}
-          onSelect={handleSelect}
-          onAdd={openCreate}
-        />
-      </Card>
-
-      {screens.md && (
-        <Card style={{ flex: 1 }} bodyStyle={{ padding: 20 }}>
-          <DetailPanel loading={loadingDetail || loadingList} item={selectedItem} onEdit={openEdit} onDelete={handleDelete} />
+    <div className="split-page">
+      {(!isMobile || !showMobileDetail) && (
+        <Card className="master-card" styles={{ body: { padding: isTablet ? 12 : 16 } }}>
+          <MasterListPanel
+            loading={loadingList}
+            items={filteredItems}
+            selectedId={selectedId}
+            searchValue={searchInput}
+            statusFilter={statusFilter}
+            onSearchChange={setSearchInput}
+            onStatusFilterChange={setStatusFilter}
+            onSelect={handleSelect}
+            onAdd={openCreate}
+          />
         </Card>
       )}
 
-      {!screens.md && (
-        <Card style={{ width: '100%' }} bodyStyle={{ padding: 20 }}>
+      {(!isMobile || showMobileDetail) && (
+        <Card className="detail-card" styles={{ body: { padding: isTablet ? 16 : 20 } }}>
+          {isMobile && (
+            <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => setShowMobileDetail(false)} style={{ marginBottom: 8 }}>
+              Back to list
+            </Button>
+          )}
           <DetailPanel loading={loadingDetail || loadingList} item={selectedItem} onEdit={openEdit} onDelete={handleDelete} />
         </Card>
       )}

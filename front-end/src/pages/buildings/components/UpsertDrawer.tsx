@@ -1,7 +1,6 @@
 import { ExclamationCircleOutlined } from '@ant-design/icons'
-import { Button, Drawer, Form, Input, Modal, Select, Space } from 'antd'
-import { useEffect, useMemo, useState } from 'react'
-import { Grid } from 'antd'
+import { Button, Drawer, Form, Grid, Input, Modal, Select, Space } from 'antd'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { BuildingEntity, BuildingFormValues } from './types'
 
 interface UpsertDrawerProps {
@@ -26,7 +25,9 @@ const defaultValues: BuildingFormValues = {
 export function UpsertDrawer({ open, mode, item, loading, existingCodes, onClose, onSubmit }: UpsertDrawerProps) {
   const [form] = Form.useForm<BuildingFormValues>()
   const [canSave, setCanSave] = useState(false)
+  const initialSnapshotRef = useRef<string>('')
   const screens = Grid.useBreakpoint()
+  const isMobile = !screens.md
 
   const initialValues = useMemo<BuildingFormValues>(() => {
     if (mode === 'edit' && item) {
@@ -44,26 +45,38 @@ export function UpsertDrawer({ open, mode, item, loading, existingCodes, onClose
 
   useEffect(() => {
     if (open) {
+      form.resetFields()
       form.setFieldsValue(initialValues)
-      setCanSave(false)
+      initialSnapshotRef.current = JSON.stringify(initialValues)
     }
   }, [form, initialValues, open])
 
+  const isDirty = () => JSON.stringify(form.getFieldsValue()) !== initialSnapshotRef.current
+
   const requestClose = () => {
-    if (form.isFieldsTouched()) {
+    if (isDirty()) {
       Modal.confirm({
         title: 'Discard unsaved changes?',
         icon: <ExclamationCircleOutlined />,
-        onOk: onClose,
+        onOk: () => {
+          form.resetFields()
+          setCanSave(false)
+          onClose()
+        },
       })
       return
     }
+
+    form.resetFields()
+    setCanSave(false)
     onClose()
   }
 
   const handleSubmit = async () => {
     const values = await form.validateFields()
     await onSubmit(values)
+    form.resetFields()
+    setCanSave(false)
   }
 
   return (
@@ -74,46 +87,53 @@ export function UpsertDrawer({ open, mode, item, loading, existingCodes, onClose
       onClose={requestClose}
       width={screens.md ? 500 : '100%'}
       destroyOnClose
-      styles={{ body: { paddingBottom: 88 } }}
+      styles={{ body: { paddingBottom: 90 } }}
+      maskClosable
     >
       <Form
         form={form}
         layout="vertical"
         initialValues={initialValues}
         onFieldsChange={async () => {
-          const touched = form.isFieldsTouched(true)
           try {
             await form.validateFields({ validateOnly: true })
-            setCanSave(touched)
+            setCanSave(isDirty())
           } catch {
             setCanSave(false)
           }
         }}
       >
-        <Form.Item label="Code" name="code" rules={[
-          { required: true, message: 'Code is required' },
-          {
-            validator: async (_rule: unknown, value: string) => {
-              if (!value) return
-              if (existingCodes.some((code) => code.toLowerCase() === value.toLowerCase())) {
-                throw new Error('Code already exists')
-              }
+        <Form.Item
+          label="Code"
+          name="code"
+          rules={[
+            { required: true, message: 'Code is required' },
+            {
+              validator: async (_rule: unknown, value: string) => {
+                if (!value) return
+                if (existingCodes.some((code) => code.toLowerCase() === value.toLowerCase())) {
+                  throw new Error('Code already exists')
+                }
+              },
             },
-          },
-        ]}>
-          <Input placeholder="BLD-001" />
+          ]}
+        >
+          <Input size={isMobile ? 'large' : 'middle'} placeholder="BLD-001" />
         </Form.Item>
         <Form.Item label="Name" name="name" rules={[{ required: true, message: 'Name is required' }]}>
-          <Input placeholder="Sunrise Riverside" />
+          <Input size={isMobile ? 'large' : 'middle'} placeholder="Sunrise Riverside" />
         </Form.Item>
         <Form.Item label="Address" name="address" rules={[{ required: true, message: 'Address is required' }]}>
-          <Input placeholder="12 Nguyen Van Cu" />
+          <Input size={isMobile ? 'large' : 'middle'} placeholder="12 Nguyen Van Cu" />
         </Form.Item>
         <Form.Item label="Manager" name="manager" rules={[{ required: true, message: 'Manager is required' }]}>
-          <Input placeholder="Manager name" />
+          <Input size={isMobile ? 'large' : 'middle'} placeholder="Manager name" />
         </Form.Item>
         <Form.Item label="Status" name="status" rules={[{ required: true }]}>
-          <Select options={[{ label: 'Active', value: 'active' }, { label: 'Inactive', value: 'inactive' }]} />
+          <Select
+            size={isMobile ? 'large' : 'middle'}
+            options={[{ label: 'Active', value: 'active' }, { label: 'Inactive', value: 'inactive' }]}
+          />
         </Form.Item>
         <Form.Item label="Note" name="note">
           <Input.TextArea rows={4} />
@@ -121,9 +141,11 @@ export function UpsertDrawer({ open, mode, item, loading, existingCodes, onClose
       </Form>
 
       <div style={{ position: 'sticky', bottom: 0, padding: '12px 0', background: '#fff', borderTop: '1px solid #f0f0f0' }}>
-        <Space>
-          <Button onClick={requestClose}>Cancel</Button>
-          <Button type="primary" loading={loading} disabled={!canSave} onClick={handleSubmit}>
+        <Space style={{ width: '100%', justifyContent: isMobile ? 'space-between' : 'flex-start' }}>
+          <Button size={isMobile ? 'large' : 'middle'} onClick={requestClose}>
+            Cancel
+          </Button>
+          <Button size={isMobile ? 'large' : 'middle'} type="primary" loading={loading} disabled={!canSave} onClick={handleSubmit}>
             Save
           </Button>
         </Space>

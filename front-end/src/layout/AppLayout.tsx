@@ -27,11 +27,6 @@ export function AppLayout({ pathname, onNavigate, items, pageTitle, content }: A
     localStorage.setItem(SIDEBAR_STORAGE_KEY, String(collapsed))
   }, [collapsed])
 
-  useEffect(() => {
-    if (isDesktop) {
-      setMobileOpen(false)
-    }
-  }, [isDesktop])
 
   const menuItems = useMemo(
     () =>
@@ -50,8 +45,7 @@ export function AppLayout({ pathname, onNavigate, items, pageTitle, content }: A
       selectedKeys={[pathname]}
       items={menuItems}
       onClick={(info: { key: string }) => {
-        const { key } = info
-        onNavigate(key)
+        onNavigate(info.key)
         setMobileOpen(false)
       }}
     />
@@ -60,44 +54,31 @@ export function AppLayout({ pathname, onNavigate, items, pageTitle, content }: A
   return (
     <Layout className="app-layout">
       {isDesktop ? (
-        <Sider
-          theme="light"
-          collapsible
-          collapsed={collapsed}
-          trigger={null}
-          width={240}
-          collapsedWidth={80}
-          className="app-sider"
-        >
+        <Sider theme="light" collapsible collapsed={collapsed} trigger={null} width={240} collapsedWidth={80} className="app-sider">
           <div className="logo-wrap">{collapsed ? 'RA' : 'Rent Apartment'}</div>
           {navMenu}
         </Sider>
       ) : (
-        <Drawer
-          title="Rent Apartment"
-          placement="left"
-          open={mobileOpen}
-          onClose={() => setMobileOpen(false)}
-          width={280}
-          bodyStyle={{ padding: 0 }}
-        >
+        <Drawer title="Rent Apartment" placement="left" open={mobileOpen} onClose={() => setMobileOpen(false)} width={280} styles={{ body: { padding: 0 } }}>
           {navMenu}
         </Drawer>
       )}
 
       <Layout>
         <Header className="app-header">
-          <Space>
+          <Space className="header-space" size={12}>
             <Button
               type="text"
               icon={isDesktop ? (collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />) : <MenuUnfoldOutlined />}
               onClick={() => (isDesktop ? setCollapsed((current) => !current) : setMobileOpen((current) => !current))}
             />
-            <div>
-              <Typography.Title level={4} className="header-title">
+            <div className="header-text">
+              <Typography.Title level={4} className="header-title" ellipsis={{ tooltip: pageTitle }}>
                 {pageTitle}
               </Typography.Title>
-              <Typography.Text type="secondary">Rent Apartment Management</Typography.Text>
+              <Typography.Text type="secondary" className="header-subtitle" ellipsis>
+                Rent Apartment Management
+              </Typography.Text>
             </div>
           </Space>
         </Header>

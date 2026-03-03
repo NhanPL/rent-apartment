@@ -1,0 +1,41 @@
+.split-page {
+  display: flex;
+  gap: 16px;
+  min-height: calc(100vh - 208px);
+}
+
+.master-card {
+  width: 340px;
+  flex: 0 0 340px;
+}
+
+.detail-card {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (min-width: 768px) and (max-width: 1199px) {
+  .split-page {
+    gap: 12px;
+    min-height: calc(100vh - 190px);
+  }
+
+  .master-card {
+    width: 300px;
+    flex-basis: 300px;
+  }
+}
+
+@media (max-width: 767px) {
+  .split-page {
+    flex-direction: column;
+    gap: 12px;
+    min-height: auto;
+  }
+
+  .master-card,
+  .detail-card {
+    width: 100%;
+    flex: 1 1 auto;
+  }
+}

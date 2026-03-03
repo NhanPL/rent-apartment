@@ -1,5 +1,5 @@
 import { BankOutlined, PlusOutlined } from '@ant-design/icons'
-import { Button, Empty, Input, List, Select, Skeleton, Space, Tag, Typography } from 'antd'
+import { Button, Empty, Grid, Input, List, Select, Skeleton, Space, Tag, Typography } from 'antd'
 import type { ChangeEvent } from 'react'
 import type { BuildingEntity, StatusFilter } from './types'
 
@@ -31,6 +31,9 @@ export function MasterListPanel({
   onSelect,
   onAdd,
 }: MasterListPanelProps) {
+  const screens = Grid.useBreakpoint()
+  const isMobile = !screens.md
+
   return (
     <div>
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
@@ -38,8 +41,14 @@ export function MasterListPanel({
           Buildings
         </Typography.Title>
         <Typography.Text type="secondary">Manage all buildings in one place.</Typography.Text>
-        <Input.Search placeholder="Search by code or name" value={searchValue} onChange={(event: ChangeEvent<HTMLInputElement>) => onSearchChange(event.target.value)} />
+        <Input.Search
+          size={isMobile ? 'large' : 'middle'}
+          placeholder="Search by code or name"
+          value={searchValue}
+          onChange={(event: ChangeEvent<HTMLInputElement>) => onSearchChange(event.target.value)}
+        />
         <Select
+          size={isMobile ? 'large' : 'middle'}
           value={statusFilter}
           options={[
             { label: 'All', value: 'all' },
@@ -48,7 +57,7 @@ export function MasterListPanel({
           ]}
           onChange={onStatusFilterChange}
         />
-        <Button type="primary" icon={<PlusOutlined />} onClick={onAdd}>
+        <Button size={isMobile ? 'large' : 'middle'} type="primary" icon={<PlusOutlined />} onClick={onAdd}>
           Add
         </Button>
       </Space>
@@ -62,7 +71,7 @@ export function MasterListPanel({
           </Space>
         ) : items.length === 0 ? (
           <Empty description="No buildings found" image={Empty.PRESENTED_IMAGE_SIMPLE}>
-            <Button type="primary" onClick={onAdd}>
+            <Button type="primary" size={isMobile ? 'large' : 'middle'} onClick={onAdd}>
               Add Building
             </Button>
           </Empty>
@@ -70,11 +79,11 @@ export function MasterListPanel({
           <List<BuildingEntity>
             itemLayout="horizontal"
             dataSource={items}
-            renderItem={(item) => (
+            renderItem={(item: BuildingEntity) => (
               <List.Item
                 style={{
                   borderRadius: 10,
-                  padding: 12,
+                  padding: isMobile ? '14px 12px' : 12,
                   cursor: 'pointer',
                   background: item.id === selectedId ? '#e6f4ff' : '#fff',
                   border: '1px solid #f0f0f0',
@@ -84,8 +93,8 @@ export function MasterListPanel({
               >
                 <List.Item.Meta
                   avatar={<BankOutlined style={{ fontSize: 18, marginTop: 4 }} />}
-                  title={<Typography.Text strong>{item.name}</Typography.Text>}
-                  description={`${item.code} • ${item.address}`}
+                  title={<Typography.Text strong ellipsis>{item.name}</Typography.Text>}
+                  description={<Typography.Text type="secondary" ellipsis>{`${item.code} • ${item.address}`}</Typography.Text>}
                 />
                 <Tag color={statusColor[item.status]}>{item.status.toUpperCase()}</Tag>
               </List.Item>

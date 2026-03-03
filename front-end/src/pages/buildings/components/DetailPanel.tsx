@@ -1,5 +1,5 @@
 import { DeleteOutlined, EditOutlined, ExclamationCircleOutlined } from '@ant-design/icons'
-import { Button, Descriptions, Empty, Modal, Skeleton, Space, Table, Tabs, Tag, Timeline, Typography } from 'antd'
+import { Button, Descriptions, Empty, Grid, Modal, Skeleton, Space, Table, Tabs, Tag, Timeline, Typography } from 'antd'
 import type { BuildingEntity } from './types'
 
 interface DetailPanelProps {
@@ -15,6 +15,10 @@ const statusColor: Record<BuildingEntity['status'], string> = {
 }
 
 export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProps) {
+  const screens = Grid.useBreakpoint()
+  const isMobile = !screens.md
+  const isTablet = Boolean(screens.md) && !screens.lg
+
   if (!item && !loading) {
     return <Empty description="Select an item from the list to see details" style={{ marginTop: 90 }} />
   }
@@ -25,18 +29,19 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
 
   return (
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Space style={{ width: '100%', justifyContent: 'space-between' }}>
-        <Space>
-          <Typography.Title level={4} style={{ margin: 0 }}>
+      <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
+        <Space wrap>
+          <Typography.Title level={isMobile ? 5 : isTablet ? 4 : 3} style={{ margin: 0 }}>
             {item.name}
           </Typography.Title>
           <Tag color={statusColor[item.status]}>{item.status.toUpperCase()}</Tag>
         </Space>
-        <Space>
-          <Button icon={<EditOutlined />} onClick={() => onEdit(item)}>
+        <Space wrap>
+          <Button size={isMobile ? 'large' : 'middle'} icon={<EditOutlined />} onClick={() => onEdit(item)}>
             Edit
           </Button>
           <Button
+            size={isMobile ? 'large' : 'middle'}
             danger
             icon={<DeleteOutlined />}
             onClick={() =>
@@ -62,15 +67,15 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
             key: 'overview',
             label: 'Overview',
             children: (
-              <Descriptions bordered column={2}>
+              <Descriptions bordered column={isMobile ? 1 : 2}>
                 <Descriptions.Item label="Code">{item.code}</Descriptions.Item>
                 <Descriptions.Item label="Status">{item.status}</Descriptions.Item>
                 <Descriptions.Item label="Manager">{item.manager}</Descriptions.Item>
                 <Descriptions.Item label="Units">{item.units}</Descriptions.Item>
-                <Descriptions.Item label="Address" span={2}>
+                <Descriptions.Item label="Address" span={isMobile ? 1 : 2}>
                   {item.address}
                 </Descriptions.Item>
-                <Descriptions.Item label="Note" span={2}>
+                <Descriptions.Item label="Note" span={isMobile ? 1 : 2}>
                   {item.note || '-'}
                 </Descriptions.Item>
               </Descriptions>
@@ -83,6 +88,7 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
               <Table
                 pagination={false}
                 rowKey="key"
+                scroll={{ x: 640 }}
                 columns={[
                   { title: 'Unit', dataIndex: 'unit' },
                   { title: 'Tenant', dataIndex: 'tenant' },
