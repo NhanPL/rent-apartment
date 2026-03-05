@@ -1,12 +1,25 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AppLayout } from '../layout/AppLayout'
 import { BuildingsPage } from '../pages/buildings/BuildingsPage'
+import { mockBuildings } from '../pages/buildings/mockData'
+import { RoomDetailPage } from '../pages/rooms/RoomDetailPage'
 import { PlaceholderPage } from '../pages/shared/PlaceholderPage'
 import { routeItems } from './routeConfig'
+
+function getBasePath(pathname: string) {
+  if (pathname.startsWith('/rooms/')) {
+    return '/rooms'
+  }
+  return pathname
+}
 
 function resolvePathname(pathname: string) {
   if (pathname === '/') {
     return '/buildings'
+  }
+
+  if (pathname.startsWith('/rooms/')) {
+    return pathname
   }
 
   const found = routeItems.find((item) => item.path === pathname)
@@ -30,22 +43,33 @@ export function AppRoutes() {
     }
   }, [pathname])
 
-  const title = useMemo(() => routeItems.find((item) => item.path === pathname)?.label ?? 'Buildings', [pathname])
+  const pageTitle = useMemo(() => {
+    if (pathname.startsWith('/rooms/')) {
+      return 'Room Detail'
+    }
+
+    return routeItems.find((item) => item.path === pathname)?.label ?? 'Buildings'
+  }, [pathname])
 
   const renderPage = () => {
     if (pathname === '/buildings') {
       return <BuildingsPage />
     }
 
-    return <PlaceholderPage title={title} />
+    if (pathname.startsWith('/rooms/')) {
+      const roomId = pathname.split('/')[2]
+      return <RoomDetailPage roomId={roomId} buildings={mockBuildings} />
+    }
+
+    return <PlaceholderPage title={pageTitle} />
   }
 
   return (
     <AppLayout
-      pathname={pathname}
+      pathname={getBasePath(pathname)}
       onNavigate={setPathname}
       items={routeItems}
-      pageTitle={title}
+      pageTitle={pageTitle}
       content={renderPage()}
     />
   )

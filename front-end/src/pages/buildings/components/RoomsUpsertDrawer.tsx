@@ -1,52 +1,56 @@
 import { ExclamationCircleOutlined } from '@ant-design/icons'
-import { Button, Drawer, Form, Grid, Input, Modal, Select, Space } from 'antd'
+import { Button, Drawer, Form, Grid, Input, InputNumber, Modal, Select, Space } from 'antd'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { BuildingEntity, BuildingFormValues } from './types'
+import type { Room, RoomStatus, RoomUpsertPayload } from './roomTypes'
 
-interface UpsertDrawerProps {
+interface RoomsUpsertDrawerProps {
   open: boolean
   mode: 'create' | 'edit'
-  item: BuildingEntity | null
+  room: Room | null
+  building_id: string
   loading: boolean
   existingCodes: string[]
   onClose: () => void
-  onSubmit: (values: BuildingFormValues) => Promise<void>
+  onSubmit: (payload: RoomUpsertPayload) => Promise<void>
 }
 
 const DRAWER_Z_INDEX = 1000
 const CONFIRM_MODAL_Z_INDEX = 1100
 
-const defaultValues: BuildingFormValues = {
+const defaultValues: Omit<RoomUpsertPayload, 'building_id'> = {
   code: '',
-  name: '',
-  address: '',
-  note: '',
-  status: 'active',
-  manager: '',
+  floor: null,
+  area_m2: null,
+  status: 'ACTIVE',
+  base_rent: 0,
+  deposit_default: 0,
+  max_occupants: 1,
+  note: null,
 }
 
-export function UpsertDrawer({ open, mode, item, loading, existingCodes, onClose, onSubmit }: UpsertDrawerProps) {
-  const [form] = Form.useForm<BuildingFormValues>()
+export function RoomsUpsertDrawer({ open, mode, room, building_id, loading, existingCodes, onClose, onSubmit }: RoomsUpsertDrawerProps) {
+  const [form] = Form.useForm<Omit<RoomUpsertPayload, 'building_id'>>()
   const [canSave, setCanSave] = useState(false)
   const [discardModalOpen, setDiscardModalOpen] = useState(false)
   const [confirmingClose, setConfirmingClose] = useState(false)
   const initialSnapshotRef = useRef<string>('')
   const screens = Grid.useBreakpoint()
-  const isMobile = !screens.md
 
-  const initialValues = useMemo<BuildingFormValues>(() => {
-    if (mode === 'edit' && item) {
+  const initialValues = useMemo(() => {
+    if (mode === 'edit' && room) {
       return {
-        code: item.code,
-        name: item.name,
-        address: item.address,
-        note: item.note ?? '',
-        status: item.status,
-        manager: item.manager,
+        code: room.code,
+        floor: room.floor,
+        area_m2: room.area_m2,
+        status: room.status,
+        base_rent: room.base_rent,
+        deposit_default: room.deposit_default,
+        max_occupants: room.max_occupants,
+        note: room.note,
       }
     }
     return defaultValues
-  }, [mode, item])
+  }, [mode, room])
 
   useEffect(() => {
     if (open) {
@@ -78,9 +82,9 @@ export function UpsertDrawer({ open, mode, item, loading, existingCodes, onClose
     closeDrawer()
   }
 
-  const handleSubmit = async () => {
+  const handleSave = async () => {
     const values = await form.validateFields()
-    await onSubmit(values)
+    await onSubmit({ ...values, building_id, note: values.note ?? null })
     closeDrawer()
   }
 
@@ -88,19 +92,18 @@ export function UpsertDrawer({ open, mode, item, loading, existingCodes, onClose
     <>
       <Drawer
         open={open}
-        title={mode === 'create' ? 'Create Building' : 'Edit Building'}
-        placement="right"
+        title={mode === 'create' ? 'Add Room' : 'Edit Room'}
         onClose={requestClose}
-        width={screens.md ? 500 : '100%'}
+        placement="right"
+        width={screens.xl ? 520 : screens.md ? 480 : '100%'}
         destroyOnClose
-        styles={{ body: { paddingBottom: 90 } }}
+        styles={{ body: { paddingBottom: 88 } }}
         maskClosable
         zIndex={DRAWER_Z_INDEX}
       >
         <Form
           form={form}
           layout="vertical"
-          initialValues={initialValues}
           onFieldsChange={async () => {
             try {
               await form.validateFields({ validateOnly: true })
@@ -119,40 +122,47 @@ export function UpsertDrawer({ open, mode, item, loading, existingCodes, onClose
                 validator: async (_rule: unknown, value: string) => {
                   if (!value) return
                   if (existingCodes.some((code) => code.toLowerCase() === value.toLowerCase())) {
-                    throw new Error('Code already exists')
+                    throw new Error('Room code already exists in this building')
                   }
                 },
               },
             ]}
           >
-            <Input size={isMobile ? 'large' : 'middle'} placeholder="BLD-001" />
-          </Form.Item>
-          <Form.Item label="Name" name="name" rules={[{ required: true, message: 'Name is required' }]}>
-            <Input size={isMobile ? 'large' : 'middle'} placeholder="Sunrise Riverside" />
-          </Form.Item>
-          <Form.Item label="Address" name="address" rules={[{ required: true, message: 'Address is required' }]}>
-            <Input size={isMobile ? 'large' : 'middle'} placeholder="12 Nguyen Van Cu" />
-          </Form.Item>
-          <Form.Item label="Manager" name="manager" rules={[{ required: true, message: 'Manager is required' }]}>
-            <Input size={isMobile ? 'large' : 'middle'} placeholder="Manager name" />
+            <Input placeholder="A-103" />
           </Form.Item>
           <Form.Item label="Status" name="status" rules={[{ required: true }]}>
-            <Select
-              size={isMobile ? 'large' : 'middle'}
-              options={[{ label: 'Active', value: 'active' }, { label: 'Inactive', value: 'inactive' }]}
+            <Select<RoomStatus>
+              options={[
+                { label: 'Active', value: 'ACTIVE' },
+                { label: 'Maintenance', value: 'MAINTENANCE' },
+                { label: 'Inactive', value: 'INACTIVE' },
+              ]}
             />
           </Form.Item>
+          <Form.Item label="Price" name="base_rent" rules={[{ required: true, message: 'Price is required' }]}>
+            <InputNumber min={0} precision={2} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item label="Floor" name="floor">
+            <InputNumber style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item label="Area (m²)" name="area_m2">
+            <InputNumber min={0} precision={2} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item label="Deposit" name="deposit_default">
+            <InputNumber min={0} precision={2} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item label="Max Occupants" name="max_occupants" rules={[{ required: true }]}>
+            <InputNumber min={1} style={{ width: '100%' }} />
+          </Form.Item>
           <Form.Item label="Note" name="note">
-            <Input.TextArea rows={4} />
+            <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
 
         <div style={{ position: 'sticky', bottom: 0, padding: '12px 0', background: '#fff', borderTop: '1px solid #f0f0f0' }}>
-          <Space style={{ width: '100%', justifyContent: isMobile ? 'space-between' : 'flex-start' }}>
-            <Button size={isMobile ? 'large' : 'middle'} onClick={requestClose}>
-              Cancel
-            </Button>
-            <Button size={isMobile ? 'large' : 'middle'} type="primary" loading={loading} disabled={!canSave} onClick={handleSubmit}>
+          <Space>
+            <Button onClick={requestClose}>Cancel</Button>
+            <Button type="primary" loading={loading} disabled={!canSave} onClick={handleSave}>
               Save
             </Button>
           </Space>
@@ -161,7 +171,7 @@ export function UpsertDrawer({ open, mode, item, loading, existingCodes, onClose
 
       <Modal
         open={discardModalOpen}
-        title="Discard unsaved changes?"
+        title="Discard unsaved room changes?"
         onCancel={() => setDiscardModalOpen(false)}
         onOk={async () => {
           setConfirmingClose(true)
@@ -176,7 +186,7 @@ export function UpsertDrawer({ open, mode, item, loading, existingCodes, onClose
       >
         <Space>
           <ExclamationCircleOutlined />
-          You have unsaved changes.
+          You have unsaved room changes.
         </Space>
       </Modal>
     </>
