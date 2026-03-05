@@ -14,6 +14,9 @@ interface RoomsUpsertDrawerProps {
   onSubmit: (payload: RoomUpsertPayload) => Promise<void>
 }
 
+const DRAWER_Z_INDEX = 1000
+const CONFIRM_MODAL_Z_INDEX = 1100
+
 const defaultValues: Omit<RoomUpsertPayload, 'building_id'> = {
   code: '',
   floor: null,
@@ -29,6 +32,7 @@ export function RoomsUpsertDrawer({ open, mode, room, building_id, loading, exis
   const [form] = Form.useForm<Omit<RoomUpsertPayload, 'building_id'>>()
   const [canSave, setCanSave] = useState(false)
   const [discardModalOpen, setDiscardModalOpen] = useState(false)
+  const [confirmingClose, setConfirmingClose] = useState(false)
   const initialSnapshotRef = useRef<string>('')
   const screens = Grid.useBreakpoint()
 
@@ -55,6 +59,7 @@ export function RoomsUpsertDrawer({ open, mode, room, building_id, loading, exis
       initialSnapshotRef.current = JSON.stringify(initialValues)
       setCanSave(false)
       setDiscardModalOpen(false)
+      setConfirmingClose(false)
     }
   }, [form, initialValues, open])
 
@@ -64,10 +69,12 @@ export function RoomsUpsertDrawer({ open, mode, room, building_id, loading, exis
     form.resetFields()
     setCanSave(false)
     setDiscardModalOpen(false)
+    setConfirmingClose(false)
     onClose()
   }
 
   const requestClose = () => {
+    if (confirmingClose) return
     if (isDirty()) {
       setDiscardModalOpen(true)
       return
@@ -92,6 +99,7 @@ export function RoomsUpsertDrawer({ open, mode, room, building_id, loading, exis
         destroyOnClose
         styles={{ body: { paddingBottom: 88 } }}
         maskClosable
+        zIndex={DRAWER_Z_INDEX}
       >
         <Form
           form={form}
@@ -165,11 +173,16 @@ export function RoomsUpsertDrawer({ open, mode, room, building_id, loading, exis
         open={discardModalOpen}
         title="Discard unsaved room changes?"
         onCancel={() => setDiscardModalOpen(false)}
-        onOk={closeDrawer}
+        onOk={async () => {
+          setConfirmingClose(true)
+          closeDrawer()
+        }}
         okText="Discard"
         okButtonProps={{ danger: true }}
         cancelText="Keep editing"
         maskClosable
+        zIndex={CONFIRM_MODAL_Z_INDEX}
+        getContainer={() => document.body}
       >
         <Space>
           <ExclamationCircleOutlined />
