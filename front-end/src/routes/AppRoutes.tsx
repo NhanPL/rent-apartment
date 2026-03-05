@@ -4,6 +4,7 @@ import { BuildingsPage } from '../pages/buildings/BuildingsPage'
 import { mockBuildings } from '../pages/buildings/mockData'
 import { RoomDetailPage } from '../pages/rooms/RoomDetailPage'
 import { PlaceholderPage } from '../pages/shared/PlaceholderPage'
+import { TenantsPage } from '../pages/tenants/TenantsPage'
 import { routeItems } from './routeConfig'
 
 function getBasePath(pathname: string) {
@@ -59,6 +60,10 @@ export function AppRoutes() {
     if (pathname.startsWith('/rooms/')) {
       const roomId = pathname.split('/')[2]
       return <RoomDetailPage roomId={roomId} buildings={mockBuildings} />
+    }
+
+    if (pathname === '/tenants') {
+      return <TenantsPage />
     }
 
     return <PlaceholderPage title={pageTitle} />

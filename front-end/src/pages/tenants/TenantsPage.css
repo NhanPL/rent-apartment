@@ -1,0 +1,39 @@
+.tenants-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tenants-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.tenants-filters {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr auto;
+  gap: 12px;
+}
+
+@media (max-width: 1199px) {
+  .tenants-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .tenants-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tenants-toolbar .ant-btn {
+    width: 100%;
+  }
+
+  .tenants-filters {
+    grid-template-columns: 1fr;
+  }
+}
