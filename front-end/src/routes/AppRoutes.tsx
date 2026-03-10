@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AppLayout } from '../layout/AppLayout'
 import { BuildingsPage } from '../pages/buildings/BuildingsPage'
+import { DashboardPage } from '../pages/dashboard/DashboardPage'
 import { mockBuildings } from '../pages/buildings/mockData'
 import { RoomDetailPage } from '../pages/rooms/RoomDetailPage'
 import { PlaceholderPage } from '../pages/shared/PlaceholderPage'
@@ -16,7 +17,7 @@ function getBasePath(pathname: string) {
 
 function resolvePathname(pathname: string) {
   if (pathname === '/') {
-    return '/buildings'
+    return '/dashboard'
   }
 
   if (pathname.startsWith('/rooms/')) {
@@ -24,7 +25,7 @@ function resolvePathname(pathname: string) {
   }
 
   const found = routeItems.find((item) => item.path === pathname)
-  return found ? found.path : '/buildings'
+  return found ? found.path : '/dashboard'
 }
 
 export function AppRoutes() {
@@ -49,10 +50,14 @@ export function AppRoutes() {
       return 'Room Detail'
     }
 
-    return routeItems.find((item) => item.path === pathname)?.label ?? 'Buildings'
+    return routeItems.find((item) => item.path === pathname)?.label ?? 'Dashboard'
   }, [pathname])
 
   const renderPage = () => {
+    if (pathname === '/dashboard') {
+      return <DashboardPage onNavigate={setPathname} />
+    }
+
     if (pathname === '/buildings') {
       return <BuildingsPage />
     }
