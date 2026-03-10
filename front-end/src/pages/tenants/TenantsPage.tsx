@@ -1,4 +1,11 @@
-import { DeleteOutlined, EditOutlined, EyeOutlined, ExclamationCircleOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons'
+import {
+  DeleteOutlined,
+  EditOutlined,
+  EyeOutlined,
+  ExclamationCircleOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+} from '@ant-design/icons'
 import {
   Button,
   Card,
@@ -19,7 +26,7 @@ import {
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   createTenant,
   deleteTenant,
@@ -38,7 +45,11 @@ import type {
 } from './types'
 import './TenantsPage.css'
 
-interface TenantFormValues extends Omit<TenantUpsertPayload, 'note' | 'email' | 'dob' | 'gender' | 'identity_issued_date' | 'identity_issued_place' | 'permanent_address'> {
+interface TenantFormValues
+  extends Omit<
+    TenantUpsertPayload,
+    'note' | 'email' | 'dob' | 'gender' | 'identity_issued_date' | 'identity_issued_place' | 'permanent_address'
+  > {
   note?: string
   email?: string
   dob?: string
@@ -63,9 +74,10 @@ const defaultFormValues: TenantFormValues = {
 
 export function TenantsPage() {
   const screens = Grid.useBreakpoint()
-  const isMobile = !screens.md
   const [form] = Form.useForm<TenantFormValues>()
+
   const initialSnapshotRef = useRef('')
+  const didInitFormRef = useRef(false)
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -85,6 +97,8 @@ export function TenantsPage() {
   const [saveLoading, setSaveLoading] = useState(false)
   const [canSave, setCanSave] = useState(false)
   const [discardModalOpen, setDiscardModalOpen] = useState(false)
+  const [editingTenantId, setEditingTenantId] = useState<string | null>(null)
+  const [drawerInitialValues, setDrawerInitialValues] = useState<TenantFormValues>(defaultFormValues)
 
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -94,13 +108,13 @@ export function TenantsPage() {
     return () => window.clearTimeout(timer)
   }, [searchInput])
 
-  const loadOptions = async () => {
+  const loadOptions = useCallback(async () => {
     const [buildings, rooms] = await Promise.all([listBuildings(), listRooms()])
     setBuildingOptions(buildings)
     setRoomOptions(rooms)
-  }
+  }, [])
 
-  const loadTenants = async () => {
+  const loadTenants = useCallback(async () => {
     setLoading(true)
     setError(null)
 
@@ -118,28 +132,56 @@ export function TenantsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [debouncedSearch, statusFilter, buildingFilter, roomFilter])
 
   useEffect(() => {
     void loadOptions()
-  }, [])
+  }, [loadOptions])
 
   useEffect(() => {
     void loadTenants()
-  }, [debouncedSearch, statusFilter, buildingFilter, roomFilter])
+  }, [loadTenants])
 
-  const openCreate = () => {
-    setDrawerMode('create')
-    setDrawerOpen(true)
-    form.setFieldsValue(defaultFormValues)
-    initialSnapshotRef.current = JSON.stringify(defaultFormValues)
+  const hasFormErrors = useCallback(() => form.getFieldsError().some((field) => field.errors.length > 0), [form])
+
+  const isDirty = useCallback(() => JSON.stringify(form.getFieldsValue(true)) !== initialSnapshotRef.current, [form])
+
+  const recalculateCanSave = useCallback(() => {
+    const touched = form.isFieldsTouched(true)
+    setCanSave(touched && !hasFormErrors() && isDirty())
+  }, [form, hasFormErrors, isDirty])
+
+  useEffect(() => {
+    if (!drawerOpen) {
+      didInitFormRef.current = false
+      return
+    }
+
+    if (didInitFormRef.current) {
+      return
+    }
+
+    form.resetFields()
+    form.setFieldsValue(drawerInitialValues)
+    initialSnapshotRef.current = JSON.stringify(drawerInitialValues)
     setCanSave(false)
-  }
+    didInitFormRef.current = true
+  }, [drawerOpen, drawerInitialValues, form])
 
-  const openEdit = async (id: string) => {
-    setDrawerMode('edit')
+  const openCreate = useCallback(() => {
+    setDrawerMode('create')
+    setEditingTenantId(null)
+    setDrawerInitialValues(defaultFormValues)
+    setDiscardModalOpen(false)
     setDrawerOpen(true)
+  }, [])
+
+  const openEdit = useCallback(async (id: string) => {
+    setDrawerMode('edit')
+    setEditingTenantId(id)
+    setDiscardModalOpen(false)
     setDrawerLoading(true)
+    setDrawerOpen(true)
 
     try {
       const data = await getTenant(id)
@@ -157,29 +199,25 @@ export function TenantsPage() {
         note: data.note ?? undefined,
       }
       setSelectedTenant(data)
-      form.setFieldsValue(values)
-      initialSnapshotRef.current = JSON.stringify(values)
-      setCanSave(false)
+      didInitFormRef.current = false
+      setDrawerInitialValues(values)
     } catch {
       message.error('Failed to load tenant data')
       setDrawerOpen(false)
     } finally {
       setDrawerLoading(false)
     }
-  }
+  }, [])
 
-  const isDirty = () => JSON.stringify(form.getFieldsValue()) !== initialSnapshotRef.current
-
-  const requestCloseDrawer = () => {
+  const requestCloseDrawer = useCallback(() => {
     if (isDirty()) {
       setDiscardModalOpen(true)
       return
     }
-
     setDrawerOpen(false)
-  }
+  }, [isDirty])
 
-  const submitForm = async () => {
+  const submitForm = useCallback(async () => {
     const values = await form.validateFields()
     const payload: TenantUpsertPayload = {
       full_name: values.full_name,
@@ -200,10 +238,11 @@ export function TenantsPage() {
       if (drawerMode === 'create') {
         await createTenant(payload)
         message.success('Tenant created successfully')
-      } else if (selectedTenant) {
-        await updateTenant(selectedTenant.id, payload)
+      } else if (editingTenantId) {
+        await updateTenant(editingTenantId, payload)
         message.success('Tenant updated successfully')
       }
+
       setDrawerOpen(false)
       await loadTenants()
     } catch {
@@ -211,25 +250,28 @@ export function TenantsPage() {
     } finally {
       setSaveLoading(false)
     }
-  }
+  }, [drawerMode, editingTenantId, form, loadTenants])
 
-  const handleDelete = (id: string) => {
-    Modal.confirm({
-      title: 'Delete tenant?',
-      icon: <ExclamationCircleOutlined />,
-      content: 'This action cannot be undone.',
-      okText: 'Delete',
-      okButtonProps: { danger: true },
-      cancelText: 'Cancel',
-      async onOk() {
-        await deleteTenant(id)
-        message.success('Tenant deleted successfully')
-        await loadTenants()
-      },
-    })
-  }
+  const handleDelete = useCallback(
+    (id: string) => {
+      Modal.confirm({
+        title: 'Delete tenant?',
+        icon: <ExclamationCircleOutlined />,
+        content: 'This action cannot be undone.',
+        okText: 'Delete',
+        okButtonProps: { danger: true },
+        cancelText: 'Cancel',
+        async onOk() {
+          await deleteTenant(id)
+          message.success('Tenant deleted successfully')
+          await loadTenants()
+        },
+      })
+    },
+    [loadTenants],
+  )
 
-  const handleView = async (id: string) => {
+  const handleView = useCallback(async (id: string) => {
     setDetailOpen(true)
     setDetailLoading(true)
     try {
@@ -240,7 +282,14 @@ export function TenantsPage() {
     } finally {
       setDetailLoading(false)
     }
-  }
+  }, [])
+
+  const filteredRooms = useMemo(() => {
+    if (!buildingFilter) {
+      return roomOptions
+    }
+    return roomOptions.filter((room) => room.building_id === buildingFilter)
+  }, [roomOptions, buildingFilter])
 
   const columns: ColumnsType<TenantListItem> = useMemo(
     () => [
@@ -262,7 +311,11 @@ export function TenantsPage() {
         key: 'room',
         width: 220,
         render: (_, item) =>
-          item.current_room ? `${item.current_room.building_name} / ${item.current_room.room_code}` : <Typography.Text type="secondary">No active room</Typography.Text>,
+          item.current_room ? (
+            `${item.current_room.building_name} / ${item.current_room.room_code}`
+          ) : (
+            <Typography.Text type="secondary">No active room</Typography.Text>
+          ),
       },
       {
         title: 'Status',
@@ -295,15 +348,8 @@ export function TenantsPage() {
         ),
       },
     ],
-    [],
+    [handleDelete, handleView, openEdit],
   )
-
-  const filteredRooms = useMemo(() => {
-    if (!buildingFilter) {
-      return roomOptions
-    }
-    return roomOptions.filter((room) => room.building_id === buildingFilter)
-  }, [roomOptions, buildingFilter])
 
   return (
     <div className="tenants-page">
@@ -314,7 +360,9 @@ export function TenantsPage() {
               <Typography.Title level={4} style={{ margin: 0 }}>
                 Tenants
               </Typography.Title>
-              <Typography.Text type="secondary">Manage tenant profiles and occupancy from one workspace.</Typography.Text>
+              <Typography.Text type="secondary">
+                Manage tenant profiles and occupancy from one workspace.
+              </Typography.Text>
             </div>
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
               Add Tenant
@@ -322,7 +370,12 @@ export function TenantsPage() {
           </div>
 
           <div className="tenants-filters">
-            <Input.Search placeholder="Search name, phone, email, identity number" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} allowClear />
+            <Input.Search
+              placeholder="Search name, phone, email, identity number"
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              allowClear
+            />
             <Select
               value={statusFilter}
               placeholder="Status"
@@ -395,29 +448,32 @@ export function TenantsPage() {
         {drawerLoading ? (
           <Skeleton active paragraph={{ rows: 8 }} />
         ) : (
-          <Form
-            form={form}
-            layout="vertical"
-            initialValues={defaultFormValues}
-            onFieldsChange={async () => {
-              try {
-                await form.validateFields({ validateOnly: true })
-                setCanSave(isDirty())
-              } catch {
-                setCanSave(false)
-              }
-            }}
-          >
-            <Form.Item name="full_name" label="full_name" rules={[{ required: true, message: 'full_name is required' }]}>
+          <Form form={form} layout="vertical" onFieldsChange={recalculateCanSave}>
+            <Form.Item
+              name="full_name"
+              label="full_name"
+              rules={[{ required: true, message: 'full_name is required' }]}
+            >
               <Input />
             </Form.Item>
-            <Form.Item name="phone" label="phone" rules={[{ required: true, message: 'phone is required' }, { pattern: /^[0-9+\-\s]{8,20}$/, message: 'Invalid phone format' }]}>
+            <Form.Item
+              name="phone"
+              label="phone"
+              rules={[
+                { required: true, message: 'phone is required' },
+                { pattern: /^[0-9+\-\s]{8,20}$/, message: 'Invalid phone format' },
+              ]}
+            >
               <Input />
             </Form.Item>
             <Form.Item name="email" label="email" rules={[{ type: 'email', message: 'Invalid email format' }]}>
               <Input />
             </Form.Item>
-            <Form.Item name="identity_number" label="identity_number" rules={[{ required: true, message: 'identity_number is required' }]}>
+            <Form.Item
+              name="identity_number"
+              label="identity_number"
+              rules={[{ required: true, message: 'identity_number is required' }]}
+            >
               <Input />
             </Form.Item>
             <Form.Item name="dob" label="dob">
@@ -435,7 +491,7 @@ export function TenantsPage() {
             <Form.Item name="permanent_address" label="permanent_address">
               <Input.TextArea rows={3} />
             </Form.Item>
-            <Form.Item name="status" label="status" rules={[{ required: true }]}>
+            <Form.Item name="status" label="status" rules={[{ required: true }]}> 
               <Select options={statusOptions.map((item) => ({ label: item.label, value: item.value }))} />
             </Form.Item>
             <Form.Item name="note" label="note">
@@ -469,17 +525,23 @@ export function TenantsPage() {
               <Descriptions.Item label="email">{selectedTenant.email ?? '—'}</Descriptions.Item>
               <Descriptions.Item label="identity_number">{selectedTenant.identity_number}</Descriptions.Item>
               <Descriptions.Item label="status">{selectedTenant.status}</Descriptions.Item>
-              <Descriptions.Item label="permanent_address">{selectedTenant.permanent_address ?? '—'}</Descriptions.Item>
+              <Descriptions.Item label="permanent_address">
+                {selectedTenant.permanent_address ?? '—'}
+              </Descriptions.Item>
               <Descriptions.Item label="note">{selectedTenant.note ?? '—'}</Descriptions.Item>
             </Descriptions>
 
             <Card size="small" title="Current Contract / Room">
               {selectedTenant.current_room ? (
                 <Descriptions size="small" column={1}>
-                  <Descriptions.Item label="building_name">{selectedTenant.current_room.building_name}</Descriptions.Item>
+                  <Descriptions.Item label="building_name">
+                    {selectedTenant.current_room.building_name}
+                  </Descriptions.Item>
                   <Descriptions.Item label="room_code">{selectedTenant.current_room.room_code}</Descriptions.Item>
                   <Descriptions.Item label="contract_id">{selectedTenant.current_room.contract_id}</Descriptions.Item>
-                  <Descriptions.Item label="start_date">{dayjs(selectedTenant.current_room.start_date).format('DD/MM/YYYY')}</Descriptions.Item>
+                  <Descriptions.Item label="start_date">
+                    {dayjs(selectedTenant.current_room.start_date).format('DD/MM/YYYY')}
+                  </Descriptions.Item>
                 </Descriptions>
               ) : (
                 <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No active contract" />
