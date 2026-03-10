@@ -1,5 +1,7 @@
 export type TenantStatus = 'ACTIVE' | 'MOVED_OUT' | 'BLACKLIST'
 
+export type ContractStatus = 'DRAFT' | 'ACTIVE' | 'ENDED' | 'CANCELLED'
+
 export interface Tenant {
   id: string
   user_id: string | null
@@ -18,6 +20,21 @@ export interface Tenant {
   updated_at: string
 }
 
+export interface Contract {
+  id: string
+  room_id: string
+  contract_code: string | null
+  status: ContractStatus
+  start_date: string
+  end_date: string | null
+  move_in_date: string | null
+  move_out_date: string | null
+  rent_price: number
+  deposit_amount: number
+  billing_day: number
+  note: string | null
+}
+
 export interface TenantCurrentRoom {
   tenant_id: string
   room_id: string
@@ -30,6 +47,10 @@ export interface TenantCurrentRoom {
 
 export interface TenantListItem extends Tenant {
   current_room: TenantCurrentRoom | null
+}
+
+export interface TenantDetail extends TenantListItem {
+  current_contract: Contract | null
 }
 
 export interface TenantListParams {
@@ -51,6 +72,25 @@ export interface TenantUpsertPayload {
   permanent_address: string | null
   status: TenantStatus
   note: string | null
+}
+
+export interface ContractUpsertPayload {
+  room_id: string | null
+  contract_code: string | null
+  status: ContractStatus
+  start_date: string | null
+  end_date: string | null
+  move_in_date: string | null
+  move_out_date: string | null
+  rent_price: number | null
+  deposit_amount: number | null
+  billing_day: number | null
+  note: string | null
+}
+
+export interface TenantFormPayload {
+  tenant: TenantUpsertPayload
+  contract: ContractUpsertPayload | null
 }
 
 export interface BuildingOption {

@@ -1,11 +1,14 @@
 import type {
   BuildingOption,
+  Contract,
+  ContractUpsertPayload,
   RoomOption,
   Tenant,
   TenantCurrentRoom,
+  TenantDetail,
+  TenantFormPayload,
   TenantListItem,
   TenantListParams,
-  TenantUpsertPayload,
 } from '../pages/tenants/types'
 
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
@@ -19,6 +22,37 @@ const rooms: RoomOption[] = [
   { id: 'r-101', building_id: 'b-1', code: 'A-101' },
   { id: 'r-202', building_id: 'b-2', code: 'B-202' },
   { id: 'r-203', building_id: 'b-2', code: 'B-203' },
+]
+
+let contractsDb: Contract[] = [
+  {
+    id: 'c-1',
+    room_id: 'r-101',
+    contract_code: 'HD-001',
+    status: 'ACTIVE',
+    start_date: '2025-01-01',
+    end_date: '2025-12-31',
+    move_in_date: '2025-01-01',
+    move_out_date: null,
+    rent_price: 5500000,
+    deposit_amount: 5500000,
+    billing_day: 5,
+    note: '1 main tenant',
+  },
+  {
+    id: 'c-2',
+    room_id: 'r-202',
+    contract_code: 'HD-002',
+    status: 'ACTIVE',
+    start_date: '2025-02-01',
+    end_date: null,
+    move_in_date: '2025-02-01',
+    move_out_date: null,
+    rent_price: 6200000,
+    deposit_amount: 6200000,
+    billing_day: 10,
+    note: null,
+  },
 ]
 
 const currentRooms = new Map<string, TenantCurrentRoom>([
@@ -102,11 +136,80 @@ let tenantsDb: Tenant[] = [
   },
 ]
 
+function findRoom(roomId: string) {
+  return rooms.find((room) => room.id === roomId) ?? null
+}
+
+function findBuilding(buildingId: string) {
+  return buildings.find((building) => building.id === buildingId) ?? null
+}
+
+function toCurrentRoom(tenantId: string, contract: Contract | null): TenantCurrentRoom | null {
+  if (!contract || contract.status !== 'ACTIVE') {
+    return null
+  }
+
+  const room = findRoom(contract.room_id)
+  if (!room) {
+    return null
+  }
+
+  const building = findBuilding(room.building_id)
+  if (!building) {
+    return null
+  }
+
+  return {
+    tenant_id: tenantId,
+    room_id: room.id,
+    room_code: room.code,
+    building_id: building.id,
+    building_name: building.name,
+    contract_id: contract.id,
+    start_date: contract.start_date,
+  }
+}
+
 function withCurrentRoom(tenant: Tenant): TenantListItem {
   return {
     ...tenant,
     current_room: currentRooms.get(tenant.id) ?? null,
   }
+}
+
+function setTenantContract(tenantId: string, contractPayload: ContractUpsertPayload | null) {
+  if (!contractPayload?.room_id || !contractPayload.start_date || contractPayload.rent_price === null || contractPayload.deposit_amount === null || contractPayload.billing_day === null) {
+    currentRooms.delete(tenantId)
+    return
+  }
+
+  const existingId = currentRooms.get(tenantId)?.contract_id
+  const contractId = existingId ?? crypto.randomUUID()
+
+  const contract: Contract = {
+    id: contractId,
+    room_id: contractPayload.room_id,
+    contract_code: contractPayload.contract_code,
+    status: contractPayload.status,
+    start_date: contractPayload.start_date,
+    end_date: contractPayload.end_date,
+    move_in_date: contractPayload.move_in_date,
+    move_out_date: contractPayload.move_out_date,
+    rent_price: contractPayload.rent_price,
+    deposit_amount: contractPayload.deposit_amount,
+    billing_day: contractPayload.billing_day,
+    note: contractPayload.note,
+  }
+
+  contractsDb = [...contractsDb.filter((item) => item.id !== contractId), contract]
+
+  const currentRoom = toCurrentRoom(tenantId, contract)
+  if (currentRoom) {
+    currentRooms.set(tenantId, currentRoom)
+    return
+  }
+
+  currentRooms.delete(tenantId)
 }
 
 export async function listTenants(params: TenantListParams): Promise<TenantListItem[]> {
@@ -133,7 +236,7 @@ export async function listTenants(params: TenantListParams): Promise<TenantListI
     .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
 }
 
-export async function getTenant(id: string): Promise<TenantListItem> {
+export async function getTenant(id: string): Promise<TenantDetail> {
   await wait(240)
 
   const found = tenantsDb.find((tenant) => tenant.id === id)
@@ -141,10 +244,18 @@ export async function getTenant(id: string): Promise<TenantListItem> {
     throw new Error('Tenant not found')
   }
 
-  return withCurrentRoom(found)
+  const listItem = withCurrentRoom(found)
+  const currentContract = listItem.current_room
+    ? contractsDb.find((contract) => contract.id === listItem.current_room?.contract_id) ?? null
+    : null
+
+  return {
+    ...listItem,
+    current_contract: currentContract,
+  }
 }
 
-export async function createTenant(payload: TenantUpsertPayload): Promise<TenantListItem> {
+export async function createTenant(payload: TenantFormPayload): Promise<TenantListItem> {
   await wait(350)
 
   const now = new Date().toISOString()
@@ -153,14 +264,16 @@ export async function createTenant(payload: TenantUpsertPayload): Promise<Tenant
     user_id: null,
     created_at: now,
     updated_at: now,
-    ...payload,
+    ...payload.tenant,
   }
 
   tenantsDb = [created, ...tenantsDb]
+  setTenantContract(created.id, payload.contract)
+
   return withCurrentRoom(created)
 }
 
-export async function updateTenant(id: string, payload: TenantUpsertPayload): Promise<TenantListItem> {
+export async function updateTenant(id: string, payload: TenantFormPayload): Promise<TenantListItem> {
   await wait(350)
 
   let updatedTenant: Tenant | null = null
@@ -171,7 +284,7 @@ export async function updateTenant(id: string, payload: TenantUpsertPayload): Pr
 
     updatedTenant = {
       ...tenant,
-      ...payload,
+      ...payload.tenant,
       updated_at: new Date().toISOString(),
     }
 
@@ -182,12 +295,20 @@ export async function updateTenant(id: string, payload: TenantUpsertPayload): Pr
     throw new Error('Tenant not found')
   }
 
+  setTenantContract(id, payload.contract)
+
   return withCurrentRoom(updatedTenant)
 }
 
 export async function deleteTenant(id: string): Promise<void> {
   await wait(280)
   tenantsDb = tenantsDb.filter((tenant) => tenant.id !== id)
+
+  const contractId = currentRooms.get(id)?.contract_id
+  if (contractId) {
+    contractsDb = contractsDb.filter((contract) => contract.id !== contractId)
+  }
+
   currentRooms.delete(id)
 }
 

@@ -17,9 +17,35 @@
   gap: 12px;
 }
 
+.tenant-tab-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0 12px;
+}
+
+.desktop-two-cols {
+  grid-template-columns: 1fr 1fr;
+}
+
+.tenant-tab-full-row {
+  grid-column: 1 / -1;
+}
+
+.tenant-drawer-actions {
+  position: sticky;
+  bottom: 0;
+  padding: 12px 0;
+  background: #fff;
+  border-top: 1px solid #f0f0f0;
+}
+
 @media (max-width: 1199px) {
   .tenants-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tenant-tab-grid {
+    grid-template-columns: 1fr 1fr;
   }
 }
 
@@ -34,6 +60,10 @@
   }
 
   .tenants-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .tenant-tab-grid {
     grid-template-columns: 1fr;
   }
 }
