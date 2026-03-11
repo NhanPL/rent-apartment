@@ -128,7 +128,7 @@ function getRoom(roomId: string) {
 function resolveRate(buildingId: string, month: string) {
   const monthDate = dayjs(month)
   const row = utilityRatesDb
-    .filter((rate) => rate.building_id === buildingId && dayjs(rate.effective_from).isSameOrBefore(monthDate, 'day'))
+    .filter((rate) => rate.building_id === buildingId && dayjs(rate.effective_from).valueOf() <= monthDate.valueOf())
     .sort((a, b) => dayjs(b.effective_from).valueOf() - dayjs(a.effective_from).valueOf())[0]
 
   return row ?? null
