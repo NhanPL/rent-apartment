@@ -14,7 +14,6 @@ import {
   Form,
   Grid,
   Input,
-  InputNumber,
   Modal,
   Select,
   Skeleton,
@@ -31,7 +30,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   createPayment,
   deletePayment,
-  getEffectiveUtilityRate,
   getPayment,
   getPaymentsSummary,
   listBuildings,
@@ -41,6 +39,13 @@ import {
   listTenants,
   updatePayment,
 } from '../../services/paymentsService'
+import {
+  InvoiceFormFields,
+  invoiceFormDefaultValues,
+  useInvoiceDerivedValues,
+  type InvoiceFormValues,
+} from './components/invoiceFormShared'
+import './components/invoiceFormShared.css'
 import type {
   Contract,
   InvoiceStatus,
@@ -48,25 +53,6 @@ import type {
   PaymentStatus,
 } from './types'
 import './PaymentsPage.css'
-
-interface PaymentFormValues {
-  contract_id?: string
-  room_id?: string
-  month: string
-  status: InvoiceStatus
-  issued_at?: string
-  due_date?: string
-  rent_amount: number
-  electricity_prev: number
-  electricity_curr: number
-  water_prev: number
-  water_curr: number
-  electric_unit_price: number
-  water_unit_price: number
-  other_fees: number
-  discount: number
-  note?: string
-}
 
 const invoiceStatusOptions: { label: string; value: InvoiceStatus; color: string }[] = [
   { label: 'Draft', value: 'DRAFT', color: 'default' },
@@ -86,24 +72,10 @@ const paymentStatusOptions: { label: string; value: PaymentStatus; color: string
 
 const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
 
-const defaultValues: PaymentFormValues = {
-  month: dayjs().startOf('month').format('YYYY-MM-DD'),
-  status: 'DRAFT',
-  rent_amount: 0,
-  electricity_prev: 0,
-  electricity_curr: 0,
-  water_prev: 0,
-  water_curr: 0,
-  electric_unit_price: 0,
-  water_unit_price: 0,
-  other_fees: 0,
-  discount: 0,
-}
-
 export function PaymentsPage() {
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
-  const [form] = Form.useForm<PaymentFormValues>()
+  const [form] = Form.useForm<InvoiceFormValues>()
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -194,27 +166,7 @@ export function PaymentsPage() {
     return rooms.filter((room) => room.building_id === buildingFilter)
   }, [rooms, buildingFilter])
 
-  const selectedRoomId = Form.useWatch('room_id', form)
   const selectedContractId = Form.useWatch('contract_id', form)
-  const selectedMonth = Form.useWatch('month', form)
-
-  const drawerRoomOptions = useMemo(() => {
-    if (!selectedRoomId) {
-      return rooms
-    }
-
-    const selectedRoom = rooms.find((room) => room.id === selectedRoomId)
-    if (!selectedRoom) {
-      return rooms
-    }
-
-    return rooms.filter((room) => room.building_id === selectedRoom.building_id)
-  }, [rooms, selectedRoomId])
-
-  const contractOptions = useMemo(
-    () => contracts.filter((contract) => contract.status === 'ACTIVE' && (!selectedRoomId || contract.room_id === selectedRoomId)),
-    [contracts, selectedRoomId],
-  )
 
   const selectedTenant = useMemo(() => {
     if (!selectedContractId) {
@@ -229,48 +181,13 @@ export function PaymentsPage() {
     return null
   }, [selectedContractId, items, tenants])
 
-  const rentAmount = Form.useWatch('rent_amount', form) ?? 0
-  const electricityPrev = Form.useWatch('electricity_prev', form) ?? 0
-  const electricityCurr = Form.useWatch('electricity_curr', form) ?? 0
-  const waterPrev = Form.useWatch('water_prev', form) ?? 0
-  const waterCurr = Form.useWatch('water_curr', form) ?? 0
-  const electricUnitPrice = Form.useWatch('electric_unit_price', form) ?? 0
-  const waterUnitPrice = Form.useWatch('water_unit_price', form) ?? 0
-  const otherFees = Form.useWatch('other_fees', form) ?? 0
-  const discount = Form.useWatch('discount', form) ?? 0
-
-  const electricUsage = useMemo(() => Math.max(0, electricityCurr - electricityPrev), [electricityCurr, electricityPrev])
-  const waterUsage = useMemo(() => Math.max(0, waterCurr - waterPrev), [waterCurr, waterPrev])
-  const electricAmount = useMemo(() => electricUsage * electricUnitPrice, [electricUsage, electricUnitPrice])
-  const waterAmount = useMemo(() => waterUsage * waterUnitPrice, [waterUsage, waterUnitPrice])
-  const subtotal = useMemo(() => rentAmount + electricAmount + waterAmount + otherFees, [rentAmount, electricAmount, waterAmount, otherFees])
-  const totalAmount = useMemo(() => Math.max(0, subtotal - discount), [subtotal, discount])
-
-  useEffect(() => {
-    if (!drawerOpen || !selectedRoomId || !selectedMonth) {
-      return
-    }
-
-    const room = rooms.find((item) => item.id === selectedRoomId)
-    if (!room) {
-      return
-    }
-
-    void getEffectiveUtilityRate(selectedRoomId, selectedMonth).then((rate) => {
-      form.setFieldValue('electric_unit_price', rate.electricity_unit_price)
-      form.setFieldValue('water_unit_price', rate.water_unit_price)
-      if (!form.getFieldValue('rent_amount')) {
-        const contract = contracts.find((item) => item.room_id === selectedRoomId && item.status === 'ACTIVE')
-        form.setFieldValue('rent_amount', contract?.rent_price ?? room.base_rent)
-      }
-    })
-  }, [drawerOpen, selectedRoomId, selectedMonth, form, rooms, contracts])
+  const { electricUsage, waterUsage } = useInvoiceDerivedValues(form)
 
   const openCreate = useCallback(() => {
     setDrawerMode('create')
     setEditingId(null)
     form.resetFields()
-    form.setFieldsValue(defaultValues)
+    form.setFieldsValue(invoiceFormDefaultValues)
     setDrawerOpen(true)
   }, [form])
 
@@ -465,125 +382,15 @@ export function PaymentsPage() {
         onClose={() => setDrawerOpen(false)}
         destroyOnClose
       >
-        <Form form={form} layout="vertical" initialValues={defaultValues}>
-          <div className="payments-form-grid">
-            <Form.Item label="Room" name="room_id" rules={[{ required: true, message: 'Please select room' }]}>
-              <Select showSearch optionFilterProp="label" options={drawerRoomOptions.map((item) => ({ label: item.code, value: item.id }))} />
-            </Form.Item>
-            <Form.Item label="Contract" name="contract_id" rules={[{ required: true, message: 'Please select contract' }]}>
-              <Select options={contractOptions.map((item) => ({ label: item.id, value: item.id }))} />
-            </Form.Item>
-            <Form.Item label="Tenant" className="payments-form-readonly">
-              <Input value={selectedTenant?.full_name ?? '-'} readOnly />
-            </Form.Item>
-            <Form.Item label="Billing month" name="month" rules={[{ required: true }]}> 
-              <Input type="date" />
-            </Form.Item>
-            <Form.Item label="Invoice status" name="status" rules={[{ required: true }]}>
-              <Select options={invoiceStatusOptions.map((item) => ({ label: item.label, value: item.value }))} />
-            </Form.Item>
-            <Form.Item label="Issued at" name="issued_at">
-              <Input type="date" />
-            </Form.Item>
-            <Form.Item label="Due date" name="due_date">
-              <Input type="date" />
-            </Form.Item>
-            <Form.Item label="Room rent" name="rent_amount" rules={[{ required: true }]}> 
-              <InputNumber min={0} style={{ width: '100%' }} />
-            </Form.Item>
-
-            <Form.Item label="Previous electric reading" name="electricity_prev" rules={[{ required: true }]}> 
-              <InputNumber min={0} style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item
-              label="Current electric reading"
-              name="electricity_curr"
-              dependencies={['electricity_prev']}
-              rules={[
-                { required: true },
-                ({ getFieldValue }) => ({
-                  validator(_, value) {
-                    if (typeof value !== 'number') {
-                      return Promise.reject(new Error('Current electric reading is required'))
-                    }
-
-                    if (value < (getFieldValue('electricity_prev') ?? 0)) {
-                      return Promise.reject(new Error('Current reading must be greater than or equal to previous reading'))
-                    }
-
-                    return Promise.resolve()
-                  },
-                }),
-              ]}
-            >
-              <InputNumber min={0} style={{ width: '100%' }} />
-            </Form.Item>
-
-            <Form.Item label="Previous water reading" name="water_prev" rules={[{ required: true }]}> 
-              <InputNumber min={0} style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item
-              label="Current water reading"
-              name="water_curr"
-              dependencies={['water_prev']}
-              rules={[
-                { required: true },
-                ({ getFieldValue }) => ({
-                  validator(_, value) {
-                    if (typeof value !== 'number') {
-                      return Promise.reject(new Error('Current water reading is required'))
-                    }
-
-                    if (value < (getFieldValue('water_prev') ?? 0)) {
-                      return Promise.reject(new Error('Current reading must be greater than or equal to previous reading'))
-                    }
-
-                    return Promise.resolve()
-                  },
-                }),
-              ]}
-            >
-              <InputNumber min={0} style={{ width: '100%' }} />
-            </Form.Item>
-
-            <Form.Item label="Electric unit price" name="electric_unit_price" rules={[{ required: true }]}> 
-              <InputNumber min={0} style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item label="Water unit price" name="water_unit_price" rules={[{ required: true }]}> 
-              <InputNumber min={0} style={{ width: '100%' }} />
-            </Form.Item>
-
-            <Form.Item label="Electric usage">
-              <Input value={electricUsage} readOnly />
-            </Form.Item>
-            <Form.Item label="Electric amount">
-              <Input value={currency.format(electricAmount)} readOnly />
-            </Form.Item>
-            <Form.Item label="Water usage">
-              <Input value={waterUsage} readOnly />
-            </Form.Item>
-            <Form.Item label="Water amount">
-              <Input value={currency.format(waterAmount)} readOnly />
-            </Form.Item>
-
-            <Form.Item label="Other fees" name="other_fees" rules={[{ required: true }]}> 
-              <InputNumber min={0} style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item label="Discount" name="discount" rules={[{ required: true }]}> 
-              <InputNumber min={0} style={{ width: '100%' }} />
-            </Form.Item>
-            <Form.Item label="Subtotal">
-              <Input value={currency.format(subtotal)} readOnly />
-            </Form.Item>
-            <Form.Item label="Total amount">
-              <Input value={currency.format(totalAmount)} readOnly />
-            </Form.Item>
-
-            <Form.Item label="Notes" name="note" className="payments-form-full">
-              <Input.TextArea rows={3} />
-            </Form.Item>
-          </div>
-
+        <Form form={form} layout="vertical" initialValues={invoiceFormDefaultValues}>
+          <InvoiceFormFields
+            form={form}
+            rooms={rooms}
+            contracts={contracts}
+            tenantName={selectedTenant?.full_name}
+            invoiceStatusOptions={invoiceStatusOptions.map((item) => ({ label: item.label, value: item.value }))}
+            currencyFormatter={(value) => currency.format(value)}
+          />
           <Space className="payments-drawer-actions">
             <Button onClick={() => setDrawerOpen(false)}>Cancel</Button>
             <Button type="primary" loading={saveLoading} onClick={() => void onSave()}>Save</Button>

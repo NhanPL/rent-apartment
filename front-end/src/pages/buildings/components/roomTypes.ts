@@ -39,24 +39,43 @@ export interface TenantSummary {
 export interface MonthlyBill {
   id: string
   room_id: string
+  contract_id: string
   month: string
-  electricity_prev: number | null
-  electricity_curr: number | null
-  water_prev: number | null
-  water_curr: number | null
+  electricity_prev: number
+  electricity_curr: number
+  water_prev: number
+  water_curr: number
+  electric_unit_price: number
+  water_unit_price: number
+  rent_amount: number
+  other_fees: number
+  discount: number
+  electric_usage: number
+  water_usage: number
+  electric_amount: number
+  water_amount: number
   total_bill_amount: number
   invoice_status: 'DRAFT' | 'ISSUED' | 'PAID' | 'VOID' | 'OVERDUE'
+  issued_at: string | null
+  due_date: string | null
   note: string | null
 }
 
 export interface MonthlyBillUpsertPayload {
   room_id: string
+  contract_id: string
   month: string
-  electricity_prev: number | null
-  electricity_curr: number | null
-  water_prev: number | null
-  water_curr: number | null
-  total_bill_amount: number
+  electricity_prev: number
+  electricity_curr: number
+  water_prev: number
+  water_curr: number
+  electric_unit_price: number
+  water_unit_price: number
+  rent_amount: number
+  other_fees: number
+  discount: number
   invoice_status: 'DRAFT' | 'ISSUED' | 'PAID' | 'VOID' | 'OVERDUE'
+  issued_at: string | null
+  due_date: string | null
   note: string | null
 }

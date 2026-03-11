@@ -80,30 +80,47 @@ const roomTenantsStore: Record<string, TenantSummary[]> = {
   ],
 }
 
+function computeBill(payload: MonthlyBillUpsertPayload) {
+  const electric_usage = Math.max(0, payload.electricity_curr - payload.electricity_prev)
+  const water_usage = Math.max(0, payload.water_curr - payload.water_prev)
+  const electric_amount = electric_usage * payload.electric_unit_price
+  const water_amount = water_usage * payload.water_unit_price
+  const subtotal = payload.rent_amount + electric_amount + water_amount + payload.other_fees
+  const total_bill_amount = Math.max(0, subtotal - payload.discount)
+
+  return {
+    electric_usage,
+    water_usage,
+    electric_amount,
+    water_amount,
+    total_bill_amount,
+  }
+}
+
 let monthlyBillsStore: MonthlyBill[] = [
   {
     id: 'b-1',
     room_id: 'r-101',
+    contract_id: 'c-1',
     month: '2025-01-01',
     electricity_prev: 1200,
     electricity_curr: 1250,
     water_prev: 350,
     water_curr: 362,
-    total_bill_amount: 96,
+    electric_unit_price: 0.8,
+    water_unit_price: 0.5,
+    rent_amount: 420,
+    other_fees: 15,
+    discount: 0,
+    electric_usage: 50,
+    water_usage: 12,
+    electric_amount: 40,
+    water_amount: 6,
+    total_bill_amount: 481,
     invoice_status: 'PAID',
+    issued_at: '2025-01-02',
+    due_date: '2025-01-10',
     note: null,
-  },
-  {
-    id: 'b-2',
-    room_id: 'r-101',
-    month: '2025-02-01',
-    electricity_prev: 1250,
-    electricity_curr: 1290,
-    water_prev: 362,
-    water_curr: 374,
-    total_bill_amount: 89,
-    invoice_status: 'ISSUED',
-    note: 'Due on 10th',
   },
 ]
 
@@ -174,8 +191,10 @@ export async function listMonthlyBillsByRoomId(room_id: string): Promise<Monthly
 
 export async function createMonthlyBill(payload: MonthlyBillUpsertPayload): Promise<MonthlyBill> {
   await wait()
+  const computed = computeBill(payload)
   const bill: MonthlyBill = {
     ...payload,
+    ...computed,
     id: `bill-${Date.now()}`,
   }
   monthlyBillsStore = [bill, ...monthlyBillsStore.filter((item) => !(item.room_id === payload.room_id && item.month === payload.month))]
@@ -184,7 +203,8 @@ export async function createMonthlyBill(payload: MonthlyBillUpsertPayload): Prom
 
 export async function updateMonthlyBill(billId: string, payload: MonthlyBillUpsertPayload): Promise<MonthlyBill> {
   await wait()
-  const bill: MonthlyBill = { ...payload, id: billId }
+  const computed = computeBill(payload)
+  const bill: MonthlyBill = { ...payload, ...computed, id: billId }
   monthlyBillsStore = monthlyBillsStore.map((item) => (item.id === billId ? bill : item))
   return bill
 }

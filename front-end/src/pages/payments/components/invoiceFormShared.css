@@ -1,0 +1,29 @@
+.invoice-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 12px;
+}
+
+.invoice-form-readonly {
+  margin-bottom: 8px;
+}
+
+.invoice-form-full {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 767px) {
+  .invoice-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.payments-drawer-actions {
+  position: sticky;
+  bottom: 0;
+  width: 100%;
+  justify-content: flex-end;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+  background: #fff;
+}

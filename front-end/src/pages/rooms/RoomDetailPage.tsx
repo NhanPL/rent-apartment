@@ -14,6 +14,8 @@ import {
 import { RoomsUpsertDrawer } from '../buildings/components/RoomsUpsertDrawer'
 import type { MonthlyBill, Room, TenantSummary } from '../buildings/components/roomTypes'
 import type { BuildingEntity } from '../buildings/components/types'
+import { listContracts } from '../../services/paymentsService'
+import type { Contract } from '../payments/types'
 import { BillUpsertDrawer } from './components/BillUpsertDrawer'
 
 interface RoomDetailPageProps {
@@ -35,6 +37,8 @@ const billStatusColor: Record<MonthlyBill['invoice_status'], string> = {
   OVERDUE: 'orange',
 }
 
+const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
+
 export function RoomDetailPage({ roomId, buildings }: RoomDetailPageProps) {
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
@@ -44,6 +48,7 @@ export function RoomDetailPage({ roomId, buildings }: RoomDetailPageProps) {
   const [room, setRoom] = useState<(Room & { building_name: string }) | null>(null)
   const [tenants, setTenants] = useState<TenantSummary[]>([])
   const [bills, setBills] = useState<MonthlyBill[]>([])
+  const [contracts, setContracts] = useState<Contract[]>([])
 
   const [roomDrawerOpen, setRoomDrawerOpen] = useState(false)
   const [billDrawerOpen, setBillDrawerOpen] = useState(false)
@@ -57,12 +62,16 @@ export function RoomDetailPage({ roomId, buildings }: RoomDetailPageProps) {
   const refresh = async () => {
     setLoading(true)
     try {
-      const roomData = await getRoomDetail(roomId, buildings)
-      const tenantsData = await listTenantsByRoomId(roomId)
-      const billsData = await listMonthlyBillsByRoomId(roomId)
+      const [roomData, tenantsData, billsData, contractsData] = await Promise.all([
+        getRoomDetail(roomId, buildings),
+        listTenantsByRoomId(roomId),
+        listMonthlyBillsByRoomId(roomId),
+        listContracts(),
+      ])
       setRoom(roomData)
       setTenants(tenantsData)
       setBills(billsData)
+      setContracts(contractsData.filter((item) => item.room_id === roomId && item.status === 'ACTIVE'))
     } finally {
       setLoading(false)
     }
@@ -120,7 +129,7 @@ export function RoomDetailPage({ roomId, buildings }: RoomDetailPageProps) {
           <Descriptions bordered column={isMobile ? 1 : 2}>
             <Descriptions.Item label="Code">{room.code}</Descriptions.Item>
             <Descriptions.Item label="Status">{room.status}</Descriptions.Item>
-            <Descriptions.Item label="Price">${room.base_rent.toFixed(0)}</Descriptions.Item>
+            <Descriptions.Item label="Price">{currency.format(room.base_rent)}</Descriptions.Item>
             <Descriptions.Item label="Floor">{room.floor ?? '-'}</Descriptions.Item>
             <Descriptions.Item label="Area (m²)">{room.area_m2 ?? '-'}</Descriptions.Item>
             <Descriptions.Item label="Max occupants">{room.max_occupants}</Descriptions.Item>
@@ -169,12 +178,16 @@ export function RoomDetailPage({ roomId, buildings }: RoomDetailPageProps) {
           <Table<MonthlyBill>
             rowKey="id"
             dataSource={bills}
-            scroll={{ x: 980 }}
+            scroll={{ x: 1480 }}
             columns={[
               { title: 'Month', dataIndex: 'month', render: (value: string) => value.slice(0, 7) },
-              { title: 'Electric old/new', render: (_, record) => `${record.electricity_prev ?? '-'} / ${record.electricity_curr ?? '-'}` },
-              { title: 'Water old/new', render: (_, record) => `${record.water_prev ?? '-'} / ${record.water_curr ?? '-'}` },
-              { title: 'Total', dataIndex: 'total_bill_amount', render: (value: number) => `$${value.toFixed(2)}` },
+              { title: 'Rent', dataIndex: 'rent_amount', align: 'right', render: (value: number) => currency.format(value) },
+              { title: 'Electric old/new', render: (_, record) => `${record.electricity_prev} / ${record.electricity_curr}` },
+              { title: 'Electric amount', dataIndex: 'electric_amount', align: 'right', render: (value: number) => currency.format(value) },
+              { title: 'Water old/new', render: (_, record) => `${record.water_prev} / ${record.water_curr}` },
+              { title: 'Water amount', dataIndex: 'water_amount', align: 'right', render: (value: number) => currency.format(value) },
+              { title: 'Other fees', dataIndex: 'other_fees', align: 'right', render: (value: number) => currency.format(value) },
+              { title: 'Total', dataIndex: 'total_bill_amount', align: 'right', render: (value: number) => currency.format(value) },
               {
                 title: 'Status',
                 dataIndex: 'invoice_status',
@@ -228,6 +241,9 @@ export function RoomDetailPage({ roomId, buildings }: RoomDetailPageProps) {
           mode={billDrawerMode}
           room_id={room.id}
           bill={editingBill}
+          room={{ id: room.id, building_id: room.building_id, code: room.code, base_rent: room.base_rent }}
+          contracts={contracts}
+          tenantName={tenants[0]?.full_name}
           loading={savingBill}
           onClose={() => setBillDrawerOpen(false)}
           onSubmit={async (payload) => {
