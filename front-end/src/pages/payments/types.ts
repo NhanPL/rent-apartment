@@ -12,6 +12,7 @@ export interface Room {
   id: string
   building_id: string
   code: string
+  base_rent: number
 }
 
 export interface Tenant {
@@ -32,6 +33,25 @@ export interface ContractTenant {
   tenant_id: string
   is_primary: boolean
   left_at: string | null
+}
+
+export interface UtilityRate {
+  id: string
+  building_id: string
+  effective_from: string
+  electricity_unit_price: number
+  water_unit_price: number
+}
+
+export interface UtilityReading {
+  id: string
+  room_id: string
+  month: string
+  electricity_prev: number | null
+  electricity_curr: number | null
+  water_prev: number | null
+  water_curr: number | null
+  note: string | null
 }
 
 export interface Invoice {
@@ -72,22 +92,34 @@ export interface Payment {
 export interface PaymentListParams {
   search?: string
   month?: string
-  status?: InvoiceStatus
+  invoice_status?: InvoiceStatus
+  payment_status?: PaymentStatus
   building_id?: string
   room_id?: string
   tenant_id?: string
 }
 
 export interface PaymentListItem extends Invoice {
+  building_id: string
   building_name: string
   room_code: string
+  tenant_id: string | null
   tenant_name: string
   rent_amount: number
+  electric_unit_price: number
+  water_unit_price: number
+  electricity_prev: number | null
+  electricity_curr: number | null
+  water_prev: number | null
+  water_curr: number | null
+  electric_usage: number
+  water_usage: number
   electric_amount: number
   water_amount: number
-  service_amount: number
+  other_fees: number
   paid_amount: number
   paid_at: string | null
+  payment_status: PaymentStatus | null
 }
 
 export interface PaymentUpsertPayload {
@@ -100,23 +132,13 @@ export interface PaymentUpsertPayload {
   note: string | null
   discount: number
   rent_amount: number
-  electric_amount: number
-  water_amount: number
-  service_amount: number
-}
-
-export interface UnpaidRoomItem {
-  contract_id: string
-  building_id: string
-  building_name: string
-  room_id: string
-  room_code: string
-  tenant_id: string
-  tenant_name: string
-  month: string
-  amount_due: number
-  due_date: string | null
-  invoice_id: string | null
+  other_fees: number
+  electricity_prev: number
+  electricity_curr: number
+  water_prev: number
+  water_curr: number
+  electric_unit_price: number
+  water_unit_price: number
 }
 
 export interface PaymentSummary {

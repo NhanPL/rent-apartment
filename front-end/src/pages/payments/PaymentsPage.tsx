@@ -31,9 +31,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   createPayment,
   deletePayment,
+  getEffectiveUtilityRate,
   getPayment,
   getPaymentsSummary,
-  getUnpaidRooms,
   listBuildings,
   listContracts,
   listPayments,
@@ -45,7 +45,7 @@ import type {
   Contract,
   InvoiceStatus,
   PaymentListItem,
-  UnpaidRoomItem,
+  PaymentStatus,
 } from './types'
 import './PaymentsPage.css'
 
@@ -57,19 +57,31 @@ interface PaymentFormValues {
   issued_at?: string
   due_date?: string
   rent_amount: number
-  electric_amount: number
-  water_amount: number
-  service_amount: number
+  electricity_prev: number
+  electricity_curr: number
+  water_prev: number
+  water_curr: number
+  electric_unit_price: number
+  water_unit_price: number
+  other_fees: number
   discount: number
   note?: string
 }
 
-const statusOptions: { label: string; value: InvoiceStatus; color: string }[] = [
+const invoiceStatusOptions: { label: string; value: InvoiceStatus; color: string }[] = [
   { label: 'Draft', value: 'DRAFT', color: 'default' },
   { label: 'Issued', value: 'ISSUED', color: 'blue' },
   { label: 'Paid', value: 'PAID', color: 'green' },
   { label: 'Overdue', value: 'OVERDUE', color: 'red' },
   { label: 'Void', value: 'VOID', color: 'default' },
+]
+
+const paymentStatusOptions: { label: string; value: PaymentStatus; color: string }[] = [
+  { label: 'Pending', value: 'PENDING', color: 'gold' },
+  { label: 'Succeeded', value: 'SUCCEEDED', color: 'green' },
+  { label: 'Failed', value: 'FAILED', color: 'red' },
+  { label: 'Refunded', value: 'REFUNDED', color: 'purple' },
+  { label: 'Cancelled', value: 'CANCELLED', color: 'default' },
 ]
 
 const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
@@ -78,9 +90,13 @@ const defaultValues: PaymentFormValues = {
   month: dayjs().startOf('month').format('YYYY-MM-DD'),
   status: 'DRAFT',
   rent_amount: 0,
-  electric_amount: 0,
-  water_amount: 0,
-  service_amount: 0,
+  electricity_prev: 0,
+  electricity_curr: 0,
+  water_prev: 0,
+  water_curr: 0,
+  electric_unit_price: 0,
+  water_unit_price: 0,
+  other_fees: 0,
   discount: 0,
 }
 
@@ -92,19 +108,19 @@ export function PaymentsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [items, setItems] = useState<PaymentListItem[]>([])
-  const [unpaidRooms, setUnpaidRooms] = useState<UnpaidRoomItem[]>([])
   const [summary, setSummary] = useState({ totalInvoices: 0, paidInvoices: 0, unpaidInvoices: 0, totalRevenue: 0 })
 
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [monthFilter, setMonthFilter] = useState(dayjs().format('YYYY-MM'))
-  const [statusFilter, setStatusFilter] = useState<InvoiceStatus | undefined>()
+  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<InvoiceStatus | undefined>()
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<PaymentStatus | undefined>()
   const [buildingFilter, setBuildingFilter] = useState<string | undefined>()
   const [roomFilter, setRoomFilter] = useState<string | undefined>()
   const [tenantFilter, setTenantFilter] = useState<string | undefined>()
 
   const [buildings, setBuildings] = useState<{ id: string; name: string }[]>([])
-  const [rooms, setRooms] = useState<{ id: string; building_id: string; code: string }[]>([])
+  const [rooms, setRooms] = useState<{ id: string; building_id: string; code: string; base_rent: number }[]>([])
   const [tenants, setTenants] = useState<{ id: string; full_name: string }[]>([])
   const [contracts, setContracts] = useState<Contract[]>([])
 
@@ -112,6 +128,7 @@ export function PaymentsPage() {
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('create')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [saveLoading, setSaveLoading] = useState(false)
+
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailItem, setDetailItem] = useState<PaymentListItem | null>(null)
 
@@ -127,6 +144,7 @@ export function PaymentsPage() {
       listTenants(),
       listContracts(),
     ])
+
     setBuildings(buildingRows)
     setRooms(roomRows)
     setTenants(tenantRows)
@@ -138,20 +156,27 @@ export function PaymentsPage() {
     setError(null)
 
     try {
-      const [paymentRows, unpaidRows, sum] = await Promise.all([
-        listPayments({ search, month: monthFilter, status: statusFilter, building_id: buildingFilter, room_id: roomFilter, tenant_id: tenantFilter }),
-        getUnpaidRooms(monthFilter),
+      const [paymentRows, summaryRows] = await Promise.all([
+        listPayments({
+          search,
+          month: monthFilter,
+          invoice_status: invoiceStatusFilter,
+          payment_status: paymentStatusFilter,
+          building_id: buildingFilter,
+          room_id: roomFilter,
+          tenant_id: tenantFilter,
+        }),
         getPaymentsSummary(monthFilter),
       ])
+
       setItems(paymentRows)
-      setUnpaidRooms(unpaidRows)
-      setSummary(sum)
+      setSummary(summaryRows)
     } catch {
-      setError('Unable to load payments data. Please retry.')
+      setError('Unable to load payments. Please retry.')
     } finally {
       setLoading(false)
     }
-  }, [search, monthFilter, statusFilter, buildingFilter, roomFilter, tenantFilter])
+  }, [search, monthFilter, invoiceStatusFilter, paymentStatusFilter, buildingFilter, roomFilter, tenantFilter])
 
   useEffect(() => {
     void loadOptions()
@@ -161,31 +186,91 @@ export function PaymentsPage() {
     void loadData()
   }, [loadData])
 
-  const roomOptions = useMemo(() => {
-    if (!buildingFilter) return rooms
+  const roomFilterOptions = useMemo(() => {
+    if (!buildingFilter) {
+      return rooms
+    }
+
     return rooms.filter((room) => room.building_id === buildingFilter)
   }, [rooms, buildingFilter])
 
   const selectedRoomId = Form.useWatch('room_id', form)
+  const selectedContractId = Form.useWatch('contract_id', form)
+  const selectedMonth = Form.useWatch('month', form)
+
+  const drawerRoomOptions = useMemo(() => {
+    if (!selectedRoomId) {
+      return rooms
+    }
+
+    const selectedRoom = rooms.find((room) => room.id === selectedRoomId)
+    if (!selectedRoom) {
+      return rooms
+    }
+
+    return rooms.filter((room) => room.building_id === selectedRoom.building_id)
+  }, [rooms, selectedRoomId])
 
   const contractOptions = useMemo(
     () => contracts.filter((contract) => contract.status === 'ACTIVE' && (!selectedRoomId || contract.room_id === selectedRoomId)),
     [contracts, selectedRoomId],
   )
 
-  const totalAmount = Form.useWatch(['rent_amount'], form) ?? 0
-  const electricAmount = Form.useWatch(['electric_amount'], form) ?? 0
-  const waterAmount = Form.useWatch(['water_amount'], form) ?? 0
-  const serviceAmount = Form.useWatch(['service_amount'], form) ?? 0
-  const discountAmount = Form.useWatch(['discount'], form) ?? 0
+  const selectedTenant = useMemo(() => {
+    if (!selectedContractId) {
+      return null
+    }
 
-  const computedTotal = Math.max(0, totalAmount + electricAmount + waterAmount + serviceAmount - discountAmount)
+    const row = items.find((item) => item.contract_id === selectedContractId)
+    if (row?.tenant_id) {
+      return tenants.find((tenant) => tenant.id === row.tenant_id) ?? null
+    }
 
-  const openCreate = useCallback((prefill?: Partial<PaymentFormValues>) => {
+    return null
+  }, [selectedContractId, items, tenants])
+
+  const rentAmount = Form.useWatch('rent_amount', form) ?? 0
+  const electricityPrev = Form.useWatch('electricity_prev', form) ?? 0
+  const electricityCurr = Form.useWatch('electricity_curr', form) ?? 0
+  const waterPrev = Form.useWatch('water_prev', form) ?? 0
+  const waterCurr = Form.useWatch('water_curr', form) ?? 0
+  const electricUnitPrice = Form.useWatch('electric_unit_price', form) ?? 0
+  const waterUnitPrice = Form.useWatch('water_unit_price', form) ?? 0
+  const otherFees = Form.useWatch('other_fees', form) ?? 0
+  const discount = Form.useWatch('discount', form) ?? 0
+
+  const electricUsage = useMemo(() => Math.max(0, electricityCurr - electricityPrev), [electricityCurr, electricityPrev])
+  const waterUsage = useMemo(() => Math.max(0, waterCurr - waterPrev), [waterCurr, waterPrev])
+  const electricAmount = useMemo(() => electricUsage * electricUnitPrice, [electricUsage, electricUnitPrice])
+  const waterAmount = useMemo(() => waterUsage * waterUnitPrice, [waterUsage, waterUnitPrice])
+  const subtotal = useMemo(() => rentAmount + electricAmount + waterAmount + otherFees, [rentAmount, electricAmount, waterAmount, otherFees])
+  const totalAmount = useMemo(() => Math.max(0, subtotal - discount), [subtotal, discount])
+
+  useEffect(() => {
+    if (!drawerOpen || !selectedRoomId || !selectedMonth) {
+      return
+    }
+
+    const room = rooms.find((item) => item.id === selectedRoomId)
+    if (!room) {
+      return
+    }
+
+    void getEffectiveUtilityRate(selectedRoomId, selectedMonth).then((rate) => {
+      form.setFieldValue('electric_unit_price', rate.electricity_unit_price)
+      form.setFieldValue('water_unit_price', rate.water_unit_price)
+      if (!form.getFieldValue('rent_amount')) {
+        const contract = contracts.find((item) => item.room_id === selectedRoomId && item.status === 'ACTIVE')
+        form.setFieldValue('rent_amount', contract?.rent_price ?? room.base_rent)
+      }
+    })
+  }, [drawerOpen, selectedRoomId, selectedMonth, form, rooms, contracts])
+
+  const openCreate = useCallback(() => {
     setDrawerMode('create')
     setEditingId(null)
     form.resetFields()
-    form.setFieldsValue({ ...defaultValues, ...prefill })
+    form.setFieldsValue(defaultValues)
     setDrawerOpen(true)
   }, [form])
 
@@ -201,19 +286,31 @@ export function PaymentsPage() {
       status: row.status,
       issued_at: row.issued_at ?? undefined,
       due_date: row.due_date ?? undefined,
-      discount: row.discount,
       rent_amount: row.rent_amount,
-      electric_amount: row.electric_amount,
-      water_amount: row.water_amount,
-      service_amount: row.service_amount,
+      electricity_prev: row.electricity_prev ?? 0,
+      electricity_curr: row.electricity_curr ?? 0,
+      water_prev: row.water_prev ?? 0,
+      water_curr: row.water_curr ?? 0,
+      electric_unit_price: row.electric_unit_price,
+      water_unit_price: row.water_unit_price,
+      other_fees: row.other_fees,
+      discount: row.discount,
       note: row.note ?? undefined,
     })
     setDrawerOpen(true)
   }, [form])
 
+  const openDetail = useCallback(async (id: string) => {
+    const row = await getPayment(id)
+    setDetailItem(row)
+    setDetailOpen(true)
+  }, [])
+
   const onSave = useCallback(async () => {
     const values = await form.validateFields()
-    if (!values.contract_id || !values.room_id) return
+    if (!values.contract_id || !values.room_id) {
+      return
+    }
 
     setSaveLoading(true)
     try {
@@ -227,9 +324,13 @@ export function PaymentsPage() {
         note: values.note ?? null,
         discount: values.discount,
         rent_amount: values.rent_amount,
-        electric_amount: values.electric_amount,
-        water_amount: values.water_amount,
-        service_amount: values.service_amount,
+        electricity_prev: values.electricity_prev,
+        electricity_curr: values.electricity_curr,
+        water_prev: values.water_prev,
+        water_curr: values.water_curr,
+        electric_unit_price: values.electric_unit_price,
+        water_unit_price: values.water_unit_price,
+        other_fees: values.other_fees,
       }
 
       if (drawerMode === 'create') {
@@ -263,28 +364,35 @@ export function PaymentsPage() {
     })
   }, [loadData])
 
-  const openDetail = useCallback(async (id: string) => {
-    const row = await getPayment(id)
-    setDetailItem(row)
-    setDetailOpen(true)
-  }, [])
-
   const columns: ColumnsType<PaymentListItem> = [
-    { title: 'Month', dataIndex: 'month', width: 120, render: (value: string) => dayjs(value).format('MM/YYYY') },
-    { title: 'Building', dataIndex: 'building_name', width: 180 },
-    { title: 'Room', dataIndex: 'room_code', width: 110 },
-    { title: 'Tenant', dataIndex: 'tenant_name', width: 180 },
-    { title: 'Rent', dataIndex: 'rent_amount', width: 130, align: 'right', render: (value: number) => currency.format(value) },
-    { title: 'Electric', dataIndex: 'electric_amount', width: 130, align: 'right', render: (value: number) => currency.format(value) },
-    { title: 'Water', dataIndex: 'water_amount', width: 130, align: 'right', render: (value: number) => currency.format(value) },
-    { title: 'Total', dataIndex: 'total', width: 140, align: 'right', render: (value: number) => <strong>{currency.format(value)}</strong> },
+    { title: 'Month', dataIndex: 'month', width: 110, render: (value: string) => dayjs(value).format('MM/YYYY') },
+    { title: 'Building', dataIndex: 'building_name', width: 170 },
+    { title: 'Room', dataIndex: 'room_code', width: 100 },
+    { title: 'Tenant', dataIndex: 'tenant_name', width: 170 },
+    { title: 'Room rent', dataIndex: 'rent_amount', width: 130, align: 'right', render: (value: number) => currency.format(value) },
+    { title: 'Electric amount', dataIndex: 'electric_amount', width: 140, align: 'right', render: (value: number) => currency.format(value) },
+    { title: 'Water amount', dataIndex: 'water_amount', width: 130, align: 'right', render: (value: number) => currency.format(value) },
+    { title: 'Other fees', dataIndex: 'other_fees', width: 120, align: 'right', render: (value: number) => currency.format(value) },
+    { title: 'Total', dataIndex: 'total', width: 130, align: 'right', render: (value: number) => <strong>{currency.format(value)}</strong> },
     {
-      title: 'Status',
+      title: 'Invoice status',
       dataIndex: 'status',
-      width: 120,
-      render: (value: InvoiceStatus) => <Tag color={statusOptions.find((item) => item.value === value)?.color}>{value}</Tag>,
+      width: 130,
+      render: (value: InvoiceStatus) => <Tag color={invoiceStatusOptions.find((item) => item.value === value)?.color}>{value}</Tag>,
     },
-    { title: 'Due date', dataIndex: 'due_date', width: 130, render: (value: string | null) => (value ? dayjs(value).format('DD/MM/YYYY') : '-') },
+    {
+      title: 'Payment status',
+      dataIndex: 'payment_status',
+      width: 130,
+      render: (value: PaymentStatus | null) => {
+        if (!value) {
+          return <Tag>NO_PAYMENT</Tag>
+        }
+        return <Tag color={paymentStatusOptions.find((item) => item.value === value)?.color}>{value}</Tag>
+      },
+    },
+    { title: 'Due date', dataIndex: 'due_date', width: 120, render: (value: string | null) => (value ? dayjs(value).format('DD/MM/YYYY') : '-') },
+    { title: 'Paid date', dataIndex: 'paid_at', width: 120, render: (value: string | null) => (value ? dayjs(value).format('DD/MM/YYYY') : '-') },
     {
       title: 'Actions',
       key: 'actions',
@@ -305,18 +413,17 @@ export function PaymentsPage() {
       <div className="payments-toolbar">
         <div>
           <Typography.Title level={3} style={{ margin: 0 }}>Payments</Typography.Title>
-          <Typography.Text type="secondary">Manage monthly room invoices and rent collection.</Typography.Text>
+          <Typography.Text type="secondary">Manage monthly invoices from contracts, utility readings, and payment status.</Typography.Text>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate()}>
-          Add Invoice
-        </Button>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>+ Add Invoice</Button>
       </div>
 
       <Card>
         <div className="payments-filters">
           <Input placeholder="Search building, room, tenant" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} allowClear />
           <Input type="month" value={monthFilter} onChange={(event) => setMonthFilter(event.target.value)} />
-          <Select allowClear placeholder="Status" value={statusFilter} onChange={setStatusFilter} options={statusOptions.map((item) => ({ label: item.label, value: item.value }))} />
+          <Select allowClear placeholder="Invoice status" value={invoiceStatusFilter} onChange={setInvoiceStatusFilter} options={invoiceStatusOptions.map((item) => ({ label: item.label, value: item.value }))} />
+          <Select allowClear placeholder="Payment status" value={paymentStatusFilter} onChange={setPaymentStatusFilter} options={paymentStatusOptions.map((item) => ({ label: item.label, value: item.value }))} />
           <Select
             allowClear
             placeholder="Building"
@@ -327,11 +434,9 @@ export function PaymentsPage() {
             }}
             options={buildings.map((item) => ({ label: item.name, value: item.id }))}
           />
-          <Select allowClear placeholder="Room" value={roomFilter} onChange={setRoomFilter} options={roomOptions.map((item) => ({ label: item.code, value: item.id }))} />
+          <Select allowClear placeholder="Room" value={roomFilter} onChange={setRoomFilter} options={roomFilterOptions.map((item) => ({ label: item.code, value: item.id }))} />
           <Select allowClear placeholder="Tenant" value={tenantFilter} onChange={setTenantFilter} options={tenants.map((item) => ({ label: item.full_name, value: item.id }))} />
-          <Button icon={<ReloadOutlined />} onClick={() => void loadData()}>
-            Refresh
-          </Button>
+          <Button icon={<ReloadOutlined />} onClick={() => void loadData()}>Refresh</Button>
         </div>
       </Card>
 
@@ -342,43 +447,13 @@ export function PaymentsPage() {
         <Card><Statistic title="Revenue (paid)" value={summary.totalRevenue} formatter={(value) => currency.format(Number(value))} /></Card>
       </div>
 
-      <Card title="Rooms with unpaid rent" extra={<Typography.Text type="secondary">{monthFilter}</Typography.Text>}>
-        <Table<UnpaidRoomItem>
-          rowKey={(row) => `${row.contract_id}-${row.month}`}
-          size="small"
-          pagination={false}
-          scroll={{ x: 900 }}
-          locale={{ emptyText: <Empty description="All active rooms are paid for this month" /> }}
-          dataSource={unpaidRooms}
-          columns={[
-            { title: 'Building', dataIndex: 'building_name', width: 180 },
-            { title: 'Room', dataIndex: 'room_code', width: 100 },
-            { title: 'Tenant', dataIndex: 'tenant_name', width: 180 },
-            { title: 'Month', dataIndex: 'month', width: 110, render: (value: string) => dayjs(`${value}-01`).format('MM/YYYY') },
-            { title: 'Amount due', dataIndex: 'amount_due', width: 150, align: 'right', render: (value: number) => currency.format(value) },
-            { title: 'Due date', dataIndex: 'due_date', width: 120, render: (value: string | null) => (value ? dayjs(value).format('DD/MM/YYYY') : '-') },
-            {
-              title: 'Action',
-              width: 180,
-              render: (_, row) => (
-                row.invoice_id ? (
-                  <Button type="link" onClick={() => void openDetail(row.invoice_id!)}>View invoice</Button>
-                ) : (
-                  <Button type="link" onClick={() => openCreate({ room_id: row.room_id, contract_id: row.contract_id, month: `${row.month}-01`, rent_amount: row.amount_due })}>Create invoice</Button>
-                )
-              ),
-            },
-          ]}
-        />
-      </Card>
-
       <Card title="Monthly invoices">
         {loading ? (
           <Skeleton active paragraph={{ rows: 8 }} />
         ) : error ? (
           <Empty description={error}><Button onClick={() => void loadData()}>Retry</Button></Empty>
         ) : (
-          <Table rowKey="id" columns={columns} dataSource={items} scroll={{ x: 1450 }} locale={{ emptyText: <Empty description="No invoices found" /> }} />
+          <Table rowKey="id" columns={columns} dataSource={items} scroll={{ x: 1950 }} locale={{ emptyText: <Empty description="No invoices found" /> }} />
         )}
       </Card>
 
@@ -393,20 +468,19 @@ export function PaymentsPage() {
         <Form form={form} layout="vertical" initialValues={defaultValues}>
           <div className="payments-form-grid">
             <Form.Item label="Room" name="room_id" rules={[{ required: true, message: 'Please select room' }]}>
-              <Select
-                showSearch
-                optionFilterProp="label"
-                options={rooms.map((item) => ({ label: item.code, value: item.id }))}
-              />
+              <Select showSearch optionFilterProp="label" options={drawerRoomOptions.map((item) => ({ label: item.code, value: item.id }))} />
             </Form.Item>
             <Form.Item label="Contract" name="contract_id" rules={[{ required: true, message: 'Please select contract' }]}>
               <Select options={contractOptions.map((item) => ({ label: item.id, value: item.id }))} />
             </Form.Item>
-            <Form.Item label="Month" name="month" rules={[{ required: true }]}>
+            <Form.Item label="Tenant" className="payments-form-readonly">
+              <Input value={selectedTenant?.full_name ?? '-'} readOnly />
+            </Form.Item>
+            <Form.Item label="Billing month" name="month" rules={[{ required: true }]}> 
               <Input type="date" />
             </Form.Item>
-            <Form.Item label="Status" name="status" rules={[{ required: true }]}>
-              <Select options={statusOptions.map((item) => ({ label: item.label, value: item.value }))} />
+            <Form.Item label="Invoice status" name="status" rules={[{ required: true }]}>
+              <Select options={invoiceStatusOptions.map((item) => ({ label: item.label, value: item.value }))} />
             </Form.Item>
             <Form.Item label="Issued at" name="issued_at">
               <Input type="date" />
@@ -414,28 +488,102 @@ export function PaymentsPage() {
             <Form.Item label="Due date" name="due_date">
               <Input type="date" />
             </Form.Item>
-            <Form.Item label="Rent amount" name="rent_amount" rules={[{ required: true }]}>
+            <Form.Item label="Room rent" name="rent_amount" rules={[{ required: true }]}> 
               <InputNumber min={0} style={{ width: '100%' }} />
             </Form.Item>
-            <Form.Item label="Electric amount" name="electric_amount" rules={[{ required: true }]}>
+
+            <Form.Item label="Previous electric reading" name="electricity_prev" rules={[{ required: true }]}> 
               <InputNumber min={0} style={{ width: '100%' }} />
             </Form.Item>
-            <Form.Item label="Water amount" name="water_amount" rules={[{ required: true }]}>
+            <Form.Item
+              label="Current electric reading"
+              name="electricity_curr"
+              dependencies={['electricity_prev']}
+              rules={[
+                { required: true },
+                ({ getFieldValue }) => ({
+                  validator(_, value) {
+                    if (typeof value !== 'number') {
+                      return Promise.reject(new Error('Current electric reading is required'))
+                    }
+
+                    if (value < (getFieldValue('electricity_prev') ?? 0)) {
+                      return Promise.reject(new Error('Current reading must be greater than or equal to previous reading'))
+                    }
+
+                    return Promise.resolve()
+                  },
+                }),
+              ]}
+            >
               <InputNumber min={0} style={{ width: '100%' }} />
             </Form.Item>
-            <Form.Item label="Service fee" name="service_amount" rules={[{ required: true }]}>
+
+            <Form.Item label="Previous water reading" name="water_prev" rules={[{ required: true }]}> 
               <InputNumber min={0} style={{ width: '100%' }} />
             </Form.Item>
-            <Form.Item label="Discount" name="discount" rules={[{ required: true }]}>
+            <Form.Item
+              label="Current water reading"
+              name="water_curr"
+              dependencies={['water_prev']}
+              rules={[
+                { required: true },
+                ({ getFieldValue }) => ({
+                  validator(_, value) {
+                    if (typeof value !== 'number') {
+                      return Promise.reject(new Error('Current water reading is required'))
+                    }
+
+                    if (value < (getFieldValue('water_prev') ?? 0)) {
+                      return Promise.reject(new Error('Current reading must be greater than or equal to previous reading'))
+                    }
+
+                    return Promise.resolve()
+                  },
+                }),
+              ]}
+            >
               <InputNumber min={0} style={{ width: '100%' }} />
+            </Form.Item>
+
+            <Form.Item label="Electric unit price" name="electric_unit_price" rules={[{ required: true }]}> 
+              <InputNumber min={0} style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item label="Water unit price" name="water_unit_price" rules={[{ required: true }]}> 
+              <InputNumber min={0} style={{ width: '100%' }} />
+            </Form.Item>
+
+            <Form.Item label="Electric usage">
+              <Input value={electricUsage} readOnly />
+            </Form.Item>
+            <Form.Item label="Electric amount">
+              <Input value={currency.format(electricAmount)} readOnly />
+            </Form.Item>
+            <Form.Item label="Water usage">
+              <Input value={waterUsage} readOnly />
+            </Form.Item>
+            <Form.Item label="Water amount">
+              <Input value={currency.format(waterAmount)} readOnly />
+            </Form.Item>
+
+            <Form.Item label="Other fees" name="other_fees" rules={[{ required: true }]}> 
+              <InputNumber min={0} style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item label="Discount" name="discount" rules={[{ required: true }]}> 
+              <InputNumber min={0} style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item label="Subtotal">
+              <Input value={currency.format(subtotal)} readOnly />
             </Form.Item>
             <Form.Item label="Total amount">
-              <Typography.Text strong>{currency.format(computedTotal)}</Typography.Text>
+              <Input value={currency.format(totalAmount)} readOnly />
             </Form.Item>
-            <Form.Item label="Note" name="note" className="payments-form-full">
+
+            <Form.Item label="Notes" name="note" className="payments-form-full">
               <Input.TextArea rows={3} />
             </Form.Item>
           </div>
+
           <Space className="payments-drawer-actions">
             <Button onClick={() => setDrawerOpen(false)}>Cancel</Button>
             <Button type="primary" loading={saveLoading} onClick={() => void onSave()}>Save</Button>
@@ -450,12 +598,15 @@ export function PaymentsPage() {
             <Descriptions.Item label="Building">{detailItem.building_name}</Descriptions.Item>
             <Descriptions.Item label="Room">{detailItem.room_code}</Descriptions.Item>
             <Descriptions.Item label="Tenant">{detailItem.tenant_name}</Descriptions.Item>
-            <Descriptions.Item label="Status"><Tag color={statusOptions.find((item) => item.value === detailItem.status)?.color}>{detailItem.status}</Tag></Descriptions.Item>
-            <Descriptions.Item label="Rent">{currency.format(detailItem.rent_amount)}</Descriptions.Item>
-            <Descriptions.Item label="Electric">{currency.format(detailItem.electric_amount)}</Descriptions.Item>
-            <Descriptions.Item label="Water">{currency.format(detailItem.water_amount)}</Descriptions.Item>
-            <Descriptions.Item label="Service">{currency.format(detailItem.service_amount)}</Descriptions.Item>
-            <Descriptions.Item label="Discount">{currency.format(detailItem.discount)}</Descriptions.Item>
+            <Descriptions.Item label="Invoice status"><Tag color={invoiceStatusOptions.find((item) => item.value === detailItem.status)?.color}>{detailItem.status}</Tag></Descriptions.Item>
+            <Descriptions.Item label="Payment status">{detailItem.payment_status ?? 'NO_PAYMENT'}</Descriptions.Item>
+            <Descriptions.Item label="Electric reading (prev/curr)">{`${detailItem.electricity_prev ?? 0} / ${detailItem.electricity_curr ?? 0}`}</Descriptions.Item>
+            <Descriptions.Item label="Water reading (prev/curr)">{`${detailItem.water_prev ?? 0} / ${detailItem.water_curr ?? 0}`}</Descriptions.Item>
+            <Descriptions.Item label="Electric usage">{detailItem.electric_usage}</Descriptions.Item>
+            <Descriptions.Item label="Water usage">{detailItem.water_usage}</Descriptions.Item>
+            <Descriptions.Item label="Electric amount">{currency.format(detailItem.electric_amount)}</Descriptions.Item>
+            <Descriptions.Item label="Water amount">{currency.format(detailItem.water_amount)}</Descriptions.Item>
+            <Descriptions.Item label="Other fees">{currency.format(detailItem.other_fees)}</Descriptions.Item>
             <Descriptions.Item label="Total">{currency.format(detailItem.total)}</Descriptions.Item>
           </Descriptions>
         ) : null}

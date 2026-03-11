@@ -13,7 +13,7 @@
 
 .payments-filters {
   display: grid;
-  grid-template-columns: 2fr repeat(5, minmax(0, 1fr)) auto;
+  grid-template-columns: 2fr repeat(6, minmax(0, 1fr)) auto;
   gap: 12px;
 }
 
@@ -27,6 +27,10 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0 12px;
+}
+
+.payments-form-readonly {
+  margin-bottom: 8px;
 }
 
 .payments-form-full {
