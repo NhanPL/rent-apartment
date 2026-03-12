@@ -8,7 +8,7 @@ import { PlaceholderPage } from '../pages/shared/PlaceholderPage'
 import { TenantsPage } from '../pages/tenants/TenantsPage'
 import { PaymentsPage } from '../pages/payments/PaymentsPage'
 import { TenantRoomPage } from '../pages/tenant-room/TenantRoomPage'
-import { routeItems } from './routeConfig'
+import { routeItems, sidebarRouteItems } from './routeConfig'
 
 function getBasePath(pathname: string) {
   if (pathname.startsWith('/rooms/')) {
@@ -88,7 +88,7 @@ export function AppRoutes() {
     <AppLayout
       pathname={getBasePath(pathname)}
       onNavigate={setPathname}
-      items={routeItems}
+      items={sidebarRouteItems}
       pageTitle={pageTitle}
       content={renderPage()}
     />
