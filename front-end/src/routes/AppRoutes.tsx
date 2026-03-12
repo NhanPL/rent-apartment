@@ -6,6 +6,7 @@ import { mockBuildings } from '../pages/buildings/mockData'
 import { RoomDetailPage } from '../pages/rooms/RoomDetailPage'
 import { PlaceholderPage } from '../pages/shared/PlaceholderPage'
 import { TenantsPage } from '../pages/tenants/TenantsPage'
+import { PaymentsPage } from '../pages/payments/PaymentsPage'
 import { routeItems } from './routeConfig'
 
 function getBasePath(pathname: string) {
@@ -69,6 +70,10 @@ export function AppRoutes() {
 
     if (pathname === '/tenants') {
       return <TenantsPage />
+    }
+
+    if (pathname === '/payments') {
+      return <PaymentsPage />
     }
 
     return <PlaceholderPage title={pageTitle} />

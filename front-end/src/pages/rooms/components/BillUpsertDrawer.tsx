@@ -1,6 +1,12 @@
-import { ExclamationCircleOutlined } from '@ant-design/icons'
-import { Button, Drawer, Form, Grid, Input, InputNumber, Modal, Select, Space } from 'antd'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Button, Drawer, Form, Grid, Space } from 'antd'
+import { useEffect, useMemo } from 'react'
+import {
+  InvoiceFormFields,
+  invoiceFormDefaultValues,
+  type InvoiceFormValues,
+} from '../../payments/components/invoiceFormShared'
+import '../../payments/components/invoiceFormShared.css'
+import type { Contract, InvoiceStatus, Room } from '../../payments/types'
 import type { MonthlyBill, MonthlyBillUpsertPayload } from '../../buildings/components/roomTypes'
 
 interface BillUpsertDrawerProps {
@@ -8,191 +14,133 @@ interface BillUpsertDrawerProps {
   mode: 'create' | 'edit'
   room_id: string
   bill: MonthlyBill | null
+  room: Room
+  contracts: Contract[]
+  tenantName?: string
   loading: boolean
   onClose: () => void
   onSubmit: (payload: MonthlyBillUpsertPayload) => Promise<void>
 }
 
-type BillFormValues = Omit<MonthlyBillUpsertPayload, 'room_id'>
+const statusOptions: { label: string; value: InvoiceStatus }[] = [
+  { label: 'Draft', value: 'DRAFT' },
+  { label: 'Issued', value: 'ISSUED' },
+  { label: 'Paid', value: 'PAID' },
+  { label: 'Overdue', value: 'OVERDUE' },
+  { label: 'Void', value: 'VOID' },
+]
 
-const defaultValues: BillFormValues = {
-  month: '',
-  electricity_prev: null,
-  electricity_curr: null,
-  water_prev: null,
-  water_curr: null,
-  total_bill_amount: 0,
-  invoice_status: 'ISSUED',
-  note: null,
-}
+const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
 
-export function BillUpsertDrawer({ open, mode, room_id, bill, loading, onClose, onSubmit }: BillUpsertDrawerProps) {
-  const [form] = Form.useForm<BillFormValues>()
+export function BillUpsertDrawer({
+  open,
+  mode,
+  room_id,
+  bill,
+  room,
+  contracts,
+  tenantName,
+  loading,
+  onClose,
+  onSubmit,
+}: BillUpsertDrawerProps) {
+  const [form] = Form.useForm<InvoiceFormValues>()
   const screens = Grid.useBreakpoint()
-  const [canSave, setCanSave] = useState(false)
-  const [discardModalOpen, setDiscardModalOpen] = useState(false)
-  const initialSnapshotRef = useRef<string>('')
 
-  const initialValues = useMemo<BillFormValues>(() => {
+  const initialValues = useMemo<InvoiceFormValues>(() => {
     if (mode === 'edit' && bill) {
       return {
-        month: bill.month.slice(0, 7),
+        contract_id: bill.contract_id,
+        room_id: bill.room_id,
+        month: bill.month,
+        status: bill.invoice_status,
+        issued_at: bill.issued_at ?? undefined,
+        due_date: bill.due_date ?? undefined,
+        rent_amount: bill.rent_amount,
         electricity_prev: bill.electricity_prev,
         electricity_curr: bill.electricity_curr,
         water_prev: bill.water_prev,
         water_curr: bill.water_curr,
-        total_bill_amount: bill.total_bill_amount,
-        invoice_status: bill.invoice_status,
-        note: bill.note,
+        electric_unit_price: bill.electric_unit_price,
+        water_unit_price: bill.water_unit_price,
+        other_fees: bill.other_fees,
+        discount: bill.discount,
+        note: bill.note ?? undefined,
       }
     }
-    return defaultValues
-  }, [mode, bill])
+
+    return {
+      ...invoiceFormDefaultValues,
+      room_id,
+      contract_id: contracts[0]?.id,
+      rent_amount: room.base_rent,
+    }
+  }, [mode, bill, room_id, contracts, room.base_rent])
 
   useEffect(() => {
-    if (open) {
-      form.resetFields()
-      form.setFieldsValue(initialValues)
-      initialSnapshotRef.current = JSON.stringify(initialValues)
-      setCanSave(false)
-      setDiscardModalOpen(false)
-    }
-  }, [form, initialValues, open])
-
-  const isDirty = () => JSON.stringify(form.getFieldsValue()) !== initialSnapshotRef.current
-
-  const closeDrawer = () => {
-    form.resetFields()
-    setCanSave(false)
-    setDiscardModalOpen(false)
-    onClose()
-  }
-
-  const requestClose = () => {
-    if (isDirty()) {
-      setDiscardModalOpen(true)
+    if (!open) {
       return
     }
-    closeDrawer()
-  }
+
+    form.resetFields()
+    form.setFieldsValue(initialValues)
+  }, [open, form, initialValues])
 
   const handleSubmit = async () => {
     const values = await form.validateFields()
-    await onSubmit({ ...values, room_id, month: `${values.month}-01`, note: values.note ?? null })
-    closeDrawer()
+    if (!values.contract_id || !values.room_id) {
+      return
+    }
+
+    await onSubmit({
+      room_id: values.room_id,
+      contract_id: values.contract_id,
+      month: values.month,
+      electricity_prev: values.electricity_prev,
+      electricity_curr: values.electricity_curr,
+      water_prev: values.water_prev,
+      water_curr: values.water_curr,
+      electric_unit_price: values.electric_unit_price,
+      water_unit_price: values.water_unit_price,
+      rent_amount: values.rent_amount,
+      other_fees: values.other_fees,
+      discount: values.discount,
+      invoice_status: values.status,
+      issued_at: values.issued_at ?? null,
+      due_date: values.due_date ?? null,
+      note: values.note ?? null,
+    })
+
+    onClose()
   }
 
   return (
-    <>
-      <Drawer
-        open={open}
-        title={mode === 'create' ? 'Add Bill' : 'Edit Bill'}
-        onClose={requestClose}
-        width={screens.md ? 500 : '100%'}
-        placement="right"
-        destroyOnClose
-        maskClosable
-      >
-        <Form
+    <Drawer
+      open={open}
+      title={mode === 'create' ? 'Add Bill' : 'Edit Bill'}
+      onClose={onClose}
+      width={screens.md ? 500 : '100%'}
+      placement="right"
+      destroyOnClose
+      maskClosable
+    >
+      <Form form={form} layout="vertical" initialValues={invoiceFormDefaultValues}>
+        <InvoiceFormFields
           form={form}
-          layout="vertical"
-          onValuesChange={async () => {
-            const electricity_prev = form.getFieldValue('electricity_prev') as number | null
-            const electricity_curr = form.getFieldValue('electricity_curr') as number | null
-            const water_prev = form.getFieldValue('water_prev') as number | null
-            const water_curr = form.getFieldValue('water_curr') as number | null
-            if (electricity_prev !== null && electricity_curr !== null && water_prev !== null && water_curr !== null) {
-              const autoTotal = Math.max(electricity_curr - electricity_prev, 0) * 0.8 + Math.max(water_curr - water_prev, 0) * 0.5
-              form.setFieldValue('total_bill_amount', Number(autoTotal.toFixed(2)))
-            }
-            try {
-              await form.validateFields({ validateOnly: true })
-              setCanSave(isDirty())
-            } catch {
-              setCanSave(false)
-            }
-          }}
-        >
-          <Form.Item label="Month" name="month" rules={[{ required: true, message: 'Month is required' }]}>
-            <Input type="month" />
-          </Form.Item>
-          <Form.Item label="Electricity previous" name="electricity_prev">
-            <InputNumber min={0} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item
-            label="Electricity current"
-            name="electricity_curr"
-            rules={[
-              ({ getFieldValue }) => ({
-                validator: async (_rule: unknown, value: number | null) => {
-                  const prev = getFieldValue('electricity_prev') as number | null
-                  if (value === null || prev === null || value >= prev) return
-                  throw new Error('Electricity current must be >= previous')
-                },
-              }),
-            ]}
-          >
-            <InputNumber min={0} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item label="Water previous" name="water_prev">
-            <InputNumber min={0} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item
-            label="Water current"
-            name="water_curr"
-            rules={[
-              ({ getFieldValue }) => ({
-                validator: async (_rule: unknown, value: number | null) => {
-                  const prev = getFieldValue('water_prev') as number | null
-                  if (value === null || prev === null || value >= prev) return
-                  throw new Error('Water current must be >= previous')
-                },
-              }),
-            ]}
-          >
-            <InputNumber min={0} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item label="Total bill" name="total_bill_amount" rules={[{ required: true }, { type: 'number', min: 0 }]}>
-            <InputNumber min={0} style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item label="Status" name="invoice_status" rules={[{ required: true }]}>
-            <Select
-              options={[
-                { label: 'Draft', value: 'DRAFT' },
-                { label: 'Issued', value: 'ISSUED' },
-                { label: 'Paid', value: 'PAID' },
-                { label: 'Void', value: 'VOID' },
-                { label: 'Overdue', value: 'OVERDUE' },
-              ]}
-            />
-          </Form.Item>
-          <Form.Item label="Note" name="note">
-            <Input.TextArea rows={3} />
-          </Form.Item>
-        </Form>
-        <Space>
-          <Button onClick={requestClose}>Cancel</Button>
-          <Button type="primary" loading={loading} disabled={!canSave} onClick={handleSubmit}>
-            Save
+          rooms={[room]}
+          contracts={contracts}
+          tenantName={tenantName}
+          invoiceStatusOptions={statusOptions}
+          currencyFormatter={(value) => currency.format(value)}
+          roomLocked
+        />
+        <Space className="payments-drawer-actions">
+          <Button onClick={onClose}>Cancel</Button>
+          <Button type="primary" loading={loading} onClick={() => void handleSubmit()}>
+            {mode === 'create' ? 'Create bill' : 'Save changes'}
           </Button>
         </Space>
-      </Drawer>
-
-      <Modal
-        open={discardModalOpen}
-        title="Discard bill changes?"
-        onCancel={() => setDiscardModalOpen(false)}
-        onOk={closeDrawer}
-        okText="Discard"
-        okButtonProps={{ danger: true }}
-        cancelText="Keep editing"
-        maskClosable
-      >
-        <Space>
-          <ExclamationCircleOutlined />
-          You have unsaved bill changes.
-        </Space>
-      </Modal>
-    </>
+      </Form>
+    </Drawer>
   )
 }
