@@ -2,7 +2,7 @@ import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons'
 import { Button, Drawer, Grid, Layout, Menu, Space, Typography } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { RouteConfig } from '../routes/routeConfig'
+import type { SidebarRouteItem } from '../routes/routeConfig'
 import './AppLayout.css'
 
 const { Header, Sider, Content, Footer } = Layout
@@ -11,7 +11,7 @@ const SIDEBAR_STORAGE_KEY = 'app_sidebar_collapsed'
 interface AppLayoutProps {
   pathname: string
   onNavigate: (path: string) => void
-  items: RouteConfig[]
+  items: SidebarRouteItem[]
   pageTitle: string
   content: ReactNode
 }
@@ -26,7 +26,6 @@ export function AppLayout({ pathname, onNavigate, items, pageTitle, content }: A
   useEffect(() => {
     localStorage.setItem(SIDEBAR_STORAGE_KEY, String(collapsed))
   }, [collapsed])
-
 
   const menuItems = useMemo(
     () =>
