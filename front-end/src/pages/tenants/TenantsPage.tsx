@@ -3,6 +3,7 @@ import {
   EditOutlined,
   EyeOutlined,
   ExclamationCircleOutlined,
+  FileWordOutlined,
   PlusOutlined,
   ReloadOutlined,
 } from '@ant-design/icons'
@@ -33,6 +34,7 @@ import {
   createTenant,
   deleteTenant,
   getTenant,
+  getTenantContractExportData,
   listBuildings,
   listRooms,
   listTenants,
@@ -47,6 +49,7 @@ import type {
   TenantListItem,
   TenantStatus,
 } from './types'
+import { exportRentalContractDocx } from '../../services/rentalContractDocx'
 import './TenantsPage.css'
 
 interface TenantFormValues {
@@ -148,6 +151,7 @@ export function TenantsPage() {
 
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [exportingTenantId, setExportingTenantId] = useState<string | null>(null)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(searchInput), 300)
@@ -409,6 +413,21 @@ export function TenantsPage() {
     }
   }, [])
 
+  const handleExportContract = useCallback(async (id: string) => {
+    setExportingTenantId(id)
+
+    try {
+      const exportData = await getTenantContractExportData(id)
+      await exportRentalContractDocx(exportData)
+      message.success('Contract exported successfully')
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Cannot export contract for this tenant.'
+      message.warning(detail)
+    } finally {
+      setExportingTenantId(null)
+    }
+  }, [])
+
   const columns: ColumnsType<TenantListItem> = useMemo(
     () => [
       { title: 'Tenant name', dataIndex: 'full_name', key: 'full_name', width: 180 },
@@ -456,17 +475,25 @@ export function TenantsPage() {
         title: 'Actions',
         key: 'actions',
         fixed: 'right',
-        width: 160,
+        width: 220,
         render: (_, item) => (
-          <Space>
+          <Space wrap>
             <Button type="text" icon={<EyeOutlined />} onClick={() => void handleView(item.id)} />
             <Button type="text" icon={<EditOutlined />} onClick={() => void openEdit(item.id)} />
+            <Button
+              type="text"
+              icon={<FileWordOutlined />}
+              loading={exportingTenantId === item.id}
+              onClick={() => void handleExportContract(item.id)}
+            >
+              Export
+            </Button>
             <Button type="text" danger icon={<DeleteOutlined />} onClick={() => handleDelete(item.id)} />
           </Space>
         ),
       },
     ],
-    [handleDelete, handleView, openEdit],
+    [exportingTenantId, handleDelete, handleExportContract, handleView, openEdit],
   )
 
   return (
@@ -741,7 +768,19 @@ export function TenantsPage() {
               <Descriptions.Item label="note">{selectedTenant.note ?? '—'}</Descriptions.Item>
             </Descriptions>
 
-            <Card size="small" title="Current Contract / Room">
+            <Card
+              size="small"
+              title="Current Contract / Room"
+              extra={
+                <Button
+                  icon={<FileWordOutlined />}
+                  loading={exportingTenantId === selectedTenant.id}
+                  onClick={() => void handleExportContract(selectedTenant.id)}
+                >
+                  Export Contract
+                </Button>
+              }
+            >
               {selectedTenant.current_room ? (
                 <Descriptions size="small" column={1}>
                   <Descriptions.Item label="building_name">
