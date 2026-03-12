@@ -7,6 +7,7 @@ import { RoomDetailPage } from '../pages/rooms/RoomDetailPage'
 import { PlaceholderPage } from '../pages/shared/PlaceholderPage'
 import { TenantsPage } from '../pages/tenants/TenantsPage'
 import { PaymentsPage } from '../pages/payments/PaymentsPage'
+import { TenantRoomPage } from '../pages/tenant-room/TenantRoomPage'
 import { routeItems } from './routeConfig'
 
 function getBasePath(pathname: string) {
@@ -74,6 +75,10 @@ export function AppRoutes() {
 
     if (pathname === '/payments') {
       return <PaymentsPage />
+    }
+
+    if (pathname === '/my-room') {
+      return <TenantRoomPage />
     }
 
     return <PlaceholderPage title={pageTitle} />

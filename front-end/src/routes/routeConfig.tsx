@@ -6,6 +6,7 @@ import {
   DashboardOutlined,
   FileTextOutlined,
   HomeOutlined,
+  UserSwitchOutlined,
   UserOutlined,
 } from '@ant-design/icons'
 
@@ -24,4 +25,5 @@ export const routeItems: RouteConfig[] = [
   { key: 'contracts', path: '/contracts', label: 'Contracts', icon: <FileTextOutlined /> },
   { key: 'payments', path: '/payments', label: 'Payments', icon: <CreditCardOutlined /> },
   { key: 'reports', path: '/reports', label: 'Reports', icon: <BarChartOutlined /> },
+  { key: 'my-room', path: '/my-room', label: 'My Room', icon: <UserSwitchOutlined /> },
 ]
