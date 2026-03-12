@@ -1,6 +1,10 @@
 import dayjs from 'dayjs'
 
 export type AppUserRole = 'MANAGER' | 'TENANT'
+export type ContractStatus = 'DRAFT' | 'ACTIVE' | 'ENDED' | 'CANCELLED'
+export type RoomStatus = 'ACTIVE' | 'MAINTENANCE' | 'INACTIVE'
+export type InvoiceStatus = 'DRAFT' | 'ISSUED' | 'PAID' | 'VOID' | 'OVERDUE'
+export type PaymentStatus = 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED' | 'CANCELLED'
 
 export interface AppUser {
   id: string
@@ -32,7 +36,7 @@ export interface Room {
   code: string
   floor: number | null
   area_m2: number | null
-  status: 'ACTIVE' | 'MAINTENANCE' | 'INACTIVE'
+  status: RoomStatus
   base_rent: number
   max_occupants: number
   note: string | null
@@ -41,7 +45,7 @@ export interface Room {
 export interface Contract {
   id: string
   room_id: string
-  status: 'DRAFT' | 'ACTIVE' | 'ENDED' | 'CANCELLED'
+  status: ContractStatus
   start_date: string
   move_in_date: string | null
   rent_price: number
@@ -60,7 +64,7 @@ export interface Invoice {
   contract_id: string
   room_id: string
   month: string
-  status: 'DRAFT' | 'ISSUED' | 'PAID' | 'VOID' | 'OVERDUE'
+  status: InvoiceStatus
   due_date: string | null
   issued_at: string | null
   subtotal: number
@@ -76,6 +80,14 @@ export interface InvoiceItem {
   quantity: number
   unit_price: number
   amount: number
+}
+
+export interface Payment {
+  id: string
+  invoice_id: string
+  status: PaymentStatus
+  amount: number
+  paid_at: string | null
 }
 
 export interface UtilityReading {
@@ -107,12 +119,14 @@ export interface RoommateSummary {
   is_primary: boolean
 }
 
-export interface CurrentMonthInvoiceSummary {
+export interface InvoiceSummary {
   id: string
   month: string
-  status: Invoice['status']
+  status: InvoiceStatus
+  payment_status: PaymentStatus | null
   due_date: string | null
   issued_at: string | null
+  paid_at: string | null
   rent_amount: number
   electric_amount: number
   water_amount: number
@@ -120,12 +134,22 @@ export interface CurrentMonthInvoiceSummary {
   total: number
 }
 
-export interface UtilityReadingPayload {
+export interface UtilityReadingSnapshot {
   month: string
-  electricity_prev: number | null
-  electricity_curr: number | null
-  water_prev: number | null
-  water_curr: number | null
+  current_reading: UtilityReading | null
+  previous_reading: UtilityReading | null
+  electricity_prev_value: number | null
+  electricity_curr_value: number | null
+  electricity_usage: number | null
+  water_prev_value: number | null
+  water_curr_value: number | null
+  water_usage: number | null
+}
+
+export interface UtilityReadingSubmitPayload {
+  month: string
+  electricity_curr: number
+  water_curr: number
   note: string | null
 }
 
@@ -206,7 +230,24 @@ const invoiceItems: InvoiceItem[] = [
   { id: 'item-7', invoice_id: 'inv-prev-r101', code: 'WATER', name: 'Water', quantity: 1, unit_price: 160000, amount: 160000 },
 ]
 
+const payments: Payment[] = [
+  { id: 'pay-1', invoice_id: 'inv-current-r101', status: 'PENDING', amount: 0, paid_at: null },
+  { id: 'pay-2', invoice_id: 'inv-prev-r101', status: 'SUCCEEDED', amount: 6260000, paid_at: dayjs().subtract(1, 'month').add(12, 'day').toISOString() },
+]
+
 let utilityReadings: UtilityReading[] = [
+  {
+    id: 'reading-prev-r101',
+    room_id: 'r-101',
+    month: previousMonth,
+    electricity_prev: 1330,
+    electricity_curr: 1450,
+    water_prev: 305,
+    water_curr: 320,
+    reported_by_user_id: 'u-tenant-1',
+    reported_at: dayjs().subtract(1, 'month').add(2, 'day').toISOString(),
+    note: null,
+  },
   {
     id: 'reading-current-r101',
     room_id: 'r-101',
@@ -225,18 +266,42 @@ function getCurrentAppUser(): AppUser | null {
   const storedId = localStorage.getItem(AUTH_USER_STORAGE_KEY)
   const byStoredId = storedId ? appUsers.find((user) => user.id === storedId) : null
 
-  if (byStoredId && byStoredId.is_active && byStoredId.role === 'TENANT') {
+  if (byStoredId && byStoredId.role === 'TENANT' && byStoredId.is_active) {
     return byStoredId
   }
 
   return appUsers.find((user) => user.role === 'TENANT' && user.is_active) ?? null
 }
 
-function getItemAmount(invoiceId: string, code: string) {
+function getItemAmount(invoiceId: string, code: string): number {
   return invoiceItems.filter((item) => item.invoice_id === invoiceId && item.code === code).reduce((total, item) => total + item.amount, 0)
 }
 
-function toInvoiceSummary(invoice: Invoice): CurrentMonthInvoiceSummary {
+function getLatestPayment(invoiceId: string): Payment | null {
+  const rows = payments.filter((item) => item.invoice_id === invoiceId)
+  if (rows.length === 0) {
+    return null
+  }
+  return rows[rows.length - 1]
+}
+
+function normalizeMonth(month: string): string {
+  return dayjs(month).startOf('month').format('YYYY-MM-DD')
+}
+
+function findPreviousReading(roomId: string, month: string): UtilityReading | null {
+  return (
+    utilityReadings
+      .filter((item) => item.room_id === roomId && dayjs(item.month).isBefore(dayjs(month), 'day'))
+      .sort((a, b) => dayjs(b.month).valueOf() - dayjs(a.month).valueOf())[0] ?? null
+  )
+}
+
+function findReadingByMonth(roomId: string, month: string): UtilityReading | null {
+  return utilityReadings.find((item) => item.room_id === roomId && item.month === month) ?? null
+}
+
+function mapInvoiceSummary(invoice: Invoice): InvoiceSummary {
   const rentAmount = getItemAmount(invoice.id, 'RENT')
   const electricAmount = getItemAmount(invoice.id, 'ELECTRIC')
   const waterAmount = getItemAmount(invoice.id, 'WATER')
@@ -244,24 +309,27 @@ function toInvoiceSummary(invoice: Invoice): CurrentMonthInvoiceSummary {
     .filter((item) => item.invoice_id === invoice.id && !['RENT', 'ELECTRIC', 'WATER'].includes(item.code))
     .reduce((total, item) => total + item.amount, 0)
 
-  const total = rentAmount + electricAmount + waterAmount + otherAmount - invoice.discount
+  const payment = getLatestPayment(invoice.id)
 
   return {
     id: invoice.id,
     month: invoice.month,
     status: invoice.status,
+    payment_status: payment?.status ?? null,
     due_date: invoice.due_date,
     issued_at: invoice.issued_at,
+    paid_at: payment?.paid_at ?? null,
     rent_amount: rentAmount,
     electric_amount: electricAmount,
     water_amount: waterAmount,
     other_amount: otherAmount,
-    total,
+    total: rentAmount + electricAmount + waterAmount + otherAmount - invoice.discount,
   }
 }
 
 export async function getMyRoomContext(): Promise<TenantRoomContext | null> {
-  await wait(140)
+  await wait(120)
+
   const user = getCurrentAppUser()
   if (!user) {
     return null
@@ -272,12 +340,12 @@ export async function getMyRoomContext(): Promise<TenantRoomContext | null> {
     return null
   }
 
-  const activeContractTenant = contractTenants.find((item) => item.tenant_id === tenant.id && item.left_at === null)
-  if (!activeContractTenant) {
+  const occupancy = contractTenants.find((item) => item.tenant_id === tenant.id && item.left_at === null)
+  if (!occupancy) {
     return null
   }
 
-  const contract = contracts.find((item) => item.id === activeContractTenant.contract_id && item.status === 'ACTIVE')
+  const contract = contracts.find((item) => item.id === occupancy.contract_id && item.status === 'ACTIVE')
   if (!contract) {
     return null
   }
@@ -292,17 +360,16 @@ export async function getMyRoomContext(): Promise<TenantRoomContext | null> {
     return null
   }
 
-  return { tenant, contract, room, building }
+  return { tenant, room, building, contract }
 }
 
-export async function getMyRoommates(roomId: string, contractId: string): Promise<RoommateSummary[]> {
-  await wait(120)
+export async function getMyRoommates(contractId: string): Promise<RoommateSummary[]> {
+  await wait(110)
 
   return contractTenants
     .filter((item) => item.contract_id === contractId && item.left_at === null)
     .map((item) => {
-      const tenant = tenants.find((tenantRow) => tenantRow.id === item.tenant_id)
-
+      const tenant = tenants.find((tenantItem) => tenantItem.id === item.tenant_id)
       return {
         tenant_id: item.tenant_id,
         full_name: tenant?.full_name ?? 'Unknown',
@@ -315,43 +382,76 @@ export async function getMyRoommates(roomId: string, contractId: string): Promis
     .sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || a.full_name.localeCompare(b.full_name))
 }
 
-export async function getCurrentMonthBill(contractId: string): Promise<CurrentMonthInvoiceSummary | null> {
-  await wait(130)
+export async function getCurrentMonthBill(contractId: string): Promise<InvoiceSummary | null> {
+  await wait(110)
+
   const month = dayjs().startOf('month').format('YYYY-MM-DD')
   const invoice = invoices.find((item) => item.contract_id === contractId && item.month === month)
 
-  return invoice ? toInvoiceSummary(invoice) : null
+  return invoice ? mapInvoiceSummary(invoice) : null
 }
 
-export async function listMyRecentBills(contractId: string): Promise<CurrentMonthInvoiceSummary[]> {
-  await wait(130)
+export async function listMyRecentBills(contractId: string): Promise<InvoiceSummary[]> {
+  await wait(110)
+
   return invoices
     .filter((item) => item.contract_id === contractId)
-    .map(toInvoiceSummary)
+    .map(mapInvoiceSummary)
     .sort((a, b) => dayjs(b.month).valueOf() - dayjs(a.month).valueOf())
     .slice(0, 6)
 }
 
-export async function getMyUtilityReading(roomId: string, month: string): Promise<UtilityReading | null> {
-  await wait(100)
-  const normalizedMonth = dayjs(month).startOf('month').format('YYYY-MM-DD')
-  return utilityReadings.find((item) => item.room_id === roomId && item.month === normalizedMonth) ?? null
+export async function getCurrentAndPreviousUtilityReadings(roomId: string, month: string): Promise<UtilityReadingSnapshot> {
+  await wait(110)
+
+  const normalizedMonth = normalizeMonth(month)
+  const currentReading = findReadingByMonth(roomId, normalizedMonth)
+  const previousReading = findPreviousReading(roomId, normalizedMonth)
+
+  const electricityPrevValue = currentReading?.electricity_prev ?? previousReading?.electricity_curr ?? null
+  const waterPrevValue = currentReading?.water_prev ?? previousReading?.water_curr ?? null
+  const electricityCurrValue = currentReading?.electricity_curr ?? null
+  const waterCurrValue = currentReading?.water_curr ?? null
+
+  return {
+    month: normalizedMonth,
+    current_reading: currentReading,
+    previous_reading: previousReading,
+    electricity_prev_value: electricityPrevValue,
+    electricity_curr_value: electricityCurrValue,
+    electricity_usage: electricityPrevValue !== null && electricityCurrValue !== null ? Math.max(0, electricityCurrValue - electricityPrevValue) : null,
+    water_prev_value: waterPrevValue,
+    water_curr_value: waterCurrValue,
+    water_usage: waterPrevValue !== null && waterCurrValue !== null ? Math.max(0, waterCurrValue - waterPrevValue) : null,
+  }
 }
 
-export async function upsertMyUtilityReading(roomId: string, payload: UtilityReadingPayload): Promise<UtilityReading> {
-  await wait(160)
-  const normalizedMonth = dayjs(payload.month).startOf('month').format('YYYY-MM-DD')
-  const user = getCurrentAppUser()
+export async function upsertMyUtilityReading(roomId: string, payload: UtilityReadingSubmitPayload): Promise<UtilityReading> {
+  await wait(140)
 
-  const existing = utilityReadings.find((item) => item.room_id === roomId && item.month === normalizedMonth)
+  const normalizedMonth = normalizeMonth(payload.month)
+  const currentUser = getCurrentAppUser()
+  const previousReading = findPreviousReading(roomId, normalizedMonth)
 
+  const electricityPrev = previousReading?.electricity_curr ?? null
+  const waterPrev = previousReading?.water_curr ?? null
+
+  if (electricityPrev !== null && payload.electricity_curr < electricityPrev) {
+    throw new Error('Chỉ số điện hiện tại phải lớn hơn hoặc bằng chỉ số tháng trước')
+  }
+
+  if (waterPrev !== null && payload.water_curr < waterPrev) {
+    throw new Error('Chỉ số nước hiện tại phải lớn hơn hoặc bằng chỉ số tháng trước')
+  }
+
+  const existing = findReadingByMonth(roomId, normalizedMonth)
   if (existing) {
-    existing.electricity_prev = payload.electricity_prev
+    existing.electricity_prev = electricityPrev
     existing.electricity_curr = payload.electricity_curr
-    existing.water_prev = payload.water_prev
+    existing.water_prev = waterPrev
     existing.water_curr = payload.water_curr
     existing.note = payload.note
-    existing.reported_by_user_id = user?.id ?? existing.reported_by_user_id
+    existing.reported_by_user_id = currentUser?.id ?? existing.reported_by_user_id
     existing.reported_at = new Date().toISOString()
     return existing
   }
@@ -360,13 +460,13 @@ export async function upsertMyUtilityReading(roomId: string, payload: UtilityRea
     id: crypto.randomUUID(),
     room_id: roomId,
     month: normalizedMonth,
-    electricity_prev: payload.electricity_prev,
+    electricity_prev: electricityPrev,
     electricity_curr: payload.electricity_curr,
-    water_prev: payload.water_prev,
+    water_prev: waterPrev,
     water_curr: payload.water_curr,
-    note: payload.note,
-    reported_by_user_id: user?.id ?? null,
+    reported_by_user_id: currentUser?.id ?? null,
     reported_at: new Date().toISOString(),
+    note: payload.note,
   }
 
   utilityReadings = [next, ...utilityReadings]
