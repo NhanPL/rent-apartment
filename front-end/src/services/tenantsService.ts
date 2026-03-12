@@ -2,6 +2,7 @@ import type {
   BuildingOption,
   Contract,
   ContractUpsertPayload,
+  RentalContractExportData,
   RoomOption,
   Tenant,
   TenantCurrentRoom,
@@ -13,15 +14,39 @@ import type {
 
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
 
-const buildings: BuildingOption[] = [
-  { id: 'b-1', name: 'Sunrise Riverside' },
-  { id: 'b-2', name: 'Lotus Garden' },
+interface BuildingRecord extends BuildingOption {
+  manager_user_id: string
+  address: string
+}
+
+interface RoomRecord extends RoomOption {
+  floor: number | null
+  area_m2: number | null
+}
+
+interface AppUserRecord {
+  id: string
+  phone: string | null
+}
+
+interface ManagerProfileRecord {
+  user_id: string
+  full_name: string
+}
+
+const managerUsers: AppUserRecord[] = [{ id: 'm-1', phone: '0909009009' }]
+
+const managerProfiles: ManagerProfileRecord[] = [{ user_id: 'm-1', full_name: 'Le Quoc Tuan' }]
+
+const buildings: BuildingRecord[] = [
+  { id: 'b-1', name: 'Sunrise Riverside', manager_user_id: 'm-1', address: '12 Nguyen Huu Tho, Nha Be, TP.HCM' },
+  { id: 'b-2', name: 'Lotus Garden', manager_user_id: 'm-1', address: '120 Le Dai Hanh, Hai Chau, Da Nang' },
 ]
 
-const rooms: RoomOption[] = [
-  { id: 'r-101', building_id: 'b-1', code: 'A-101' },
-  { id: 'r-202', building_id: 'b-2', code: 'B-202' },
-  { id: 'r-203', building_id: 'b-2', code: 'B-203' },
+const rooms: RoomRecord[] = [
+  { id: 'r-101', building_id: 'b-1', code: 'A-101', floor: 1, area_m2: 22 },
+  { id: 'r-202', building_id: 'b-2', code: 'B-202', floor: 2, area_m2: 28 },
+  { id: 'r-203', building_id: 'b-2', code: 'B-203', floor: 2, area_m2: 26 },
 ]
 
 let contractsDb: Contract[] = [
@@ -178,7 +203,13 @@ function withCurrentRoom(tenant: Tenant): TenantListItem {
 }
 
 function setTenantContract(tenantId: string, contractPayload: ContractUpsertPayload | null) {
-  if (!contractPayload?.room_id || !contractPayload.start_date || contractPayload.rent_price === null || contractPayload.deposit_amount === null || contractPayload.billing_day === null) {
+  if (
+    !contractPayload?.room_id ||
+    !contractPayload.start_date ||
+    contractPayload.rent_price === null ||
+    contractPayload.deposit_amount === null ||
+    contractPayload.billing_day === null
+  ) {
     currentRooms.delete(tenantId)
     return
   }
@@ -252,6 +283,72 @@ export async function getTenant(id: string): Promise<TenantDetail> {
   return {
     ...listItem,
     current_contract: currentContract,
+  }
+}
+
+export async function getTenantContractExportData(tenantId: string): Promise<RentalContractExportData> {
+  const tenant = await getTenant(tenantId)
+
+  if (!tenant.current_room) {
+    throw new Error('Tenant does not have an active room assignment.')
+  }
+
+  if (!tenant.current_contract) {
+    throw new Error('Tenant does not have an active contract.')
+  }
+
+  if (!tenant.current_contract.start_date) {
+    throw new Error('Contract start date is missing.')
+  }
+
+  const room = rooms.find((item) => item.id === tenant.current_room?.room_id)
+  if (!room) {
+    throw new Error('Assigned room data is missing.')
+  }
+
+  const building = buildings.find((item) => item.id === room.building_id)
+  if (!building) {
+    throw new Error('Assigned building data is missing.')
+  }
+
+  const managerProfile = managerProfiles.find((item) => item.user_id === building.manager_user_id)
+  if (!managerProfile) {
+    throw new Error('Landlord profile is missing.')
+  }
+
+  const managerUser = managerUsers.find((item) => item.id === building.manager_user_id) ?? null
+
+  return {
+    landlord: {
+      full_name: managerProfile.full_name,
+      phone: managerUser?.phone ?? null,
+      address: building.address,
+    },
+    tenant: {
+      full_name: tenant.full_name,
+      phone: tenant.phone,
+      email: tenant.email,
+      identity_number: tenant.identity_number,
+      permanent_address: tenant.permanent_address,
+    },
+    building: {
+      name: building.name,
+      address: building.address,
+    },
+    room: {
+      code: room.code,
+      floor: room.floor,
+      area_m2: room.area_m2,
+    },
+    contract: {
+      contract_code: tenant.current_contract.contract_code,
+      start_date: tenant.current_contract.start_date,
+      end_date: tenant.current_contract.end_date,
+      rent_price: tenant.current_contract.rent_price,
+      deposit_amount: tenant.current_contract.deposit_amount,
+      billing_day: tenant.current_contract.billing_day,
+      note: tenant.current_contract.note,
+    },
   }
 }
 

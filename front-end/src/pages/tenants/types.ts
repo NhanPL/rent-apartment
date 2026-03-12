@@ -103,3 +103,36 @@ export interface RoomOption {
   building_id: string
   code: string
 }
+
+export interface RentalContractExportData {
+  landlord: {
+    full_name: string
+    phone: string | null
+    address: string | null
+  }
+  tenant: {
+    full_name: string
+    phone: string
+    email: string | null
+    identity_number: string
+    permanent_address: string | null
+  }
+  building: {
+    name: string
+    address: string
+  }
+  room: {
+    code: string
+    floor: number | null
+    area_m2: number | null
+  }
+  contract: {
+    contract_code: string | null
+    start_date: string
+    end_date: string | null
+    rent_price: number
+    deposit_amount: number
+    billing_day: number
+    note: string | null
+  }
+}
