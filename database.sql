@@ -1,4 +1,14 @@
 -- ============================================================
+-- Rental Management System - Full Database Schema
+-- Includes:
+-- - Core rental management
+-- - Utility reading workflow with evidence approval
+-- - Invoice generation
+-- - QR / bank transfer payment request flow
+-- - Transfer proof approval
+-- ============================================================
+
+-- ============================================================
 -- 0) Extensions
 -- ============================================================
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -54,23 +64,35 @@ DO $$ BEGIN
   CREATE TYPE txn_status AS ENUM ('CREATED', 'REDIRECTED', 'PENDING', 'SUCCEEDED', 'FAILED', 'CANCELLED', 'EXPIRED', 'REFUNDED');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+DO $$ BEGIN
+  CREATE TYPE utility_reading_status AS ENUM ('DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'INVOICED');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE payment_request_status AS ENUM ('DRAFT', 'WAITING_TRANSFER', 'TRANSFER_SUBMITTED', 'VERIFIED', 'REJECTED', 'CANCELLED', 'EXPIRED');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  CREATE TYPE payment_proof_status AS ENUM ('PENDING', 'APPROVED', 'REJECTED');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
 -- ============================================================
 -- 3) Users (account login) - cả manager và tenant
 -- ============================================================
 CREATE TABLE IF NOT EXISTS app_user (
-  id              uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-  role            user_role NOT NULL,
+  id               uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  role             user_role NOT NULL,
 
-  email           citext UNIQUE,
-  phone           varchar(20) UNIQUE,
-  username        citext UNIQUE,
-  password_hash   text NOT NULL,
+  email            citext UNIQUE,
+  phone            varchar(20) UNIQUE,
+  username         citext UNIQUE,
+  password_hash    text NOT NULL,
 
-  is_active       boolean NOT NULL DEFAULT true,
-  last_login_at   timestamptz,
+  is_active        boolean NOT NULL DEFAULT true,
+  last_login_at    timestamptz,
 
-  created_at      timestamptz NOT NULL DEFAULT now(),
-  updated_at      timestamptz NOT NULL DEFAULT now()
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now()
 );
 
 DROP TRIGGER IF EXISTS trg_app_user_updated_at ON app_user;
@@ -78,14 +100,13 @@ CREATE TRIGGER trg_app_user_updated_at
 BEFORE UPDATE ON app_user
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- Manager profile (thông tin thêm cho manager)
 CREATE TABLE IF NOT EXISTS manager_profile (
-  user_id     uuid PRIMARY KEY REFERENCES app_user(id) ON DELETE CASCADE,
-  full_name   text NOT NULL,
-  note        text,
+  user_id          uuid PRIMARY KEY REFERENCES app_user(id) ON DELETE CASCADE,
+  full_name        text NOT NULL,
+  note             text,
 
-  created_at  timestamptz NOT NULL DEFAULT now(),
-  updated_at  timestamptz NOT NULL DEFAULT now()
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now()
 );
 
 DROP TRIGGER IF EXISTS trg_manager_profile_updated_at ON manager_profile;
@@ -133,16 +154,16 @@ FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 -- 5) Buildings & Rooms
 -- ============================================================
 CREATE TABLE IF NOT EXISTS building (
-  id              uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-  manager_user_id uuid NOT NULL REFERENCES app_user(id) ON DELETE RESTRICT,
+  id               uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  manager_user_id  uuid NOT NULL REFERENCES app_user(id) ON DELETE RESTRICT,
 
-  code            varchar(50) NOT NULL,
-  name            text NOT NULL,
-  address         text NOT NULL,
-  note            text,
+  code             varchar(50) NOT NULL,
+  name             text NOT NULL,
+  address          text NOT NULL,
+  note             text,
 
-  created_at      timestamptz NOT NULL DEFAULT now(),
-  updated_at      timestamptz NOT NULL DEFAULT now(),
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now(),
 
   CONSTRAINT uq_building_manager_code UNIQUE (manager_user_id, code)
 );
@@ -155,21 +176,21 @@ BEFORE UPDATE ON building
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TABLE IF NOT EXISTS room (
-  id              uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-  building_id     uuid NOT NULL REFERENCES building(id) ON DELETE CASCADE,
+  id               uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  building_id      uuid NOT NULL REFERENCES building(id) ON DELETE CASCADE,
 
-  code            varchar(50) NOT NULL,
-  floor           integer,
-  area_m2         numeric(10,2),
-  status          room_status NOT NULL DEFAULT 'ACTIVE',
+  code             varchar(50) NOT NULL,
+  floor            integer,
+  area_m2          numeric(10,2),
+  status           room_status NOT NULL DEFAULT 'ACTIVE',
 
-  base_rent       numeric(14,2) NOT NULL DEFAULT 0,
-  deposit_default numeric(14,2) NOT NULL DEFAULT 0,
-  max_occupants   integer NOT NULL DEFAULT 1,
+  base_rent        numeric(14,2) NOT NULL DEFAULT 0,
+  deposit_default  numeric(14,2) NOT NULL DEFAULT 0,
+  max_occupants    integer NOT NULL DEFAULT 1,
 
-  note            text,
-  created_at      timestamptz NOT NULL DEFAULT now(),
-  updated_at      timestamptz NOT NULL DEFAULT now(),
+  note             text,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now(),
 
   CONSTRAINT uq_room_building_code UNIQUE (building_id, code),
   CONSTRAINT ck_room_money CHECK (base_rent >= 0 AND deposit_default >= 0),
@@ -187,25 +208,25 @@ FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 -- 6) Contract (hợp đồng) + Contract tenants (ở ghép)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS contract (
-  id              uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-  room_id         uuid NOT NULL REFERENCES room(id) ON DELETE RESTRICT,
+  id               uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  room_id          uuid NOT NULL REFERENCES room(id) ON DELETE RESTRICT,
 
-  contract_code   varchar(50),
-  status          contract_status NOT NULL DEFAULT 'DRAFT',
+  contract_code    varchar(50),
+  status           contract_status NOT NULL DEFAULT 'DRAFT',
 
-  start_date      date NOT NULL,
-  end_date        date,
-  move_in_date    date,
-  move_out_date   date,
+  start_date       date NOT NULL,
+  end_date         date,
+  move_in_date     date,
+  move_out_date    date,
 
-  rent_price      numeric(14,2) NOT NULL DEFAULT 0,
-  deposit_amount  numeric(14,2) NOT NULL DEFAULT 0,
+  rent_price       numeric(14,2) NOT NULL DEFAULT 0,
+  deposit_amount   numeric(14,2) NOT NULL DEFAULT 0,
 
-  billing_day     integer NOT NULL DEFAULT 1, -- 1..28
-  note            text,
+  billing_day      integer NOT NULL DEFAULT 1,
+  note             text,
 
-  created_at      timestamptz NOT NULL DEFAULT now(),
-  updated_at      timestamptz NOT NULL DEFAULT now(),
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  updated_at       timestamptz NOT NULL DEFAULT now(),
 
   CONSTRAINT ck_contract_dates CHECK (end_date IS NULL OR end_date >= start_date),
   CONSTRAINT ck_contract_money CHECK (rent_price >= 0 AND deposit_amount >= 0),
@@ -222,12 +243,12 @@ BEFORE UPDATE ON contract
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TABLE IF NOT EXISTS contract_tenant (
-  contract_id  uuid NOT NULL REFERENCES contract(id) ON DELETE CASCADE,
-  tenant_id    uuid NOT NULL REFERENCES tenant(id) ON DELETE RESTRICT,
+  contract_id       uuid NOT NULL REFERENCES contract(id) ON DELETE CASCADE,
+  tenant_id         uuid NOT NULL REFERENCES tenant(id) ON DELETE RESTRICT,
 
-  is_primary   boolean NOT NULL DEFAULT false,
-  joined_at    date NOT NULL DEFAULT current_date,
-  left_at      date,
+  is_primary        boolean NOT NULL DEFAULT false,
+  joined_at         date NOT NULL DEFAULT current_date,
+  left_at           date,
 
   PRIMARY KEY (contract_id, tenant_id),
   CONSTRAINT ck_contract_tenant_dates CHECK (left_at IS NULL OR left_at >= joined_at)
@@ -240,25 +261,24 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_contract_primary_tenant
 ON contract_tenant(contract_id)
 WHERE is_primary = true;
 
--- 1 phòng chỉ có tối đa 1 hợp đồng ACTIVE
 CREATE UNIQUE INDEX IF NOT EXISTS uq_room_active_contract
 ON contract(room_id)
 WHERE status = 'ACTIVE';
 
 -- ============================================================
--- 7) Utility rates & monthly readings (điện/nước theo chỉ số)
+-- 7) Utility rates & monthly readings
 -- ============================================================
 CREATE TABLE IF NOT EXISTS utility_rate (
-  id                      uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-  building_id             uuid NOT NULL REFERENCES building(id) ON DELETE CASCADE,
+  id                       uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  building_id              uuid NOT NULL REFERENCES building(id) ON DELETE CASCADE,
 
-  effective_from          date NOT NULL,
-  electricity_unit_price  numeric(14,2) NOT NULL DEFAULT 0,
-  water_unit_price        numeric(14,2) NOT NULL DEFAULT 0,
+  effective_from           date NOT NULL,
+  electricity_unit_price   numeric(14,2) NOT NULL DEFAULT 0,
+  water_unit_price         numeric(14,2) NOT NULL DEFAULT 0,
 
-  note                    text,
-  created_at              timestamptz NOT NULL DEFAULT now(),
-  updated_at              timestamptz NOT NULL DEFAULT now(),
+  note                     text,
+  created_at               timestamptz NOT NULL DEFAULT now(),
+  updated_at               timestamptz NOT NULL DEFAULT now(),
 
   CONSTRAINT ck_utility_rate_money CHECK (electricity_unit_price >= 0 AND water_unit_price >= 0),
   CONSTRAINT uq_utility_rate_effective UNIQUE (building_id, effective_from)
@@ -282,41 +302,87 @@ CREATE TABLE IF NOT EXISTS utility_reading (
   water_prev            numeric(14,3),
   water_curr            numeric(14,3),
 
+  status                utility_reading_status NOT NULL DEFAULT 'DRAFT',
+
   reported_by_user_id   uuid REFERENCES app_user(id) ON DELETE SET NULL,
   reported_at           timestamptz,
+  submitted_at          timestamptz,
+
   verified_by_user_id   uuid REFERENCES app_user(id) ON DELETE SET NULL,
   verified_at           timestamptz,
 
+  approved_by_user_id   uuid REFERENCES app_user(id) ON DELETE SET NULL,
+  approved_at           timestamptz,
+
+  rejected_by_user_id   uuid REFERENCES app_user(id) ON DELETE SET NULL,
+  rejected_at           timestamptz,
+  rejection_reason      text,
+
+  manager_note          text,
   note                  text,
+
   created_at            timestamptz NOT NULL DEFAULT now(),
   updated_at            timestamptz NOT NULL DEFAULT now(),
 
   CONSTRAINT uq_reading_room_month UNIQUE (room_id, month),
   CONSTRAINT ck_reading_month_is_first_day CHECK (extract(day from month) = 1),
-  CONSTRAINT ck_reading_elec CHECK (electricity_prev IS NULL OR electricity_curr IS NULL OR electricity_curr >= electricity_prev),
-  CONSTRAINT ck_reading_water CHECK (water_prev IS NULL OR water_curr IS NULL OR water_curr >= water_prev)
+  CONSTRAINT ck_reading_elec CHECK (
+    electricity_prev IS NULL OR electricity_curr IS NULL OR electricity_curr >= electricity_prev
+  ),
+  CONSTRAINT ck_reading_water CHECK (
+    water_prev IS NULL OR water_curr IS NULL OR water_curr >= water_prev
+  )
 );
 
 CREATE INDEX IF NOT EXISTS idx_utility_reading_room_month
 ON utility_reading(room_id, month DESC);
+
+CREATE INDEX IF NOT EXISTS idx_utility_reading_status
+ON utility_reading(status);
 
 DROP TRIGGER IF EXISTS trg_utility_reading_updated_at ON utility_reading;
 CREATE TRIGGER trg_utility_reading_updated_at
 BEFORE UPDATE ON utility_reading
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+CREATE TABLE IF NOT EXISTS utility_reading_evidence (
+  id                    uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  utility_reading_id    uuid NOT NULL REFERENCES utility_reading(id) ON DELETE CASCADE,
+
+  evidence_type         varchar(20) NOT NULL, -- ELECTRIC / WATER / OTHER
+  file_name             text,
+  file_url              text NOT NULL,
+  mime_type             varchar(100),
+  file_size             bigint,
+
+  uploaded_by_user_id   uuid REFERENCES app_user(id) ON DELETE SET NULL,
+  uploaded_at           timestamptz NOT NULL DEFAULT now(),
+
+  note                  text,
+  created_at            timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT ck_utility_reading_evidence_type
+    CHECK (evidence_type IN ('ELECTRIC', 'WATER', 'OTHER'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_utility_reading_evidence_reading
+ON utility_reading_evidence(utility_reading_id);
+
+CREATE INDEX IF NOT EXISTS idx_utility_reading_evidence_type
+ON utility_reading_evidence(evidence_type);
+
 -- ============================================================
--- 8) Flexible fixed charges: WIFI/RAC/XE... (có hoặc không)
+-- 8) Flexible fixed charges
 -- ============================================================
 CREATE TABLE IF NOT EXISTS charge_catalog (
-  id           uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-  code         varchar(50) NOT NULL UNIQUE, -- WIFI/TRASH/PARKING...
-  name         text NOT NULL,
-  charge_type  charge_type NOT NULL,        -- FLAT/PER_PERSON/PER_VEHICLE
-  is_active    boolean NOT NULL DEFAULT true,
-  note         text,
-  created_at   timestamptz NOT NULL DEFAULT now(),
-  updated_at   timestamptz NOT NULL DEFAULT now()
+  id              uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  code            varchar(50) NOT NULL UNIQUE,
+  name            text NOT NULL,
+  charge_type     charge_type NOT NULL,
+  is_active       boolean NOT NULL DEFAULT true,
+  note            text,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  updated_at      timestamptz NOT NULL DEFAULT now()
 );
 
 DROP TRIGGER IF EXISTS trg_charge_catalog_updated_at ON charge_catalog;
@@ -324,7 +390,6 @@ CREATE TRIGGER trg_charge_catalog_updated_at
 BEFORE UPDATE ON charge_catalog
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- default theo Building
 CREATE TABLE IF NOT EXISTS building_charge (
   id              uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   building_id     uuid NOT NULL REFERENCES building(id) ON DELETE CASCADE,
@@ -349,7 +414,6 @@ CREATE TRIGGER trg_building_charge_updated_at
 BEFORE UPDATE ON building_charge
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- override theo Room (nếu phòng có phí riêng / giá riêng)
 CREATE TABLE IF NOT EXISTS room_charge_override (
   id              uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   room_id         uuid NOT NULL REFERENCES room(id) ON DELETE CASCADE,
@@ -374,7 +438,6 @@ CREATE TRIGGER trg_room_charge_override_updated_at
 BEFORE UPDATE ON room_charge_override
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- override theo Contract (mạnh nhất - deal riêng theo hợp đồng)
 CREATE TABLE IF NOT EXISTS contract_charge_override (
   id              uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   contract_id     uuid NOT NULL REFERENCES contract(id) ON DELETE CASCADE,
@@ -401,21 +464,20 @@ CREATE TRIGGER trg_contract_charge_override_updated_at
 BEFORE UPDATE ON contract_charge_override
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- dữ liệu phát sinh theo tháng cho phòng: số người/số xe (để tính PER_PERSON/PER_VEHICLE)
 CREATE TABLE IF NOT EXISTS room_month_extra (
-  id                  uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-  room_id             uuid NOT NULL REFERENCES room(id) ON DELETE CASCADE,
-  month               date NOT NULL, -- YYYY-MM-01
+  id                   uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  room_id              uuid NOT NULL REFERENCES room(id) ON DELETE CASCADE,
+  month                date NOT NULL,
 
-  persons_count       integer,
-  vehicles_count      integer,
+  persons_count        integer,
+  vehicles_count       integer,
 
-  reported_by_user_id uuid REFERENCES app_user(id) ON DELETE SET NULL,
-  reported_at         timestamptz,
+  reported_by_user_id  uuid REFERENCES app_user(id) ON DELETE SET NULL,
+  reported_at          timestamptz,
 
-  note                text,
-  created_at          timestamptz NOT NULL DEFAULT now(),
-  updated_at          timestamptz NOT NULL DEFAULT now(),
+  note                 text,
+  created_at           timestamptz NOT NULL DEFAULT now(),
+  updated_at           timestamptz NOT NULL DEFAULT now(),
 
   CONSTRAINT uq_room_month_extra UNIQUE (room_id, month),
   CONSTRAINT ck_room_month_extra_month CHECK (extract(day from month) = 1),
@@ -434,25 +496,31 @@ BEFORE UPDATE ON room_month_extra
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ============================================================
--- 9) Invoices & items (xuất hóa đơn tháng)
+-- 9) Invoices & items
 -- ============================================================
 CREATE TABLE IF NOT EXISTS invoice (
-  id            uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-  contract_id   uuid NOT NULL REFERENCES contract(id) ON DELETE RESTRICT,
-  room_id       uuid NOT NULL REFERENCES room(id) ON DELETE RESTRICT, -- denormalize để query nhanh
-  month         date NOT NULL, -- YYYY-MM-01
-  status        invoice_status NOT NULL DEFAULT 'DRAFT',
+  id                  uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  contract_id         uuid NOT NULL REFERENCES contract(id) ON DELETE RESTRICT,
+  room_id             uuid NOT NULL REFERENCES room(id) ON DELETE RESTRICT,
+  utility_reading_id  uuid REFERENCES utility_reading(id) ON DELETE SET NULL,
 
-  issued_at     timestamptz,
-  due_date      date,
-  note          text,
+  month               date NOT NULL,
+  status              invoice_status NOT NULL DEFAULT 'DRAFT',
 
-  subtotal      numeric(14,2) NOT NULL DEFAULT 0,
-  discount      numeric(14,2) NOT NULL DEFAULT 0,
-  total         numeric(14,2) NOT NULL DEFAULT 0,
+  issued_at           timestamptz,
+  due_date            date,
+  note                text,
 
-  created_at    timestamptz NOT NULL DEFAULT now(),
-  updated_at    timestamptz NOT NULL DEFAULT now(),
+  subtotal            numeric(14,2) NOT NULL DEFAULT 0,
+  discount            numeric(14,2) NOT NULL DEFAULT 0,
+  total               numeric(14,2) NOT NULL DEFAULT 0,
+
+  approved_by_user_id uuid REFERENCES app_user(id) ON DELETE SET NULL,
+  approved_at         timestamptz,
+  adjustment_note     text,
+
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  updated_at          timestamptz NOT NULL DEFAULT now(),
 
   CONSTRAINT uq_invoice_contract_month UNIQUE (contract_id, month),
   CONSTRAINT ck_invoice_month_is_first_day CHECK (extract(day from month) = 1),
@@ -461,6 +529,7 @@ CREATE TABLE IF NOT EXISTS invoice (
 
 CREATE INDEX IF NOT EXISTS idx_invoice_room_month ON invoice(room_id, month DESC);
 CREATE INDEX IF NOT EXISTS idx_invoice_status ON invoice(status);
+CREATE INDEX IF NOT EXISTS idx_invoice_utility_reading ON invoice(utility_reading_id);
 
 DROP TRIGGER IF EXISTS trg_invoice_updated_at ON invoice;
 CREATE TRIGGER trg_invoice_updated_at
@@ -471,7 +540,7 @@ CREATE TABLE IF NOT EXISTS invoice_item (
   id          uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   invoice_id  uuid NOT NULL REFERENCES invoice(id) ON DELETE CASCADE,
 
-  code        varchar(50) NOT NULL, -- RENT/ELECTRIC/WATER/WIFI/TRASH/PARKING/OTHER...
+  code        varchar(50) NOT NULL,
   name        text NOT NULL,
 
   quantity    numeric(14,3) NOT NULL DEFAULT 1,
@@ -487,66 +556,174 @@ CREATE TABLE IF NOT EXISTS invoice_item (
 CREATE INDEX IF NOT EXISTS idx_invoice_item_invoice ON invoice_item(invoice_id);
 CREATE INDEX IF NOT EXISTS idx_invoice_item_code ON invoice_item(code);
 
+CREATE TABLE IF NOT EXISTS invoice_adjustment (
+  id                  uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  invoice_id          uuid NOT NULL REFERENCES invoice(id) ON DELETE CASCADE,
+
+  adjustment_type     varchar(30) NOT NULL,
+  amount              numeric(14,2) NOT NULL,
+  reason              text NOT NULL,
+
+  created_by_user_id  uuid REFERENCES app_user(id) ON DELETE SET NULL,
+  created_at          timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT ck_invoice_adjustment_amount_non_zero CHECK (amount <> 0),
+  CONSTRAINT ck_invoice_adjustment_type CHECK (
+    adjustment_type IN ('MANUAL_ADD', 'MANUAL_DISCOUNT', 'CORRECTION')
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_invoice_adjustment_invoice
+ON invoice_adjustment(invoice_id);
+
 -- ============================================================
--- 10) Payments (business record) + gateway transactions
+-- 10) Payment request / proof / final payment / gateway transactions
 -- ============================================================
+CREATE TABLE IF NOT EXISTS payment_request (
+  id                   uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  invoice_id           uuid NOT NULL REFERENCES invoice(id) ON DELETE RESTRICT,
+
+  status               payment_request_status NOT NULL DEFAULT 'DRAFT',
+
+  amount               numeric(14,2) NOT NULL,
+  currency             varchar(10) NOT NULL DEFAULT 'VND',
+
+  qr_content           text,
+  qr_image_url         text,
+  bank_code            varchar(50),
+  bank_account_no      varchar(50),
+  bank_account_name    text,
+  transfer_note        varchar(255),
+  expires_at           timestamptz,
+  sent_at              timestamptz,
+
+  created_by_user_id   uuid REFERENCES app_user(id) ON DELETE SET NULL,
+  approved_by_user_id  uuid REFERENCES app_user(id) ON DELETE SET NULL,
+  approved_at          timestamptz,
+
+  note                 text,
+  created_at           timestamptz NOT NULL DEFAULT now(),
+  updated_at           timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT uq_payment_request_invoice UNIQUE (invoice_id),
+  CONSTRAINT ck_payment_request_amount CHECK (amount > 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_payment_request_status
+ON payment_request(status);
+
+CREATE INDEX IF NOT EXISTS idx_payment_request_expires
+ON payment_request(expires_at);
+
+DROP TRIGGER IF EXISTS trg_payment_request_updated_at ON payment_request;
+CREATE TRIGGER trg_payment_request_updated_at
+BEFORE UPDATE ON payment_request
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TABLE IF NOT EXISTS payment_proof (
+  id                    uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  payment_request_id    uuid NOT NULL REFERENCES payment_request(id) ON DELETE CASCADE,
+
+  status                payment_proof_status NOT NULL DEFAULT 'PENDING',
+
+  file_name             text,
+  file_url              text NOT NULL,
+  mime_type             varchar(100),
+  file_size             bigint,
+
+  submitted_by_user_id  uuid REFERENCES app_user(id) ON DELETE SET NULL,
+  submitted_at          timestamptz NOT NULL DEFAULT now(),
+
+  approved_by_user_id   uuid REFERENCES app_user(id) ON DELETE SET NULL,
+  approved_at           timestamptz,
+  rejected_by_user_id   uuid REFERENCES app_user(id) ON DELETE SET NULL,
+  rejected_at           timestamptz,
+  rejection_reason      text,
+
+  transfer_amount       numeric(14,2),
+  transfer_time         timestamptz,
+  payer_note            text,
+  manager_note          text,
+
+  created_at            timestamptz NOT NULL DEFAULT now(),
+  updated_at            timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT ck_payment_proof_amount CHECK (
+    transfer_amount IS NULL OR transfer_amount > 0
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_payment_proof_request
+ON payment_proof(payment_request_id);
+
+CREATE INDEX IF NOT EXISTS idx_payment_proof_status
+ON payment_proof(status);
+
+DROP TRIGGER IF EXISTS trg_payment_proof_updated_at ON payment_proof;
+CREATE TRIGGER trg_payment_proof_updated_at
+BEFORE UPDATE ON payment_proof
+FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
 CREATE TABLE IF NOT EXISTS payment (
-  id                uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-  invoice_id         uuid NOT NULL REFERENCES invoice(id) ON DELETE RESTRICT,
+  id                  uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  invoice_id          uuid NOT NULL REFERENCES invoice(id) ON DELETE RESTRICT,
+  payment_request_id  uuid UNIQUE REFERENCES payment_request(id) ON DELETE SET NULL,
+  payment_proof_id    uuid UNIQUE REFERENCES payment_proof(id) ON DELETE SET NULL,
 
-  method            payment_method NOT NULL DEFAULT 'CASH',
-  status            payment_status NOT NULL DEFAULT 'PENDING',
+  method              payment_method NOT NULL DEFAULT 'CASH',
+  status              payment_status NOT NULL DEFAULT 'PENDING',
 
-  amount            numeric(14,2) NOT NULL,
-  paid_at           timestamptz,
-  reference_code    varchar(100),
-  note              text,
+  amount              numeric(14,2) NOT NULL,
+  paid_at             timestamptz,
+  reference_code      varchar(100),
+  note                text,
 
-  created_by_user_id uuid REFERENCES app_user(id) ON DELETE SET NULL,
+  created_by_user_id  uuid REFERENCES app_user(id) ON DELETE SET NULL,
 
-  created_at        timestamptz NOT NULL DEFAULT now(),
-  updated_at        timestamptz NOT NULL DEFAULT now(),
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  updated_at          timestamptz NOT NULL DEFAULT now(),
 
   CONSTRAINT ck_payment_amount CHECK (amount > 0)
 );
 
 CREATE INDEX IF NOT EXISTS idx_payment_invoice ON payment(invoice_id);
 CREATE INDEX IF NOT EXISTS idx_payment_status ON payment(status);
+CREATE INDEX IF NOT EXISTS idx_payment_request_id ON payment(payment_request_id);
+CREATE INDEX IF NOT EXISTS idx_payment_proof_id ON payment(payment_proof_id);
 
 DROP TRIGGER IF EXISTS trg_payment_updated_at ON payment;
 CREATE TRIGGER trg_payment_updated_at
 BEFORE UPDATE ON payment
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- gateway transaction lưu request/redirect/callback payload để debug VNPAY/MoMo
 CREATE TABLE IF NOT EXISTS payment_transaction (
-  id                uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-  payment_id         uuid NOT NULL REFERENCES payment(id) ON DELETE CASCADE,
+  id                  uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  payment_id          uuid NOT NULL REFERENCES payment(id) ON DELETE CASCADE,
 
-  provider           gateway_provider NOT NULL,
-  status             txn_status NOT NULL DEFAULT 'CREATED',
+  provider            gateway_provider NOT NULL,
+  status              txn_status NOT NULL DEFAULT 'CREATED',
 
-  amount             numeric(14,2) NOT NULL,
-  currency           varchar(10) NOT NULL DEFAULT 'VND',
+  amount              numeric(14,2) NOT NULL,
+  currency            varchar(10) NOT NULL DEFAULT 'VND',
 
-  merchant_order_id  varchar(100) NOT NULL,
-  provider_txn_id    varchar(100),
-  provider_ref       varchar(150),
+  merchant_order_id   varchar(100) NOT NULL,
+  provider_txn_id     varchar(100),
+  provider_ref        varchar(150),
 
-  redirect_url       text,
-  return_url         text,
-  ipn_url            text,
+  redirect_url        text,
+  return_url          text,
+  ipn_url             text,
 
-  request_payload    jsonb,
-  redirect_payload   jsonb,
-  callback_payload   jsonb,
+  request_payload     jsonb,
+  redirect_payload    jsonb,
+  callback_payload    jsonb,
 
-  signature_valid    boolean,
-  paid_at            timestamptz,
-  failed_reason      text,
+  signature_valid     boolean,
+  paid_at             timestamptz,
+  failed_reason       text,
 
-  created_at         timestamptz NOT NULL DEFAULT now(),
-  updated_at         timestamptz NOT NULL DEFAULT now(),
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  updated_at          timestamptz NOT NULL DEFAULT now(),
 
   CONSTRAINT ck_txn_amount CHECK (amount > 0),
   CONSTRAINT uq_txn_merchant_order UNIQUE (merchant_order_id)
@@ -562,18 +739,18 @@ BEFORE UPDATE ON payment_transaction
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ============================================================
--- 11) Contract documents (in hợp đồng / lưu file)
+-- 11) Contract documents
 -- ============================================================
 CREATE TABLE IF NOT EXISTS contract_document (
-  id            uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-  contract_id   uuid NOT NULL REFERENCES contract(id) ON DELETE CASCADE,
+  id             uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  contract_id    uuid NOT NULL REFERENCES contract(id) ON DELETE CASCADE,
 
-  doc_type      varchar(50) NOT NULL, -- SIGNED_PDF / TEMPLATE_RENDER / ...
-  file_name     text,
-  file_url      text,
-  content_json  jsonb,
+  doc_type       varchar(50) NOT NULL,
+  file_name      text,
+  file_url       text,
+  content_json   jsonb,
 
-  created_at    timestamptz NOT NULL DEFAULT now()
+  created_at     timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_contract_document_contract ON contract_document(contract_id);
@@ -581,8 +758,6 @@ CREATE INDEX IF NOT EXISTS idx_contract_document_contract ON contract_document(c
 -- ============================================================
 -- 12) Views hỗ trợ query nhanh cho quản lý
 -- ============================================================
-
--- View: phòng đang có ai ở + số người
 CREATE OR REPLACE VIEW vw_room_occupancy AS
 SELECT
   r.id AS room_id,
@@ -599,7 +774,6 @@ LEFT JOIN contract_tenant ct
   ON ct.contract_id = c.id
 GROUP BY r.id, r.building_id, r.code, c.id, c.start_date, c.rent_price;
 
--- View: tenant hiện đang ở phòng nào
 CREATE OR REPLACE VIEW vw_tenant_current_room AS
 SELECT
   t.id AS tenant_id,
@@ -618,7 +792,6 @@ JOIN contract c ON c.id = ct.contract_id AND c.status = 'ACTIVE'
 JOIN room r ON r.id = c.room_id
 JOIN building b ON b.id = r.building_id;
 
--- View: trạng thái hóa đơn theo phòng/tháng
 CREATE OR REPLACE VIEW vw_room_invoice_status AS
 SELECT
   i.room_id,
@@ -626,3 +799,47 @@ SELECT
   i.status,
   i.total
 FROM invoice i;
+
+CREATE OR REPLACE VIEW vw_room_utility_reading_workflow AS
+SELECT
+  ur.id AS utility_reading_id,
+  ur.room_id,
+  r.code AS room_code,
+  r.building_id,
+  b.name AS building_name,
+  ur.month,
+  ur.status,
+  ur.electricity_prev,
+  ur.electricity_curr,
+  ur.water_prev,
+  ur.water_curr,
+  ur.reported_by_user_id,
+  ur.reported_at,
+  ur.submitted_at,
+  ur.approved_by_user_id,
+  ur.approved_at,
+  ur.rejected_by_user_id,
+  ur.rejected_at,
+  ur.rejection_reason,
+  ur.manager_note
+FROM utility_reading ur
+JOIN room r ON r.id = ur.room_id
+JOIN building b ON b.id = r.building_id;
+
+CREATE OR REPLACE VIEW vw_invoice_payment_request_status AS
+SELECT
+  pr.id AS payment_request_id,
+  pr.invoice_id,
+  i.room_id,
+  i.contract_id,
+  i.month,
+  i.total AS invoice_total,
+  pr.amount AS request_amount,
+  pr.status AS payment_request_status,
+  pr.transfer_note,
+  pr.qr_image_url,
+  pr.expires_at,
+  pr.sent_at,
+  pr.created_at
+FROM payment_request pr
+JOIN invoice i ON i.id = pr.invoice_id;
