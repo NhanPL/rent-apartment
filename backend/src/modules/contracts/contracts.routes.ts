@@ -1,0 +1,43 @@
+import { Router } from 'express';
+import { query, withTransaction } from '../../db';
+import { requireRole } from '../../shared/middleware/auth';
+
+const router = Router();
+
+router.get('/', requireRole('MANAGER'), async (_req, res) => {
+  const { rows } = await query('SELECT * FROM contract ORDER BY created_at DESC');
+  res.json(rows);
+});
+
+router.get('/:id', requireRole('MANAGER'), async (req, res) => {
+  const [contract, tenants] = await Promise.all([
+    query('SELECT * FROM contract WHERE id=$1', [req.params.id]),
+    query('SELECT * FROM contract_tenant WHERE contract_id=$1', [req.params.id])
+  ]);
+  res.json({ ...contract.rows[0], tenants: tenants.rows });
+});
+
+router.post('/', requireRole('MANAGER'), async (req, res) => {
+  const b = req.body;
+  const data = await withTransaction(async (client) => {
+    const c = await client.query(
+      `INSERT INTO contract(room_id,contract_code,status,start_date,end_date,move_in_date,move_out_date,rent_price,deposit_amount,billing_day,note)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [b.room_id, b.contract_code ?? null, b.status ?? 'DRAFT', b.start_date, b.end_date ?? null, b.move_in_date ?? null, b.move_out_date ?? null, b.rent_price ?? 0, b.deposit_amount ?? 0, b.billing_day ?? 1, b.note ?? null]
+    );
+
+    if (Array.isArray(b.tenants)) {
+      for (const t of b.tenants) {
+        await client.query(
+          `INSERT INTO contract_tenant(contract_id,tenant_id,is_primary,joined_at,left_at) VALUES($1,$2,$3,$4,$5)`,
+          [c.rows[0].id, t.tenant_id, t.is_primary ?? false, t.joined_at ?? b.start_date, t.left_at ?? null]
+        );
+      }
+    }
+    return c.rows[0];
+  });
+
+  res.status(201).json(data);
+});
+
+export default router;
