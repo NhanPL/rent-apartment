@@ -6,6 +6,10 @@ dotenv.config();
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   DATABASE_URL: z.string().min(1),
+  JWT_ACCESS_SECRET: z.string().min(1),
+  JWT_REFRESH_SECRET: z.string().min(1),
+  JWT_ACCESS_EXPIRES_IN: z.string().default('1d'),
+  JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
   DEFAULT_BANK_CODE: z.string().optional(),
   DEFAULT_BANK_ACCOUNT_NO: z.string().optional(),
   DEFAULT_BANK_ACCOUNT_NAME: z.string().optional()

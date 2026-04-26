@@ -82,3 +82,20 @@
     padding: 14px 8px;
   }
 }
+
+.user-menu-button {
+  margin-left: auto;
+  max-width: 220px;
+}
+
+.user-menu-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 767px) {
+  .user-menu-button {
+    max-width: 140px;
+    padding-inline: 4px;
+  }
+}

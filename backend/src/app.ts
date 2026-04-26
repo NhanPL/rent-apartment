@@ -8,6 +8,7 @@ import invoicesRoutes from './modules/invoices/invoices.routes';
 import paymentsRoutes from './modules/payments/payments.routes';
 import meRoutes from './modules/me/me.routes';
 import uploadsRoutes from './modules/uploads/uploads.routes';
+import authRoutes from './modules/auth/auth.routes';
 import { requireAuth } from './shared/middleware/auth';
 import { errorHandler } from './shared/middleware/error-handler';
 
@@ -15,6 +16,7 @@ export const app = express();
 app.use(express.json());
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
+app.use('/api/auth', authRoutes);
 
 app.use('/api', requireAuth);
 app.use('/api/buildings', buildingsRoutes);
