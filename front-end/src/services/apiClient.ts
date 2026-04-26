@@ -1,6 +1,7 @@
 import { clearAuthStorage, getAccessToken, getRefreshToken, setTokens } from '../features/auth/authStorage'
+import { API_ROUTES } from './apiRoutes'
 
-const API_BASE_URL = '/api'
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? 'http://localhost:5000/api'
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
@@ -12,13 +13,29 @@ interface RequestOptions {
   retry?: boolean
 }
 
+interface ApiErrorPayload {
+  message?: string
+  code?: string
+}
+
+export class ApiError extends Error {
+  constructor(message: string, public code: string = 'REQUEST_FAILED', public status?: number) {
+    super(message)
+  }
+}
+
+async function parseError(response: Response): Promise<ApiError> {
+  const payload = (await response.json().catch(() => null)) as ApiErrorPayload | null
+  return new ApiError(payload?.message ?? 'Request failed', payload?.code ?? 'REQUEST_FAILED', response.status)
+}
+
 async function tryRefreshToken() {
   const refreshToken = getRefreshToken()
   if (!refreshToken) {
     return false
   }
 
-  const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+  const response = await fetch(`${API_BASE_URL}${API_ROUTES.auth.refresh}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ refreshToken }),
@@ -61,12 +78,11 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     if (window.location.pathname !== '/login') {
       window.location.replace('/login')
     }
-    throw new Error('Unauthorized')
+    throw new ApiError('Unauthorized', 'UNAUTHORIZED', 401)
   }
 
   if (!response.ok) {
-    const errorPayload = (await response.json().catch(() => null)) as { message?: string } | null
-    throw new Error(errorPayload?.message ?? 'Request failed')
+    throw await parseError(response)
   }
 
   if (response.status === 204) {
