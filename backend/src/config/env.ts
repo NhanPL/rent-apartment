@@ -6,6 +6,11 @@ dotenv.config();
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   DATABASE_URL: z.string().min(1),
+  DB_SSL: z.enum(['true', 'false']).default('true'),
+  DB_SSL_REJECT_UNAUTHORIZED: z.enum(['true', 'false']).default('false'),
+  DB_CONNECTION_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
+  DB_IDLE_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
+  DB_POOL_MAX: z.coerce.number().int().positive().default(10),
   JWT_ACCESS_SECRET: z.string().min(1),
   JWT_REFRESH_SECRET: z.string().min(1),
   JWT_ACCESS_EXPIRES_IN: z.string().default('1d'),
