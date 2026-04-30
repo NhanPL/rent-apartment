@@ -1,3 +1,4 @@
+import bcrypt from 'bcrypt';
 import { query } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
 import { AppRole } from '../../shared/middleware/auth';
@@ -50,9 +51,23 @@ const toUserProfile = async (user: UserRow): Promise<UserProfile> => {
   };
 };
 
-const verifyPassword = async (passwordHash: string, plainPassword: string): Promise<boolean> => {
-  const { rows } = await query<{ is_valid: boolean }>('SELECT crypt($1, $2) = $2 AS is_valid', [plainPassword, passwordHash]);
-  return Boolean(rows[0]?.is_valid);
+const isBcryptHash = (hash: string): boolean => hash.startsWith('$2a$') || hash.startsWith('$2b$') || hash.startsWith('$2y$');
+
+const verifyPassword = async (user: UserRow, plainPassword: string): Promise<boolean> => {
+  if (isBcryptHash(user.password_hash)) {
+    return bcrypt.compare(plainPassword, user.password_hash);
+  }
+
+  const { rows } = await query<{ is_valid: boolean }>('SELECT crypt($1, $2) = $2 AS is_valid', [plainPassword, user.password_hash]);
+  const isLegacyValid = Boolean(rows[0]?.is_valid);
+
+  if (!isLegacyValid) {
+    return false;
+  }
+
+  const rehashed = await bcrypt.hash(plainPassword, 10);
+  await query('UPDATE app_user SET password_hash = $1 WHERE id = $2', [rehashed, user.id]);
+  return true;
 };
 
 export const authenticateLogin = async (identifier: string, password: string): Promise<LoginResult> => {
@@ -69,7 +84,7 @@ export const authenticateLogin = async (identifier: string, password: string): P
     throw new AppError(401, 'Invalid credentials');
   }
 
-  const passwordMatches = await verifyPassword(user.password_hash, password);
+  const passwordMatches = await verifyPassword(user, password);
   if (!passwordMatches) {
     throw new AppError(401, 'Invalid credentials');
   }
