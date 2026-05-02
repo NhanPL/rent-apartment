@@ -103,6 +103,7 @@ router.post('/', requireRole('MANAGER'), async (req, res) => {
   res.status(201).json({
     message: 'Tenant created successfully',
     tenantId: result.tenantId,
+    userId: result.userId,
     emailSent: result.emailSent
   });
 });

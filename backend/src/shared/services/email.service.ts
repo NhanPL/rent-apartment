@@ -1,3 +1,6 @@
+import nodemailer from 'nodemailer';
+import { env } from '../../config/env';
+
 interface SendEmailPayload {
   to: string;
   subject: string;
@@ -9,17 +12,26 @@ interface TenantWelcomePayload {
   tenantName: string;
   loginUrl: string;
   username: string;
-  plainPassword: string;
+  password: string;
 }
 
-export const sendEmail = async (payload: SendEmailPayload): Promise<void> => {
-  if (!process.env.SMTP_HOST || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
-    throw new Error('SMTP is not configured');
+const transporter = nodemailer.createTransport({
+  host: env.SMTP_HOST,
+  port: env.SMTP_PORT,
+  secure: env.SMTP_SECURE === 'true',
+  auth: {
+    user: env.SMTP_USER,
+    pass: env.SMTP_PASS
   }
+});
 
-  // Placeholder integration point for SMTP provider.
-  // Kept abstract so credentials and implementation are managed outside business flow.
-  console.info('Email queued', { to: payload.to, subject: payload.subject, hasHtml: Boolean(payload.html) });
+export const sendEmail = async (payload: SendEmailPayload): Promise<void> => {
+  await transporter.sendMail({
+    from: `"${env.SMTP_FROM_NAME}" <${env.SMTP_FROM_EMAIL}>`,
+    to: payload.to,
+    subject: payload.subject,
+    html: payload.html
+  });
 };
 
 export const sendTenantWelcomeEmail = async (payload: TenantWelcomePayload): Promise<void> => {
@@ -27,9 +39,9 @@ export const sendTenantWelcomeEmail = async (payload: TenantWelcomePayload): Pro
   const html = `
     <p>Hello ${payload.tenantName},</p>
     <p>Your account has been created.</p>
-    <p>Login URL: ${payload.loginUrl}</p>
+    <p>Login URL: <a href="${payload.loginUrl}">${payload.loginUrl}</a></p>
     <p>Username: ${payload.username}</p>
-    <p>Password: ${payload.plainPassword}</p>
+    <p>Password: ${payload.password}</p>
     <p>Please change your password after first login.</p>
   `;
 

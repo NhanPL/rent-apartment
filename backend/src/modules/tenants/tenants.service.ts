@@ -10,23 +10,24 @@ export interface CreateTenantInput extends TenantInsertPayload {}
 
 export interface CreateTenantResult {
   tenantId: string;
+  userId: string;
   emailSent: boolean;
 }
 
 const validateCreateInput = (input: Record<string, unknown>): CreateTenantInput => {
-  if (!input.full_name || !input.phone || !input.identity_number) {
-    throw new AppError(400, 'full_name, phone, identity_number are required', 'VALIDATION_ERROR');
+  if (!input.full_name || !input.phone || !input.identity_number || !input.email) {
+    throw new AppError(400, 'full_name, phone, identity_number, email are required', 'VALIDATION_ERROR');
   }
 
   return {
     full_name: String(input.full_name),
     phone: String(input.phone),
     identity_number: String(input.identity_number),
+    email: String(input.email),
     dob: (input.dob as string | null | undefined) ?? null,
     gender: (input.gender as string | null | undefined) ?? null,
     identity_issued_date: (input.identity_issued_date as string | null | undefined) ?? null,
     identity_issued_place: (input.identity_issued_place as string | null | undefined) ?? null,
-    email: (input.email as string | null | undefined) ?? null,
     permanent_address: (input.permanent_address as string | null | undefined) ?? null,
     status: ((input.status as CreateTenantInput['status'] | undefined) ?? 'ACTIVE'),
     note: (input.note as string | null | undefined) ?? null
@@ -39,14 +40,10 @@ export const createTenant = async (raw: Record<string, unknown>): Promise<Create
   const generatedPassword = generateRandomPassword(8);
   const passwordHash = await bcrypt.hash(generatedPassword, 10);
 
-  const { tenantId, loginEmail, username, tenantName } = await withTransaction(async (client) => {
+  const { tenantId, userId, loginEmail, username, tenantName } = await withTransaction(async (client) => {
     const existing = await findTenantByIdentityNumber(client, tenantPayload.identity_number);
     if (existing) {
       throw new AppError(400, 'Tenant already exists', 'TENANT_ALREADY_EXISTS');
-    }
-
-    if (!tenantPayload.email) {
-      throw new AppError(400, 'email is required for tenant account creation', 'VALIDATION_ERROR');
     }
 
     const tenant = await createTenantRecord(client, tenantPayload);
@@ -58,7 +55,7 @@ export const createTenant = async (raw: Record<string, unknown>): Promise<Create
       tenantId: tenant.id
     });
 
-    return { tenantId: tenant.id, loginEmail: user.email, username: user.username, tenantName: tenant.full_name };
+    return { tenantId: tenant.id, userId: user.id, loginEmail: user.email, username: user.username, tenantName: tenant.full_name };
   });
 
   let emailSent = false;
@@ -66,18 +63,19 @@ export const createTenant = async (raw: Record<string, unknown>): Promise<Create
     await sendTenantWelcomeEmail({
       to: loginEmail,
       tenantName,
-      loginUrl: `${env.CLIENT_ORIGIN}/login`,
+      loginUrl: `${env.FRONTEND_URL}/login`,
       username,
-      plainPassword: generatedPassword
+      password: generatedPassword
     });
     emailSent = true;
   } catch (error) {
     console.error('Failed to send tenant welcome email', {
       tenantId,
+      userId,
       email: loginEmail,
       error: error instanceof Error ? error.message : 'Unknown email error'
     });
   }
 
-  return { tenantId, emailSent };
+  return { tenantId, userId, emailSent };
 };
