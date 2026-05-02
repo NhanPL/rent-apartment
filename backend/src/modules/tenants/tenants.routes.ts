@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { query, withTransaction } from '../../db';
 import { requireRole } from '../../shared/middleware/auth';
 import { AppError } from '../../shared/errors/app-error';
+import { createTenant as createTenantService } from './tenants.service';
 
 const router = Router();
 
@@ -98,37 +99,12 @@ router.get('/:id', requireRole('MANAGER'), async (req, res) => {
 });
 
 router.post('/', requireRole('MANAGER'), async (req, res) => {
-  const b = req.body as Record<string, unknown>;
-  const tenantPayload = (b.tenant ?? b) as Record<string, unknown>;
-  const contractPayload = (b.contract ?? null) as Record<string, unknown> | null;
-  if (!tenantPayload.full_name || !tenantPayload.phone || !tenantPayload.identity_number) {
-    throw new AppError(400, 'full_name, phone, identity_number are required', 'VALIDATION_ERROR');
-  }
-
-  const created = await withTransaction(async (client) => {
-    const tenantRs = await client.query(
-      `INSERT INTO tenant(user_id, full_name, dob, gender, identity_number, identity_issued_date, identity_issued_place, email, phone, permanent_address, status, note)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-      [tenantPayload.user_id ?? null, tenantPayload.full_name, tenantPayload.dob ?? null, tenantPayload.gender ?? null, tenantPayload.identity_number, tenantPayload.identity_issued_date ?? null, tenantPayload.identity_issued_place ?? null, tenantPayload.email ?? null, tenantPayload.phone, tenantPayload.permanent_address ?? null, tenantPayload.status ?? 'ACTIVE', tenantPayload.note ?? null]
-    );
-    const tenant = tenantRs.rows[0];
-
-    if (contractPayload?.room_id && contractPayload.start_date) {
-      const contractRs = await client.query(
-        `INSERT INTO contract(room_id,contract_code,status,start_date,end_date,move_in_date,move_out_date,rent_price,deposit_amount,billing_day,note)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-        [contractPayload.room_id, contractPayload.contract_code ?? null, contractPayload.status ?? 'DRAFT', contractPayload.start_date, contractPayload.end_date ?? null, contractPayload.move_in_date ?? null, contractPayload.move_out_date ?? null, contractPayload.rent_price ?? 0, contractPayload.deposit_amount ?? 0, contractPayload.billing_day ?? 1, contractPayload.note ?? null]
-      );
-      await client.query(
-        `INSERT INTO contract_tenant(contract_id,tenant_id,is_primary,joined_at,left_at) VALUES($1,$2,true,$3,NULL)`,
-        [contractRs.rows[0].id, tenant.id, contractPayload.start_date]
-      );
-    }
-
-    return tenant;
+  const result = await createTenantService(req.body as Record<string, unknown>);
+  res.status(201).json({
+    message: 'Tenant created successfully',
+    tenantId: result.tenantId,
+    emailSent: result.emailSent
   });
-
-  res.status(201).json(created);
 });
 
 router.patch('/:id', requireRole('MANAGER'), async (req, res) => {
