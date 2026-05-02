@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from 'express';
 import { AppError } from '../errors/app-error';
+import { verifyAccessToken } from '../utils/jwt';
 
 export type AppRole = 'MANAGER' | 'TENANT';
 
@@ -15,18 +16,24 @@ declare global {
 }
 
 export const requireAuth = (req: Request, _res: Response, next: NextFunction): void => {
-  const userId = req.header('x-user-id');
-  const role = req.header('x-user-role') as AppRole | undefined;
+  const authHeader = req.header('authorization');
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
 
-  if (!userId || !role) {
-    throw new AppError(401, 'Missing auth headers x-user-id and x-user-role');
-  }
-  if (role !== 'MANAGER' && role !== 'TENANT') {
-    throw new AppError(403, 'Invalid role');
+  if (!token) {
+    throw new AppError(401, 'Unauthorized');
   }
 
-  req.auth = { userId, role };
-  next();
+  try {
+    const payload = verifyAccessToken(token);
+    if (payload.role !== 'MANAGER' && payload.role !== 'TENANT') {
+      throw new AppError(403, 'Forbidden');
+    }
+
+    req.auth = { userId: payload.userId, role: payload.role };
+    next();
+  } catch (_error) {
+    throw new AppError(401, 'Invalid or expired token');
+  }
 };
 
 export const requireRole = (...roles: AppRole[]) => (req: Request, _res: Response, next: NextFunction): void => {

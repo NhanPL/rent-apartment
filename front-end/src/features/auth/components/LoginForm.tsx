@@ -1,111 +1,81 @@
+import { Alert, Button, Card, Checkbox, Form, Input, Typography } from 'antd'
 import { useState } from 'react'
-import type { FormEvent } from 'react'
-import type { LoginFormValues, LoginPayload } from '../types/auth'
-
+import { useAuth } from '../AuthContext'
+import type { LoginFormValues } from '../types/auth'
 import './LoginForm.css'
 
-const defaultValues: LoginFormValues = {
-  email: '',
-  password: '',
-  rememberMe: true,
+const { Title, Text } = Typography
+
+function getHomePathByRole(role: 'MANAGER' | 'TENANT') {
+  return role === 'TENANT' ? '/my-room' : '/dashboard'
 }
 
 export function LoginForm() {
-  const [values, setValues] = useState<LoginFormValues>(defaultValues)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>('')
-  const [submitted, setSubmitted] = useState<LoginPayload | null>(null)
-  const [showPassword, setShowPassword] = useState<boolean>(false)
+  const { login } = useAuth()
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setSubmitted(null)
-
-    if (!values.email.trim() || !values.password.trim()) {
-      setError('Vui lòng nhập đầy đủ email và mật khẩu.')
-      return
-    }
-
-    const payload: LoginPayload = {
-      email: values.email.trim(),
-      password: values.password,
-      rememberMe: values.rememberMe,
-    }
-
+  const onFinish = async (values: LoginFormValues) => {
+    setLoading(true)
     setError('')
-    setSubmitted(payload)
+
+    try {
+      const user = await login({
+        identifier: values.identifier.trim(),
+        password: values.password,
+      })
+
+      const targetPath = getHomePathByRole(user.role)
+      window.history.replaceState(null, '', targetPath)
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    } catch {
+      setError('Invalid username/email or password. Please try again.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
-    <div className="login-card">
-      <header className="login-header">
-        <p className="login-eyebrow">Rent Apartment</p>
-        <h1>Đăng nhập</h1>
-        <p className="login-description">Chào mừng bạn quay lại hệ thống quản lý phòng trọ.</p>
-      </header>
+    <Card className="login-card" bordered={false}>
+      <div className="login-header">
+        <Text className="login-eyebrow">Rent Apartment Management</Text>
+        <Title level={2}>Welcome back</Title>
+        <Text type="secondary">Sign in to manage buildings, tenants, and payments.</Text>
+      </div>
 
-      <form className="login-form" onSubmit={handleSubmit}>
-        <label className="field">
-          <span>Email</span>
-          <input
-            type="email"
-            placeholder="Nhập email"
-            value={values.email}
-            onChange={(event) =>
-              setValues((current) => ({ ...current, email: event.target.value }))
-            }
-          />
-        </label>
+      {error ? <Alert type="error" message={error} showIcon className="login-error" /> : null}
 
-        <label className="field">
-          <span>Mật khẩu</span>
-          <div className="password-input-wrapper">
-            <input
-              type={showPassword ? 'text' : 'password'}
-              placeholder="Nhập mật khẩu"
-              value={values.password}
-              onChange={(event) =>
-                setValues((current) => ({ ...current, password: event.target.value }))
-              }
-            />
-            <button
-              type="button"
-              className="password-visibility-toggle"
-              onClick={() => setShowPassword((current) => !current)}
-              aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
-              title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
-            >
-              {showPassword ? '🙈' : '👁️'}
-            </button>
-          </div>
-        </label>
+      <Form<LoginFormValues>
+        layout="vertical"
+        requiredMark={false}
+        onFinish={onFinish}
+        initialValues={{ identifier: '', password: '', rememberMe: true }}
+        size="large"
+      >
+        <Form.Item
+          label="Username or email"
+          name="identifier"
+          rules={[{ required: true, message: 'Please enter your username or email.' }]}
+        >
+          <Input autoComplete="username" placeholder="manager@rent.vn or username" allowClear />
+        </Form.Item>
 
-        <label className="checkbox-field">
-          <input
-            type="checkbox"
-            checked={values.rememberMe}
-            onChange={(event) =>
-              setValues((current) => ({
-                ...current,
-                rememberMe: event.target.checked,
-              }))
-            }
-          />
-          <span>Ghi nhớ đăng nhập</span>
-        </label>
+        <Form.Item
+          label="Password"
+          name="password"
+          rules={[{ required: true, message: 'Please enter your password.' }]}
+        >
+          <Input.Password autoComplete="current-password" placeholder="Enter your password" />
+        </Form.Item>
 
-        {error && <p className="error-message">{error}</p>}
+        <Form.Item name="rememberMe" valuePropName="checked">
+          <Checkbox>Remember me</Checkbox>
+        </Form.Item>
 
-        <button type="submit" className="submit-button">
-          Đăng nhập
-        </button>
-      </form>
-
-      {submitted && (
-        <div className="submit-preview" aria-live="polite">
-          <p>Payload gửi lên backend (demo):</p>
-          <pre>{JSON.stringify(submitted, null, 2)}</pre>
-        </div>
-      )}
-    </div>
+        <Button type="primary" htmlType="submit" loading={loading} block>
+          Sign in
+        </Button>
+      </Form>
+    </Card>
   )
 }

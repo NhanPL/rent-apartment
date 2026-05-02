@@ -8,13 +8,28 @@ import invoicesRoutes from './modules/invoices/invoices.routes';
 import paymentsRoutes from './modules/payments/payments.routes';
 import meRoutes from './modules/me/me.routes';
 import uploadsRoutes from './modules/uploads/uploads.routes';
+import authRoutes from './modules/auth/auth.routes';
 import { requireAuth } from './shared/middleware/auth';
 import { errorHandler } from './shared/middleware/error-handler';
+import { env } from './config/env';
 
 export const app = express();
+
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', env.CLIENT_ORIGIN);
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(204);
+    return;
+  }
+  next();
+});
+
 app.use(express.json());
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
+app.use('/api/auth', authRoutes);
 
 app.use('/api', requireAuth);
 app.use('/api/buildings', buildingsRoutes);

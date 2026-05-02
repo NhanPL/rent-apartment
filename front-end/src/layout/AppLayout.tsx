@@ -1,5 +1,5 @@
-import { MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons'
-import { Button, Drawer, Grid, Layout, Menu, Space, Typography } from 'antd'
+import { LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, UserOutlined } from '@ant-design/icons'
+import { Button, Drawer, Dropdown, Grid, Layout, Menu, Space, Typography } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { SidebarRouteItem } from '../routes/routeConfig'
@@ -14,9 +14,11 @@ interface AppLayoutProps {
   items: SidebarRouteItem[]
   pageTitle: string
   content: ReactNode
+  currentUserName: string
+  onLogout: () => Promise<void>
 }
 
-export function AppLayout({ pathname, onNavigate, items, pageTitle, content }: AppLayoutProps) {
+export function AppLayout({ pathname, onNavigate, items, pageTitle, content, currentUserName, onLogout }: AppLayoutProps) {
   const screens = Grid.useBreakpoint()
   const isDesktop = Boolean(screens.lg)
 
@@ -79,6 +81,25 @@ export function AppLayout({ pathname, onNavigate, items, pageTitle, content }: A
                 Rent Apartment Management
               </Typography.Text>
             </div>
+            <Dropdown
+              trigger={['click']}
+              menu={{
+                items: [
+                  {
+                    key: 'logout',
+                    label: 'Logout',
+                    icon: <LogoutOutlined />,
+                    onClick: () => {
+                      void onLogout()
+                    },
+                  },
+                ],
+              }}
+            >
+              <Button type="text" icon={<UserOutlined />} className="user-menu-button">
+                {currentUserName}
+              </Button>
+            </Dropdown>
           </Space>
         </Header>
         <Content className="app-content">{content}</Content>
