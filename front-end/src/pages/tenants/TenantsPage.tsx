@@ -130,6 +130,8 @@ export function TenantsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [items, setItems] = useState<TenantListItem[]>([])
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
   const [selectedTenant, setSelectedTenant] = useState<TenantDetail | null>(null)
   const [searchInput, setSearchInput] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -174,14 +176,17 @@ export function TenantsPage() {
         status: statusFilter,
         building_id: buildingFilter,
         room_id: roomFilter,
+        page,
+        pageSize: 8,
       })
-      setItems(data)
+      setItems(data.items)
+      setTotal(data.total)
     } catch {
       setError('Unable to load tenants. Please try again.')
     } finally {
       setLoading(false)
     }
-  }, [debouncedSearch, statusFilter, buildingFilter, roomFilter])
+  }, [debouncedSearch, statusFilter, buildingFilter, roomFilter, page])
 
   useEffect(() => {
     void loadOptions()
@@ -569,7 +574,7 @@ export function TenantsPage() {
               rowKey="id"
               columns={columns}
               dataSource={items}
-              pagination={{ pageSize: 8 }}
+              pagination={{ current: page, pageSize: 8, total, onChange: (nextPage) => setPage(nextPage) }}
               scroll={{ x: 1100 }}
             />
           )}
