@@ -3,6 +3,16 @@ import { query, withTransaction } from '../../db';
 import { requireRole } from '../../shared/middleware/auth';
 
 const router = Router();
+const generateContractCode = async (client: Parameters<Parameters<typeof withTransaction>[0]>[0]): Promise<string> => {
+  const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  for (let i = 0; i < 5; i += 1) {
+    const random = Math.floor(1000 + Math.random() * 9000);
+    const code = `CONTRACT-${datePart}-${random}`;
+    const exists = await client.query('SELECT 1 FROM contract WHERE contract_code = $1 LIMIT 1', [code]);
+    if (exists.rows.length === 0) return code;
+  }
+  throw new Error('Unable to generate unique contract code');
+};
 
 router.get('/', requireRole('MANAGER'), async (_req, res) => {
   const { rows } = await query('SELECT * FROM contract ORDER BY created_at DESC');
@@ -20,10 +30,11 @@ router.get('/:id', requireRole('MANAGER'), async (req, res) => {
 router.post('/', requireRole('MANAGER'), async (req, res) => {
   const b = req.body;
   const data = await withTransaction(async (client) => {
+    const contractCode = b.contract_code ?? (await generateContractCode(client));
     const c = await client.query(
       `INSERT INTO contract(room_id,contract_code,status,start_date,end_date,move_in_date,move_out_date,rent_price,deposit_amount,billing_day,note)
        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-      [b.room_id, b.contract_code ?? null, b.status ?? 'DRAFT', b.start_date, b.end_date ?? null, b.move_in_date ?? null, b.move_out_date ?? null, b.rent_price ?? 0, b.deposit_amount ?? 0, b.billing_day ?? 1, b.note ?? null]
+      [b.room_id, contractCode, b.status ?? 'DRAFT', b.start_date, b.end_date ?? null, b.move_in_date ?? null, b.move_out_date ?? null, b.rent_price ?? 0, b.deposit_amount ?? 0, b.billing_day ?? 1, b.note ?? null]
     );
 
     if (Array.isArray(b.tenants)) {

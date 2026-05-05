@@ -78,7 +78,6 @@ export interface TenantUpsertPayload {
 
 export interface ContractUpsertPayload {
   room_id: string | null
-  contract_code: string | null
   status: ContractStatus
   start_date: string | null
   end_date: string | null

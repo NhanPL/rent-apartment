@@ -18,6 +18,7 @@ import {
   Input,
   InputNumber,
   Modal,
+  Radio,
   Select,
   Skeleton,
   Space,
@@ -67,7 +68,6 @@ interface TenantFormValues {
   rental: {
     building_id?: string
     room_id?: string
-    contract_code?: string
     contract_status?: ContractStatus
     start_date?: string
     end_date?: string
@@ -272,7 +272,6 @@ export function TenantsPage() {
         rental: {
           building_id: data.current_room?.building_id,
           room_id: data.current_room?.room_id,
-          contract_code: data.current_contract?.contract_code ?? undefined,
           contract_status: data.current_contract?.status ?? 'DRAFT',
           start_date: data.current_contract?.start_date ?? undefined,
           end_date: data.current_contract?.end_date ?? undefined,
@@ -328,7 +327,6 @@ export function TenantsPage() {
       contract: hasRental
         ? {
             room_id: values.rental.room_id ?? null,
-            contract_code: values.rental.contract_code ?? null,
             status: values.rental.contract_status ?? 'DRAFT',
             start_date: values.rental.start_date ?? null,
             end_date: values.rental.end_date ?? null,
@@ -597,55 +595,69 @@ export function TenantsPage() {
             <Tabs
               activeKey={activeFormTab}
               onChange={(key) => setActiveFormTab(key as 'tenant' | 'rental')}
+              destroyOnHidden={false}
               items={[
                 {
                   key: 'tenant',
                   label: 'Thông tin người thuê',
                   children: (
                     <div className={`tenant-tab-grid ${isDesktop ? 'desktop-two-cols' : ''}`}>
-                      <Form.Item name="full_name" label="full_name" rules={[{ required: true, message: 'full_name is required' }]}>
-                        <Input />
+                      <Form.Item
+                        name="full_name"
+                        label="Họ và tên"
+                        rules={[{ required: true, whitespace: true, message: 'Vui lòng nhập tên người thuê' }]}
+                      >
+                        <Input placeholder="Nhập họ và tên người thuê" />
                       </Form.Item>
                       <Form.Item
                         name="phone"
-                        label="phone"
+                        label="Số điện thoại"
                         rules={[
-                          { required: true, message: 'phone is required' },
-                          { pattern: /^[0-9+\-\s]{8,20}$/, message: 'Invalid phone format' },
+                          { required: true, message: 'Vui lòng nhập số điện thoại' },
+                          { pattern: /^[0-9+\-\s]{8,20}$/, message: 'Số điện thoại không hợp lệ' },
                         ]}
                       >
-                        <Input />
+                        <Input placeholder="Nhập số điện thoại" />
                       </Form.Item>
-                      <Form.Item name="email" label="email" rules={[{ type: 'email', message: 'Invalid email format' }]}>
-                        <Input />
+                      <Form.Item name="email" label="Email" rules={[{ type: 'email', message: 'Email không hợp lệ' }]}>
+                        <Input placeholder="Nhập email (không bắt buộc)" />
                       </Form.Item>
-                      <Form.Item name="gender" label="gender">
-                        <Input />
+                      <Form.Item name="gender" label="Giới tính">
+                        <Radio.Group
+                          options={[
+                            { label: 'Nam', value: 'MALE' },
+                            { label: 'Nữ', value: 'FEMALE' },
+                            { label: 'Khác', value: 'OTHER' },
+                          ]}
+                        />
                       </Form.Item>
-                      <Form.Item name="dob" label="dob">
+                      <Form.Item name="dob" label="Ngày sinh">
                         <Input type="date" />
                       </Form.Item>
                       <Form.Item
                         name="identity_number"
-                        label="identity_number"
-                        rules={[{ required: true, message: 'identity_number is required' }]}
+                        label="CCCD/CMND"
+                        rules={[
+                          { required: true, whitespace: true, message: 'Vui lòng nhập số CCCD/CMND' },
+                          { pattern: /^[A-Za-z0-9]{6,20}$/, message: 'Số CCCD/CMND không hợp lệ' },
+                        ]}
                       >
-                        <Input />
+                        <Input placeholder="Nhập số CCCD/CMND" />
                       </Form.Item>
-                      <Form.Item name="identity_issued_date" label="identity_issued_date">
+                      <Form.Item name="identity_issued_date" label="Ngày cấp">
                         <Input type="date" />
                       </Form.Item>
-                      <Form.Item name="identity_issued_place" label="identity_issued_place">
-                        <Input />
+                      <Form.Item name="identity_issued_place" label="Nơi cấp">
+                        <Input placeholder="Nhập nơi cấp CCCD/CMND" />
                       </Form.Item>
-                      <Form.Item name="status" label="status" rules={[{ required: true }]}> 
+                      <Form.Item name="status" label="Trạng thái" rules={[{ required: true, message: 'Vui lòng chọn trạng thái' }]}>
                         <Select options={statusOptions.map((item) => ({ label: item.label, value: item.value }))} />
                       </Form.Item>
-                      <Form.Item name="permanent_address" label="permanent_address" className="tenant-tab-full-row">
-                        <Input.TextArea rows={3} />
+                      <Form.Item name="permanent_address" label="Địa chỉ thường trú" className="tenant-tab-full-row">
+                        <Input.TextArea rows={3} placeholder="Nhập địa chỉ thường trú" />
                       </Form.Item>
-                      <Form.Item name="note" label="note" className="tenant-tab-full-row">
-                        <Input.TextArea rows={3} />
+                      <Form.Item name="note" label="Ghi chú" className="tenant-tab-full-row">
+                        <Input.TextArea rows={3} placeholder="Nhập ghi chú" />
                       </Form.Item>
                     </div>
                   ),
@@ -655,7 +667,7 @@ export function TenantsPage() {
                   label: 'Thuê phòng',
                   children: (
                     <div className={`tenant-tab-grid ${isDesktop ? 'desktop-two-cols' : ''}`}>
-                      <Form.Item name={['rental', 'building_id']} label="building_id">
+                      <Form.Item name={['rental', 'building_id']} label="Tòa nhà" rules={[{ required: true, message: 'Vui lòng chọn tòa nhà' }]}>
                         <Select
                           allowClear
                           options={buildingOptions.map((building) => ({ label: building.name, value: building.id }))}
@@ -666,12 +678,9 @@ export function TenantsPage() {
                       </Form.Item>
                       <Form.Item
                         name={['rental', 'room_id']}
-                        label="room_id"
-                        rules={
-                          form.getFieldValue(['rental', 'building_id'])
-                            ? [{ required: true, message: 'room_id is required when building is selected' }]
-                            : undefined
-                        }
+                        label="Phòng"
+                        dependencies={[['rental', 'building_id']]}
+                        rules={[{ required: true, message: 'Vui lòng chọn phòng' }]}
                       >
                         <Select
                           allowClear
@@ -679,41 +688,51 @@ export function TenantsPage() {
                           options={filteredRoomsForDrawer.map((room) => ({ label: room.code, value: room.id }))}
                         />
                       </Form.Item>
-                      <Form.Item name={['rental', 'contract_code']} label="contract_code">
-                        <Input />
-                      </Form.Item>
-                      <Form.Item name={['rental', 'contract_status']} label="status" initialValue="DRAFT">
+                      <Form.Item name={['rental', 'contract_status']} label="Trạng thái hợp đồng" initialValue="DRAFT">
                         <Select options={contractStatusOptions.map((item) => ({ label: item.label, value: item.value }))} />
                       </Form.Item>
-                      <Form.Item name={['rental', 'start_date']} label="start_date">
+                      <Form.Item
+                        name={['rental', 'start_date']}
+                        label="Ngày bắt đầu thuê"
+                        rules={[{ required: true, message: 'Vui lòng chọn ngày bắt đầu thuê' }]}
+                      >
                         <Input type="date" />
                       </Form.Item>
-                      <Form.Item name={['rental', 'end_date']} label="end_date">
+                      <Form.Item name={['rental', 'end_date']} label="Ngày kết thúc">
                         <Input type="date" />
                       </Form.Item>
-                      <Form.Item name={['rental', 'move_in_date']} label="move_in_date">
+                      <Form.Item name={['rental', 'move_in_date']} label="Ngày vào ở">
                         <Input type="date" />
                       </Form.Item>
-                      <Form.Item name={['rental', 'move_out_date']} label="move_out_date">
+                      <Form.Item name={['rental', 'move_out_date']} label="Ngày rời đi">
                         <Input type="date" />
                       </Form.Item>
-                      <Form.Item name={['rental', 'rent_price']} label="rent_price">
+                      <Form.Item
+                        name={['rental', 'rent_price']}
+                        label="Tiền thuê"
+                        rules={[{ required: true, message: 'Vui lòng nhập tiền thuê' }, { type: 'number', min: 0, message: 'Giá trị phải là số hợp lệ' }]}
+                      >
                         <InputNumber min={0} precision={0} controls={false} style={{ width: '100%' }} />
                       </Form.Item>
-                      <Form.Item name={['rental', 'deposit_amount']} label="deposit_amount">
+                      <Form.Item
+                        name={['rental', 'deposit_amount']}
+                        label="Tiền cọc"
+                        rules={[{ required: true, message: 'Vui lòng nhập tiền cọc' }, { type: 'number', min: 0, message: 'Giá trị phải là số hợp lệ' }]}
+                      >
                         <InputNumber min={0} precision={0} controls={false} style={{ width: '100%' }} />
                       </Form.Item>
                       <Form.Item
                         name={['rental', 'billing_day']}
-                        label="billing_day"
+                        label="Ngày chốt tiền hàng tháng"
                         rules={[
+                          { required: true, message: 'Vui lòng nhập ngày chốt tiền' },
                           {
                             validator: async (_, value: number | undefined) => {
                               if (value === undefined) {
                                 return
                               }
                               if (value < 1 || value > 28) {
-                                throw new Error('billing_day must be from 1 to 28')
+                                throw new Error('Ngày chốt tiền phải từ 1 đến 28')
                               }
                             },
                           },
@@ -721,8 +740,8 @@ export function TenantsPage() {
                       >
                         <InputNumber min={1} max={28} precision={0} controls={false} style={{ width: '100%' }} />
                       </Form.Item>
-                      <Form.Item name={['rental', 'contract_note']} label="note" className="tenant-tab-full-row">
-                        <Input.TextArea rows={3} />
+                      <Form.Item name={['rental', 'contract_note']} label="Ghi chú hợp đồng" className="tenant-tab-full-row">
+                        <Input.TextArea rows={3} placeholder="Nhập ghi chú hợp đồng" />
                       </Form.Item>
                     </div>
                   ),
