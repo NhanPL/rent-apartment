@@ -36,6 +36,7 @@ const validateCreateInput = (input: Record<string, unknown>): CreateTenantInput 
 
 export const createTenant = async (raw: Record<string, unknown>): Promise<CreateTenantResult> => {
   const tenantPayload = validateCreateInput((raw.tenant as Record<string, unknown> | undefined) ?? raw);
+  const contractPayload = (raw.contract as Record<string, unknown> | null | undefined) ?? null;
 
   const generatedPassword = generateRandomPassword(8);
   const passwordHash = await bcrypt.hash(generatedPassword, 10);
@@ -54,6 +55,35 @@ export const createTenant = async (raw: Record<string, unknown>): Promise<Create
       passwordHash,
       tenantId: tenant.id
     });
+    if (contractPayload) {
+      if (!contractPayload.room_id || !contractPayload.start_date) {
+        throw new AppError(400, 'room_id and start_date are required for contract', 'VALIDATION_ERROR');
+      }
+      const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const random = Math.floor(1000 + Math.random() * 9000);
+      const code = `CONTRACT-${datePart}-${random}`;
+      const contractRs = await client.query<{ id: string }>(
+        `INSERT INTO contract(room_id,contract_code,status,start_date,end_date,move_in_date,move_out_date,rent_price,deposit_amount,billing_day,note)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+        [
+          String(contractPayload.room_id),
+          code,
+          String(contractPayload.status ?? 'DRAFT'),
+          String(contractPayload.start_date),
+          (contractPayload.end_date as string | null | undefined) ?? null,
+          (contractPayload.move_in_date as string | null | undefined) ?? null,
+          (contractPayload.move_out_date as string | null | undefined) ?? null,
+          Number(contractPayload.rent_price ?? 0),
+          Number(contractPayload.deposit_amount ?? 0),
+          Number(contractPayload.billing_day ?? 1),
+          (contractPayload.note as string | null | undefined) ?? null
+        ]
+      );
+      await client.query(
+        'INSERT INTO contract_tenant(contract_id,tenant_id,is_primary,joined_at,left_at) VALUES($1,$2,true,$3,null)',
+        [contractRs.rows[0].id, tenant.id, String(contractPayload.start_date)]
+      );
+    }
 
     return { tenantId: tenant.id, userId: user.id, loginEmail: user.email, username: user.username, tenantName: tenant.full_name };
   });

@@ -196,14 +196,24 @@ export function TenantsPage() {
     void loadTenants()
   }, [loadTenants])
 
-  const hasFormErrors = useCallback(() => form.getFieldsError().some((field) => field.errors.length > 0), [form])
-
   const isDirty = useCallback(() => JSON.stringify(form.getFieldsValue(true)) !== initialSnapshotRef.current, [form])
+  const watchedValues = Form.useWatch([], form)
 
-  const recalculateCanSave = useCallback(() => {
-    const touched = form.isFieldsTouched(true)
-    setCanSave(touched && !hasFormErrors() && isDirty())
-  }, [form, hasFormErrors, isDirty])
+  const requiredFieldPaths: Array<string | (string | number)[]> = useMemo(
+    () => [
+      'full_name',
+      'phone',
+      'identity_number',
+      'status',
+      ['rental', 'building_id'],
+      ['rental', 'room_id'],
+      ['rental', 'start_date'],
+      ['rental', 'rent_price'],
+      ['rental', 'deposit_amount'],
+      ['rental', 'billing_day'],
+    ],
+    [],
+  )
 
   useEffect(() => {
     if (!drawerOpen) {
@@ -222,6 +232,32 @@ export function TenantsPage() {
     setActiveFormTab('tenant')
     didInitFormRef.current = true
   }, [drawerOpen, drawerInitialValues, form])
+
+  useEffect(() => {
+    if (!drawerOpen) {
+      return
+    }
+
+    let cancelled = false
+    const validateSaveState = async () => {
+      try {
+        await form.validateFields(requiredFieldPaths, { validateOnly: true })
+        if (!cancelled) {
+          const dirty = drawerMode === 'edit' ? isDirty() : true
+          setCanSave(dirty)
+        }
+      } catch {
+        if (!cancelled) {
+          setCanSave(false)
+        }
+      }
+    }
+
+    void validateSaveState()
+    return () => {
+      cancelled = true
+    }
+  }, [drawerMode, drawerOpen, form, isDirty, requiredFieldPaths, watchedValues])
 
   const filteredRoomsForFilter = useMemo(() => {
     if (!buildingFilter) {
@@ -591,7 +627,7 @@ export function TenantsPage() {
         {drawerLoading ? (
           <Skeleton active paragraph={{ rows: 8 }} />
         ) : (
-          <Form form={form} layout="vertical" onFieldsChange={recalculateCanSave}>
+          <Form form={form} layout="vertical">
             <Tabs
               activeKey={activeFormTab}
               onChange={(key) => setActiveFormTab(key as 'tenant' | 'rental')}

@@ -5,6 +5,63 @@ import { AppError } from '../../shared/errors/app-error';
 import { createTenant as createTenantService } from './tenants.service';
 
 const router = Router();
+const generateContractCode = async (client: Parameters<Parameters<typeof withTransaction>[0]>[0]): Promise<string> => {
+  const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  for (let i = 0; i < 5; i += 1) {
+    const random = Math.floor(1000 + Math.random() * 9000);
+    const code = `CONTRACT-${datePart}-${random}`;
+    const exists = await client.query('SELECT 1 FROM contract WHERE contract_code = $1 LIMIT 1', [code]);
+    if (exists.rows.length === 0) return code;
+  }
+  throw new AppError(500, 'Cannot generate contract code', 'CONTRACT_CODE_ERROR');
+};
+
+const upsertTenantContract = async (client: Parameters<Parameters<typeof withTransaction>[0]>[0], tenantId: string, contractInput: Record<string, unknown> | null) => {
+  if (!contractInput) return;
+  if (!contractInput.room_id || !contractInput.start_date) {
+    throw new AppError(400, 'room_id and start_date are required for contract', 'VALIDATION_ERROR');
+  }
+
+  const activeRs = await client.query<{ contract_id: string }>(
+    'SELECT contract_id FROM contract_tenant WHERE tenant_id=$1 AND left_at IS NULL ORDER BY joined_at DESC LIMIT 1',
+    [tenantId]
+  );
+
+  const payload = {
+    room_id: String(contractInput.room_id),
+    status: String(contractInput.status ?? 'DRAFT'),
+    start_date: String(contractInput.start_date),
+    end_date: (contractInput.end_date as string | null | undefined) ?? null,
+    move_in_date: (contractInput.move_in_date as string | null | undefined) ?? null,
+    move_out_date: (contractInput.move_out_date as string | null | undefined) ?? null,
+    rent_price: Number(contractInput.rent_price ?? 0),
+    deposit_amount: Number(contractInput.deposit_amount ?? 0),
+    billing_day: Number(contractInput.billing_day ?? 1),
+    note: (contractInput.note as string | null | undefined) ?? null
+  };
+
+  const current = activeRs.rows[0]?.contract_id;
+  if (!current) {
+    const code = await generateContractCode(client);
+    const contractRs = await client.query(
+      `INSERT INTO contract(room_id,contract_code,status,start_date,end_date,move_in_date,move_out_date,rent_price,deposit_amount,billing_day,note)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+      [payload.room_id, code, payload.status, payload.start_date, payload.end_date, payload.move_in_date, payload.move_out_date, payload.rent_price, payload.deposit_amount, payload.billing_day, payload.note]
+    );
+    await client.query(
+      `INSERT INTO contract_tenant(contract_id,tenant_id,is_primary,joined_at,left_at)
+       VALUES($1,$2,true,$3,null)`,
+      [contractRs.rows[0].id, tenantId, payload.start_date]
+    );
+    return;
+  }
+
+  await client.query(
+    `UPDATE contract SET room_id=$1,status=$2,start_date=$3,end_date=$4,move_in_date=$5,move_out_date=$6,rent_price=$7,deposit_amount=$8,billing_day=$9,note=$10
+     WHERE id=$11`,
+    [payload.room_id, payload.status, payload.start_date, payload.end_date, payload.move_in_date, payload.move_out_date, payload.rent_price, payload.deposit_amount, payload.billing_day, payload.note, current]
+  );
+};
 
 const parseIntParam = (value: unknown, fallback: number): number => {
   const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -122,9 +179,14 @@ router.patch('/:id', requireRole('MANAGER'), async (req, res) => {
   });
   params.push(req.params.id);
 
-  const updated = await query(`UPDATE tenant SET ${sets.join(',')} WHERE id=$${params.length} RETURNING *`, params);
-  if (!updated.rows[0]) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
-  res.json(updated.rows[0]);
+  const result = await withTransaction(async (client) => {
+    const updated = await client.query(`UPDATE tenant SET ${sets.join(',')} WHERE id=$${params.length} RETURNING *`, params);
+    if (!updated.rows[0]) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
+    const contractPayload = (b.contract as Record<string, unknown> | null | undefined) ?? null;
+    await upsertTenantContract(client, req.params.id, contractPayload);
+    return updated.rows[0];
+  });
+  res.json(result);
 });
 
 router.delete('/:id', requireRole('MANAGER'), async (req, res) => {
