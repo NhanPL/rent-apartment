@@ -58,6 +58,8 @@ export interface TenantListParams {
   status?: TenantStatus
   building_id?: string
   room_id?: string
+  page?: number
+  pageSize?: number
 }
 
 export interface TenantUpsertPayload {

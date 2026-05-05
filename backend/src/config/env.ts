@@ -16,9 +16,17 @@ const envSchema = z.object({
   JWT_ACCESS_EXPIRES_IN: z.string().default('1d'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
   CLIENT_ORIGIN: z.string().default('http://localhost:5173'),
+  FRONTEND_URL: z.string().default('http://localhost:5173'),
   DEFAULT_BANK_CODE: z.string().optional(),
   DEFAULT_BANK_ACCOUNT_NO: z.string().optional(),
-  DEFAULT_BANK_ACCOUNT_NAME: z.string().optional()
+  DEFAULT_BANK_ACCOUNT_NAME: z.string().optional(),
+  SMTP_HOST: z.string().min(1),
+  SMTP_PORT: z.coerce.number().int().positive(),
+  SMTP_SECURE: z.enum(['true', 'false']).default('false'),
+  SMTP_USER: z.string().min(1),
+  SMTP_PASS: z.string().min(1),
+  SMTP_FROM_NAME: z.string().min(1),
+  SMTP_FROM_EMAIL: z.string().email()
 });
 
 const parsed = envSchema.safeParse(process.env);
