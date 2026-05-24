@@ -1,26 +1,18 @@
-import { ArrowLeftOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons'
 import { Button, Card, Descriptions, Empty, Grid, Modal, Skeleton, Space, Table, Tag, Typography, message } from 'antd'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  createMonthlyBill,
-  deleteMonthlyBill,
   deleteRoom,
   getRoomDetail,
   listMonthlyBillsByRoomId,
   listTenantsByRoomId,
-  updateMonthlyBill,
   updateRoom,
 } from '../buildings/components/roomService'
 import { RoomsUpsertDrawer } from '../buildings/components/RoomsUpsertDrawer'
 import type { MonthlyBill, Room, TenantSummary } from '../buildings/components/roomTypes'
-import type { BuildingEntity } from '../buildings/components/types'
-import { listContracts } from '../../services/paymentsService'
-import type { Contract } from '../payments/types'
-import { BillUpsertDrawer } from './components/BillUpsertDrawer'
 
 interface RoomDetailPageProps {
   roomId: string
-  buildings: BuildingEntity[]
 }
 
 const roomStatusColor = {
@@ -39,7 +31,7 @@ const billStatusColor: Record<MonthlyBill['invoice_status'], string> = {
 
 const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
 
-export function RoomDetailPage({ roomId, buildings }: RoomDetailPageProps) {
+export function RoomDetailPage({ roomId }: RoomDetailPageProps) {
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
 
@@ -48,34 +40,31 @@ export function RoomDetailPage({ roomId, buildings }: RoomDetailPageProps) {
   const [room, setRoom] = useState<(Room & { building_name: string }) | null>(null)
   const [tenants, setTenants] = useState<TenantSummary[]>([])
   const [bills, setBills] = useState<MonthlyBill[]>([])
-  const [contracts, setContracts] = useState<Contract[]>([])
 
   const [roomDrawerOpen, setRoomDrawerOpen] = useState(false)
-  const [billDrawerOpen, setBillDrawerOpen] = useState(false)
-  const [billDrawerMode, setBillDrawerMode] = useState<'create' | 'edit'>('create')
-  const [editingBill, setEditingBill] = useState<MonthlyBill | null>(null)
-  const [savingBill, setSavingBill] = useState(false)
 
   const [deleteRoomModalOpen, setDeleteRoomModalOpen] = useState(false)
-  const [billToDelete, setBillToDelete] = useState<MonthlyBill | null>(null)
 
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      const [roomData, tenantsData, billsData, contractsData] = await Promise.all([
-        getRoomDetail(roomId, buildings),
+      const [roomData, tenantsData, billsData] = await Promise.all([
+        getRoomDetail(roomId),
         listTenantsByRoomId(roomId),
         listMonthlyBillsByRoomId(roomId),
-        listContracts(),
       ])
       setRoom(roomData)
       setTenants(tenantsData)
       setBills(billsData)
-      setContracts(contractsData.filter((item) => item.room_id === roomId && item.status === 'ACTIVE'))
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Unable to load room detail')
+      setRoom(null)
+      setTenants([])
+      setBills([])
     } finally {
       setLoading(false)
     }
-  }, [buildings, roomId])
+  }, [roomId])
 
   useEffect(() => {
     void refresh()
@@ -159,22 +148,7 @@ export function RoomDetailPage({ roomId, buildings }: RoomDetailPageProps) {
           />
         </Card>
 
-        <Card
-          title="Monthly bills"
-          extra={
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => {
-                setBillDrawerMode('create')
-                setEditingBill(null)
-                setBillDrawerOpen(true)
-              }}
-            >
-              Add Bill
-            </Button>
-          }
-        >
+        <Card title="Invoices">
           <Table<MonthlyBill>
             rowKey="id"
             dataSource={bills}
@@ -192,25 +166,6 @@ export function RoomDetailPage({ roomId, buildings }: RoomDetailPageProps) {
                 title: 'Status',
                 dataIndex: 'invoice_status',
                 render: (value: MonthlyBill['invoice_status']) => <Tag color={billStatusColor[value]}>{value}</Tag>,
-              },
-              {
-                title: 'Actions',
-                render: (_, record) => (
-                  <Space>
-                    <Button
-                      onClick={() => {
-                        setBillDrawerMode('edit')
-                        setEditingBill(record)
-                        setBillDrawerOpen(true)
-                      }}
-                    >
-                      Edit
-                    </Button>
-                    <Button danger onClick={() => setBillToDelete(record)}>
-                      Delete
-                    </Button>
-                  </Space>
-                ),
               },
             ]}
           />
@@ -230,35 +185,11 @@ export function RoomDetailPage({ roomId, buildings }: RoomDetailPageProps) {
               await updateRoom(room.id, payload)
               await refresh()
               message.success('Room updated successfully')
+            } catch (error) {
+              message.error(error instanceof Error ? error.message : 'Unable to update room')
+              throw error
             } finally {
               setRoomSaving(false)
-            }
-          }}
-        />
-
-        <BillUpsertDrawer
-          open={billDrawerOpen}
-          mode={billDrawerMode}
-          room_id={room.id}
-          bill={editingBill}
-          room={{ id: room.id, building_id: room.building_id, code: room.code, base_rent: room.base_rent }}
-          contracts={contracts}
-          tenantName={tenants[0]?.full_name}
-          loading={savingBill}
-          onClose={() => setBillDrawerOpen(false)}
-          onSubmit={async (payload) => {
-            setSavingBill(true)
-            try {
-              if (billDrawerMode === 'create') {
-                await createMonthlyBill(payload)
-                message.success('Bill added successfully')
-              } else if (editingBill) {
-                await updateMonthlyBill(editingBill.id, payload)
-                message.success('Bill updated successfully')
-              }
-              await refresh()
-            } finally {
-              setSavingBill(false)
             }
           }}
         />
@@ -269,12 +200,16 @@ export function RoomDetailPage({ roomId, buildings }: RoomDetailPageProps) {
         title="Delete this room?"
         onCancel={() => setDeleteRoomModalOpen(false)}
         onOk={async () => {
-          await deleteRoom(room.id)
-          message.success('Room deleted successfully')
-          setDeleteRoomModalOpen(false)
-          const destination = buildingId ? `/buildings?buildingId=${buildingId}` : '/buildings'
-          window.history.pushState(null, '', destination)
-          window.dispatchEvent(new PopStateEvent('popstate'))
+          try {
+            await deleteRoom(room.id)
+            message.success('Room deleted successfully')
+            setDeleteRoomModalOpen(false)
+            const destination = buildingId ? `/buildings?buildingId=${buildingId}` : '/buildings'
+            window.history.pushState(null, '', destination)
+            window.dispatchEvent(new PopStateEvent('popstate'))
+          } catch (error) {
+            message.error(error instanceof Error ? error.message : 'Unable to delete room')
+          }
         }}
         okText="Delete"
         okButtonProps={{ danger: true }}
@@ -284,25 +219,6 @@ export function RoomDetailPage({ roomId, buildings }: RoomDetailPageProps) {
         This action cannot be undone.
       </Modal>
 
-      <Modal
-        open={Boolean(billToDelete)}
-        title="Delete this bill entry?"
-        onCancel={() => setBillToDelete(null)}
-        onOk={async () => {
-          if (!billToDelete) return
-          const id = billToDelete.id
-          setBillToDelete(null)
-          await deleteMonthlyBill(id)
-          await refresh()
-          message.success('Bill deleted successfully')
-        }}
-        okText="Delete"
-        okButtonProps={{ danger: true }}
-        cancelText="Cancel"
-        maskClosable
-      >
-        This action cannot be undone.
-      </Modal>
     </>
   )
 }
