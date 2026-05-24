@@ -26,6 +26,8 @@ export interface Contract {
   status: ContractStatus
   rent_price: number
   billing_day: number
+  tenant_id?: string | null
+  tenant_name?: string | null
 }
 
 export interface ContractTenant {
@@ -146,4 +148,18 @@ export interface PaymentSummary {
   paidInvoices: number
   unpaidInvoices: number
   totalRevenue: number
+}
+
+export interface InvoicePrefill {
+  building_id: string
+  contract_id: string
+  tenant_id: string | null
+  tenant_name: string | null
+  issued_at: string
+  due_date: string | null
+  rent_amount: number
+  electricity_prev: number
+  water_prev: number
+  electric_unit_price: number
+  water_unit_price: number
 }

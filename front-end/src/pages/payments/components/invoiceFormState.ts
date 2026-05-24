@@ -4,6 +4,7 @@ import type { FormInstance } from 'antd/es/form'
 import type { InvoiceStatus } from '../types'
 
 export interface InvoiceFormValues {
+  building_id?: string
   contract_id?: string
   room_id?: string
   month: string
@@ -22,19 +23,26 @@ export interface InvoiceFormValues {
   note?: string
 }
 
-export const invoiceFormDefaultValues: InvoiceFormValues = {
-  month: new Date().toISOString().slice(0, 10),
-  status: 'DRAFT',
-  rent_amount: 0,
-  electricity_prev: 0,
-  electricity_curr: 0,
-  water_prev: 0,
-  water_curr: 0,
-  electric_unit_price: 0,
-  water_unit_price: 0,
-  other_fees: 0,
-  discount: 0,
+const today = () => new Date().toISOString().slice(0, 10)
+
+export function getInvoiceFormDefaultValues(): InvoiceFormValues {
+  return {
+    month: today(),
+    status: 'DRAFT',
+    issued_at: today(),
+    rent_amount: 0,
+    electricity_prev: 0,
+    electricity_curr: 0,
+    water_prev: 0,
+    water_curr: 0,
+    electric_unit_price: 0,
+    water_unit_price: 0,
+    other_fees: 0,
+    discount: 0,
+  }
 }
+
+export const invoiceFormDefaultValues: InvoiceFormValues = getInvoiceFormDefaultValues()
 
 export function useInvoiceDerivedValues(form: FormInstance<InvoiceFormValues>) {
   const rentAmount = Form.useWatch('rent_amount', form) ?? 0
