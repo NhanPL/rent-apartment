@@ -22,7 +22,16 @@ const roomCreateSchema = z.object({
   note: nullableString
 });
 
-const roomUpdateSchema = roomCreateSchema.omit({ building_id: true });
+const roomUpdateSchema = z.object({
+  code: z.string().trim().min(1),
+  floor: z.coerce.number().int().nullable().optional(),
+  area_m2: z.coerce.number().nullable().optional(),
+  status: z.string().trim().min(1),
+  base_rent: z.coerce.number().nonnegative(),
+  deposit_default: z.coerce.number().nonnegative(),
+  max_occupants: z.coerce.number().int().positive(),
+  note: nullableString
+});
 
 router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const buildingId = (req.query.buildingId ?? req.query.building_id) as string | undefined;
@@ -73,6 +82,20 @@ router.post('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 
 router.put('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const { code, floor, area_m2, status, base_rent, deposit_default, max_occupants, note } = parseBody(roomUpdateSchema, req.body);
+  const activeOccupancy = await query<{ occupants_count: number }>(
+    `SELECT COUNT(ct.tenant_id)::int AS occupants_count
+     FROM contract c
+     JOIN contract_tenant ct ON ct.contract_id=c.id AND ct.left_at IS NULL
+     JOIN room r ON r.id=c.room_id
+     JOIN building b ON b.id=r.building_id
+     WHERE r.id=$1 AND c.status='ACTIVE' AND b.manager_user_id=$2`,
+    [req.params.id, req.auth!.userId]
+  );
+  const occupantsCount = Number(activeOccupancy.rows[0]?.occupants_count ?? 0);
+  if (max_occupants !== null && max_occupants !== undefined && max_occupants < occupantsCount) {
+    throw new AppError(409, 'Room max occupants cannot be lower than current active occupants', 'ROOM_MAX_OCCUPANTS_EXCEEDED');
+  }
+
   const { rows } = await query(
     `UPDATE room
      SET code=$1,floor=$2,area_m2=$3,status=$4,base_rent=$5,deposit_default=$6,max_occupants=$7,note=$8

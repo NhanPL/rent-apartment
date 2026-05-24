@@ -5,6 +5,7 @@ import { env } from '../../config/env';
 import { AppError } from '../../shared/errors/app-error';
 import { sendTenantWelcomeEmail } from '../../shared/services/email.service';
 import { generateRandomPassword } from '../../shared/utils/password';
+import { assertRoomCanHostActiveContract, CURRENT_CONTRACT_STATUS, getContractRoomForManager } from '../contracts/contracts.rules';
 import { createTenantRecord, createTenantUserAccount, findTenantByIdentityNumber, TenantInsertPayload } from './tenants.repository';
 
 export interface CreateTenantInput extends TenantInsertPayload {}
@@ -107,35 +108,17 @@ export const validateTenantContractRoom = async (
   managerId?: string,
   excludeContractId?: string
 ): Promise<void> => {
-  const roomRs = await client.query<{ id: string; building_id: string }>(
-    managerId
-      ? `SELECT r.id, r.building_id
-         FROM room r
-         JOIN building b ON b.id=r.building_id
-         WHERE r.id=$1 AND b.manager_user_id=$2
-         LIMIT 1`
-      : 'SELECT id, building_id FROM room WHERE id=$1 LIMIT 1',
-    managerId ? [payload.room_id, managerId] : [payload.room_id]
-  );
-  const room = roomRs.rows[0];
-  if (!room) {
-    throw new AppError(400, 'Selected room does not exist', 'ROOM_NOT_FOUND');
-  }
+  const room = payload.status === CURRENT_CONTRACT_STATUS
+    ? await assertRoomCanHostActiveContract(client, {
+      roomId: payload.room_id,
+      managerId,
+      excludeContractId,
+      requestedOccupants: 1
+    })
+    : await getContractRoomForManager(client, { roomId: payload.room_id, managerId });
+
   if (payload.building_id && room.building_id !== payload.building_id) {
     throw new AppError(400, 'Selected room does not belong to selected building', 'ROOM_BUILDING_MISMATCH');
-  }
-
-  if (payload.status === 'ACTIVE') {
-    const params: unknown[] = [payload.room_id];
-    const excludeClause = excludeContractId ? 'AND id <> $2' : '';
-    if (excludeContractId) params.push(excludeContractId);
-    const activeContractRs = await client.query<{ id: string }>(
-      `SELECT id FROM contract WHERE room_id=$1 AND status='ACTIVE' ${excludeClause} LIMIT 1`,
-      params
-    );
-    if (activeContractRs.rows[0]) {
-      throw new AppError(409, 'Selected room already has an active contract', 'ROOM_ALREADY_OCCUPIED');
-    }
   }
 };
 

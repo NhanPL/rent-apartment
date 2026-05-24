@@ -46,22 +46,22 @@
 
 ## P2 - Business Rules
 
-- [ ] Decide and document contract status semantics.
-  - [ ] Clarify whether `DRAFT` counts as current occupancy.
-  - [ ] Make tenant current-room queries consistent with invoice/export/utility logic.
-  - [ ] Update `vw_tenant_current_room` and related backend queries accordingly.
+- [x] Decide and document contract status semantics.
+  - [x] Clarify whether `DRAFT` counts as current occupancy.
+  - [x] Make tenant current-room queries consistent with invoice/export/utility logic.
+  - [x] Update `vw_tenant_current_room` and related backend queries accordingly.
 
-- [ ] Fix room filter query naming.
-  - [ ] Align frontend `building_id` with backend `buildingId`, or support both.
+- [x] Fix room filter query naming.
+  - [x] Align frontend `building_id` with backend `buildingId`, or support both.
 
-- [ ] Harden tenant status updates.
-  - [ ] Prevent `PATCH /tenants/:id` from bypassing delete guards by setting `status='DELETED'`.
-  - [ ] Decide allowed tenant status transitions.
-  - [ ] Keep `DELETE /tenants/:id` as the only soft-delete path.
+- [x] Harden tenant status updates.
+  - [x] Prevent `PATCH /tenants/:id` from bypassing delete guards by setting `status='DELETED'`.
+  - [x] Decide allowed tenant status transitions.
+  - [x] Keep `DELETE /tenants/:id` as the only soft-delete path.
 
-- [ ] Review room occupancy rules.
-  - [ ] Enforce max occupants if needed.
-  - [ ] Prevent overlapping active contracts consistently at DB and service levels.
+- [x] Review room occupancy rules.
+  - [x] Enforce max occupants if needed.
+  - [x] Prevent overlapping active contracts consistently at DB and service levels.
 
 ## P3 - Product Completion
 
