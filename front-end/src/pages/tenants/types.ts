@@ -1,4 +1,4 @@
-export type TenantStatus = 'ACTIVE' | 'MOVED_OUT' | 'BLACKLIST'
+export type TenantStatus = 'ACTIVE' | 'MOVED_OUT' | 'BLACKLIST' | 'DELETED'
 
 export type ContractStatus = 'DRAFT' | 'ACTIVE' | 'ENDED' | 'CANCELLED'
 
@@ -77,6 +77,7 @@ export interface TenantUpsertPayload {
 }
 
 export interface ContractUpsertPayload {
+  building_id: string | null
   room_id: string | null
   status: ContractStatus
   start_date: string | null

@@ -139,8 +139,12 @@ CREATE TABLE IF NOT EXISTS tenant (
   updated_at            timestamptz NOT NULL DEFAULT now(),
 
   CONSTRAINT uq_tenant_identity UNIQUE (identity_number),
-  CONSTRAINT ck_tenant_status CHECK (status IN ('ACTIVE','MOVED_OUT','BLACKLIST'))
+  CONSTRAINT ck_tenant_status CHECK (status IN ('ACTIVE','MOVED_OUT','BLACKLIST','DELETED'))
 );
+
+ALTER TABLE tenant DROP CONSTRAINT IF EXISTS ck_tenant_status;
+ALTER TABLE tenant
+  ADD CONSTRAINT ck_tenant_status CHECK (status IN ('ACTIVE','MOVED_OUT','BLACKLIST','DELETED'));
 
 CREATE INDEX IF NOT EXISTS idx_tenant_phone ON tenant(phone);
 CREATE INDEX IF NOT EXISTS idx_tenant_user_id ON tenant(user_id);
@@ -788,7 +792,7 @@ SELECT
   c.start_date
 FROM tenant t
 JOIN contract_tenant ct ON ct.tenant_id = t.id AND ct.left_at IS NULL
-JOIN contract c ON c.id = ct.contract_id AND c.status = 'ACTIVE'
+JOIN contract c ON c.id = ct.contract_id AND c.status NOT IN ('ENDED','CANCELLED')
 JOIN room r ON r.id = c.room_id
 JOIN building b ON b.id = r.building_id;
 

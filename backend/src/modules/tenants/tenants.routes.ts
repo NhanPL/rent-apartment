@@ -2,64 +2,96 @@ import { Router } from 'express';
 import { query, withTransaction } from '../../db';
 import { requireRole } from '../../shared/middleware/auth';
 import { AppError } from '../../shared/errors/app-error';
-import { createTenant as createTenantService } from './tenants.service';
+import {
+  createTenant as createTenantService,
+  createTenantContract,
+  normalizeTenantContractInput,
+  validateTenantContractRoom
+} from './tenants.service';
 
 const router = Router();
-const generateContractCode = async (client: Parameters<Parameters<typeof withTransaction>[0]>[0]): Promise<string> => {
-  const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  for (let i = 0; i < 5; i += 1) {
-    const random = Math.floor(1000 + Math.random() * 9000);
-    const code = `CONTRACT-${datePart}-${random}`;
-    const exists = await client.query('SELECT 1 FROM contract WHERE contract_code = $1 LIMIT 1', [code]);
-    if (exists.rows.length === 0) return code;
-  }
-  throw new AppError(500, 'Cannot generate contract code', 'CONTRACT_CODE_ERROR');
-};
+
+interface TenantListRow {
+  id: string;
+  user_id: string | null;
+  full_name: string;
+  dob: string | null;
+  gender: string | null;
+  identity_number: string;
+  identity_issued_date: string | null;
+  identity_issued_place: string | null;
+  email: string | null;
+  phone: string;
+  permanent_address: string | null;
+  status: string;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+  room_id: string | null;
+  room_code: string | null;
+  building_id: string | null;
+  building_name: string | null;
+  contract_id: string | null;
+  start_date: string | null;
+  contract_status: string | null;
+}
+
+interface CountRow {
+  total: number;
+}
+
+interface TenantDeleteRow {
+  id: string;
+  user_id: string | null;
+}
 
 const upsertTenantContract = async (client: Parameters<Parameters<typeof withTransaction>[0]>[0], tenantId: string, contractInput: Record<string, unknown> | null) => {
   if (!contractInput) return;
-  if (!contractInput.room_id || !contractInput.start_date) {
-    throw new AppError(400, 'room_id and start_date are required for contract', 'VALIDATION_ERROR');
-  }
 
-  const activeRs = await client.query<{ contract_id: string }>(
-    'SELECT contract_id FROM contract_tenant WHERE tenant_id=$1 AND left_at IS NULL ORDER BY joined_at DESC LIMIT 1',
+  const payload = normalizeTenantContractInput(contractInput);
+
+  const activeRs = await client.query<{ contract_id: string; room_id: string; joined_at: string }>(
+    `SELECT ct.contract_id, c.room_id, ct.joined_at::text
+     FROM contract_tenant ct
+     JOIN contract c ON c.id=ct.contract_id
+     WHERE ct.tenant_id=$1 AND ct.left_at IS NULL AND c.status NOT IN ('ENDED','CANCELLED')
+     ORDER BY (c.status='ACTIVE') DESC, ct.joined_at DESC, c.created_at DESC
+     LIMIT 1`,
     [tenantId]
   );
 
-  const payload = {
-    room_id: String(contractInput.room_id),
-    status: String(contractInput.status ?? 'DRAFT'),
-    start_date: String(contractInput.start_date),
-    end_date: (contractInput.end_date as string | null | undefined) ?? null,
-    move_in_date: (contractInput.move_in_date as string | null | undefined) ?? null,
-    move_out_date: (contractInput.move_out_date as string | null | undefined) ?? null,
-    rent_price: Number(contractInput.rent_price ?? 0),
-    deposit_amount: Number(contractInput.deposit_amount ?? 0),
-    billing_day: Number(contractInput.billing_day ?? 1),
-    note: (contractInput.note as string | null | undefined) ?? null
-  };
-
-  const current = activeRs.rows[0]?.contract_id;
+  const current = activeRs.rows[0];
   if (!current) {
-    const code = await generateContractCode(client);
-    const contractRs = await client.query(
-      `INSERT INTO contract(room_id,contract_code,status,start_date,end_date,move_in_date,move_out_date,rent_price,deposit_amount,billing_day,note)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
-      [payload.room_id, code, payload.status, payload.start_date, payload.end_date, payload.move_in_date, payload.move_out_date, payload.rent_price, payload.deposit_amount, payload.billing_day, payload.note]
-    );
-    await client.query(
-      `INSERT INTO contract_tenant(contract_id,tenant_id,is_primary,joined_at,left_at)
-       VALUES($1,$2,true,$3,null)`,
-      [contractRs.rows[0].id, tenantId, payload.start_date]
-    );
+    await createTenantContract(client, tenantId, contractInput);
     return;
   }
 
+  if (current.room_id !== payload.room_id) {
+    await validateTenantContractRoom(client, payload);
+    const leftAt = payload.start_date > current.joined_at ? payload.start_date : current.joined_at;
+    await client.query(
+      'UPDATE contract_tenant SET left_at=$1 WHERE contract_id=$2 AND tenant_id=$3 AND left_at IS NULL',
+      [leftAt, current.contract_id, tenantId]
+    );
+    await client.query(
+      `UPDATE contract
+       SET status='ENDED', end_date=COALESCE(end_date, $1), move_out_date=COALESCE(move_out_date, $1)
+       WHERE id=$2`,
+      [leftAt, current.contract_id]
+    );
+    await createTenantContract(client, tenantId, contractInput);
+    return;
+  }
+
+  await validateTenantContractRoom(client, payload, current.contract_id);
   await client.query(
     `UPDATE contract SET room_id=$1,status=$2,start_date=$3,end_date=$4,move_in_date=$5,move_out_date=$6,rent_price=$7,deposit_amount=$8,billing_day=$9,note=$10
      WHERE id=$11`,
-    [payload.room_id, payload.status, payload.start_date, payload.end_date, payload.move_in_date, payload.move_out_date, payload.rent_price, payload.deposit_amount, payload.billing_day, payload.note, current]
+    [payload.room_id, payload.status, payload.start_date, payload.end_date, payload.move_in_date, payload.move_out_date, payload.rent_price, payload.deposit_amount, payload.billing_day, payload.note, current.contract_id]
+  );
+  await client.query(
+    'UPDATE contract_tenant SET joined_at=$1 WHERE contract_id=$2 AND tenant_id=$3 AND left_at IS NULL',
+    [payload.start_date, current.contract_id, tenantId]
   );
 };
 
@@ -78,7 +110,7 @@ router.get('/', requireRole('MANAGER'), async (req, res) => {
   const buildingId = String(req.query.building_id ?? '').trim();
   const roomId = String(req.query.room_id ?? '').trim();
 
-  const conditions: string[] = [];
+  const conditions: string[] = [`t.status <> 'DELETED'`];
   const params: unknown[] = [];
 
   if (search) {
@@ -101,22 +133,34 @@ router.get('/', requireRole('MANAGER'), async (req, res) => {
 
   const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-  const countRs = await query(
+  const currentRentalJoin = `
+     LEFT JOIN LATERAL (
+       SELECT c.room_id, r.code AS room_code, b.id AS building_id, b.name AS building_name,
+              c.id AS contract_id, c.start_date, c.status AS contract_status
+       FROM contract_tenant ct
+       JOIN contract c ON c.id=ct.contract_id
+       JOIN room r ON r.id=c.room_id
+       JOIN building b ON b.id=r.building_id
+       WHERE ct.tenant_id=t.id AND ct.left_at IS NULL AND c.status NOT IN ('ENDED','CANCELLED')
+       ORDER BY (c.status='ACTIVE') DESC, c.start_date DESC, c.created_at DESC
+       LIMIT 1
+     ) v ON true`;
+
+  const countRs = await query<CountRow>(
     `SELECT COUNT(*)::int AS total
      FROM tenant t
-     LEFT JOIN vw_tenant_current_room v ON v.tenant_id = t.id
+     ${currentRentalJoin}
      ${whereClause}`,
     params
   );
 
   params.push(pageSize, offset);
 
-  const dataRs = await query(
+  const dataRs = await query<TenantListRow>(
     `SELECT t.*, v.room_id, v.room_code, v.building_id, v.building_name, v.contract_id, v.start_date,
-            c.status AS contract_status
+            v.contract_status
      FROM tenant t
-     LEFT JOIN vw_tenant_current_room v ON v.tenant_id = t.id
-     LEFT JOIN contract c ON c.id = v.contract_id
+     ${currentRentalJoin}
      ${whereClause}
      ORDER BY t.updated_at DESC
      LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -143,13 +187,33 @@ router.get('/', requireRole('MANAGER'), async (req, res) => {
 });
 
 router.get('/:id', requireRole('MANAGER'), async (req, res) => {
-  const tenantRs = await query('SELECT * FROM tenant WHERE id=$1', [req.params.id]);
+  const tenantRs = await query('SELECT * FROM tenant WHERE id=$1 AND status <> $2', [req.params.id, 'DELETED']);
   const tenant = tenantRs.rows[0];
   if (!tenant) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
 
   const [roomRs, contractRs] = await Promise.all([
-    query('SELECT * FROM vw_tenant_current_room WHERE tenant_id=$1', [req.params.id]),
-    query(`SELECT c.* FROM contract c JOIN contract_tenant ct ON ct.contract_id=c.id WHERE ct.tenant_id=$1 AND ct.left_at IS NULL ORDER BY c.created_at DESC LIMIT 1`, [req.params.id])
+    query(
+      `SELECT t.id AS tenant_id, t.full_name, t.phone, t.identity_number,
+              c.room_id, r.code AS room_code, b.id AS building_id, b.name AS building_name,
+              c.id AS contract_id, c.start_date, c.status AS contract_status
+       FROM tenant t
+       JOIN contract_tenant ct ON ct.tenant_id=t.id AND ct.left_at IS NULL
+       JOIN contract c ON c.id=ct.contract_id AND c.status NOT IN ('ENDED','CANCELLED')
+       JOIN room r ON r.id=c.room_id
+       JOIN building b ON b.id=r.building_id
+       WHERE t.id=$1
+       ORDER BY (c.status='ACTIVE') DESC, c.start_date DESC, c.created_at DESC
+       LIMIT 1`,
+      [req.params.id]
+    ),
+    query(
+      `SELECT c.* FROM contract c
+       JOIN contract_tenant ct ON ct.contract_id=c.id
+       WHERE ct.tenant_id=$1 AND ct.left_at IS NULL AND c.status NOT IN ('ENDED','CANCELLED')
+       ORDER BY (c.status='ACTIVE') DESC, c.created_at DESC
+       LIMIT 1`,
+      [req.params.id]
+    )
   ]);
 
   res.json({ ...tenant, current_room: roomRs.rows[0] ?? null, current_contract: contractRs.rows[0] ?? null });
@@ -170,7 +234,8 @@ router.patch('/:id', requireRole('MANAGER'), async (req, res) => {
   const tenantPayload = (b.tenant ?? b) as Record<string, unknown>;
   const allowed = ['full_name', 'dob', 'gender', 'identity_number', 'identity_issued_date', 'identity_issued_place', 'email', 'phone', 'permanent_address', 'status', 'note'];
   const entries = allowed.filter((field) => Object.prototype.hasOwnProperty.call(tenantPayload, field) && tenantPayload[field] !== undefined);
-  if (entries.length === 0) throw new AppError(400, 'No fields to update', 'VALIDATION_ERROR');
+  const contractPayload = (b.contract as Record<string, unknown> | null | undefined) ?? null;
+  if (entries.length === 0 && !contractPayload) throw new AppError(400, 'No fields to update', 'VALIDATION_ERROR');
 
   const params: unknown[] = [];
   const sets = entries.map((field) => {
@@ -180,9 +245,11 @@ router.patch('/:id', requireRole('MANAGER'), async (req, res) => {
   params.push(req.params.id);
 
   const result = await withTransaction(async (client) => {
-    const updated = await client.query(`UPDATE tenant SET ${sets.join(',')} WHERE id=$${params.length} RETURNING *`, params);
+    const updated =
+      entries.length > 0
+        ? await client.query(`UPDATE tenant SET ${sets.join(',')} WHERE id=$${params.length} RETURNING *`, params)
+        : await client.query('SELECT * FROM tenant WHERE id=$1', [req.params.id]);
     if (!updated.rows[0]) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
-    const contractPayload = (b.contract as Record<string, unknown> | null | undefined) ?? null;
     await upsertTenantContract(client, req.params.id, contractPayload);
     return updated.rows[0];
   });
@@ -190,8 +257,53 @@ router.patch('/:id', requireRole('MANAGER'), async (req, res) => {
 });
 
 router.delete('/:id', requireRole('MANAGER'), async (req, res) => {
-  const rs = await query(`UPDATE tenant SET status='MOVED_OUT' WHERE id=$1 RETURNING id`, [req.params.id]);
-  if (!rs.rows[0]) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
+  await withTransaction(async (client) => {
+    const tenantRs = await client.query<TenantDeleteRow>(
+      'SELECT id, user_id FROM tenant WHERE id=$1 AND status <> $2 FOR UPDATE',
+      [req.params.id, 'DELETED']
+    );
+    const tenant = tenantRs.rows[0];
+    if (!tenant) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
+
+    const activeAssignmentRs = await client.query<{ id: string }>(
+      `SELECT c.id
+       FROM contract_tenant ct
+       JOIN contract c ON c.id=ct.contract_id
+       WHERE ct.tenant_id=$1
+         AND ct.left_at IS NULL
+         AND c.status NOT IN ('ENDED','CANCELLED')
+       LIMIT 1`,
+      [tenant.id]
+    );
+    if (activeAssignmentRs.rows[0]) {
+      throw new AppError(400, 'Không thể xóa người thuê đang có hợp đồng hoặc phòng đang thuê', 'TENANT_HAS_ACTIVE_CONTRACT');
+    }
+
+    const unpaidInvoiceRs = await client.query<{ id: string }>(
+      `SELECT i.id
+       FROM contract_tenant ct
+       JOIN invoice i ON i.contract_id=ct.contract_id
+       WHERE ct.tenant_id=$1
+         AND i.status NOT IN ('PAID','VOID')
+       LIMIT 1`,
+      [tenant.id]
+    );
+    if (unpaidInvoiceRs.rows[0]) {
+      throw new AppError(400, 'Không thể xóa người thuê còn hóa đơn chưa thanh toán', 'TENANT_HAS_UNPAID_INVOICE');
+    }
+
+    await client.query(
+      `UPDATE tenant
+       SET status='DELETED', user_id=NULL
+       WHERE id=$1`,
+      [tenant.id]
+    );
+
+    if (tenant.user_id) {
+      await client.query('UPDATE app_user SET is_active=false WHERE id=$1', [tenant.user_id]);
+    }
+  });
+
   res.status(204).send();
 });
 

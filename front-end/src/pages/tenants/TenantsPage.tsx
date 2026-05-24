@@ -2,7 +2,6 @@ import {
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
-  ExclamationCircleOutlined,
   FileWordOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -104,6 +103,46 @@ const defaultFormValues: TenantFormValues = {
   },
 }
 
+const toNumberOrUndefined = (value: unknown): number | undefined => {
+  if (value === null || value === undefined || value === '') {
+    return undefined
+  }
+
+  const numericValue = Number(value)
+  return Number.isFinite(numericValue) ? numericValue : undefined
+}
+
+const toNumberOrNull = (value: unknown): number | null => toNumberOrUndefined(value) ?? null
+
+const formatMoneyInput = (value: string | number | undefined) => {
+  if (value === undefined || value === '') {
+    return ''
+  }
+
+  return `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+
+const parseMoneyInput = (value: string | undefined) => {
+  const numericValue = Number(value?.replace(/,/g, '') || 0)
+  return Number.isFinite(numericValue) ? numericValue : 0
+}
+
+const validateMoneyValue = async (_: unknown, value: unknown) => {
+  if (value === undefined || value === null || value === '') {
+    return
+  }
+
+  const numericValue = Number(value)
+
+  if (!Number.isFinite(numericValue)) {
+    throw new Error('Giá trị phải là số hợp lệ')
+  }
+
+  if (numericValue < 0) {
+    throw new Error('Giá trị không được âm')
+  }
+}
+
 const tenantInfoFieldNames = new Set([
   'full_name',
   'dob',
@@ -145,7 +184,6 @@ export function TenantsPage() {
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('create')
   const [drawerLoading, setDrawerLoading] = useState(false)
   const [saveLoading, setSaveLoading] = useState(false)
-  const [canSave, setCanSave] = useState(false)
   const [discardModalOpen, setDiscardModalOpen] = useState(false)
   const [editingTenantId, setEditingTenantId] = useState<string | null>(null)
   const [drawerInitialValues, setDrawerInitialValues] = useState<TenantFormValues>(defaultFormValues)
@@ -153,6 +191,8 @@ export function TenantsPage() {
 
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<TenantListItem | null>(null)
+  const [deletingTenantId, setDeletingTenantId] = useState<string | null>(null)
   const [exportingTenantId, setExportingTenantId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -197,23 +237,6 @@ export function TenantsPage() {
   }, [loadTenants])
 
   const isDirty = useCallback(() => JSON.stringify(form.getFieldsValue(true)) !== initialSnapshotRef.current, [form])
-  const watchedValues = Form.useWatch([], form)
-
-  const requiredFieldPaths: Array<string | (string | number)[]> = useMemo(
-    () => [
-      'full_name',
-      'phone',
-      'identity_number',
-      'status',
-      ['rental', 'building_id'],
-      ['rental', 'room_id'],
-      ['rental', 'start_date'],
-      ['rental', 'rent_price'],
-      ['rental', 'deposit_amount'],
-      ['rental', 'billing_day'],
-    ],
-    [],
-  )
 
   useEffect(() => {
     if (!drawerOpen) {
@@ -228,36 +251,9 @@ export function TenantsPage() {
     form.resetFields()
     form.setFieldsValue(drawerInitialValues)
     initialSnapshotRef.current = JSON.stringify(drawerInitialValues)
-    setCanSave(false)
     setActiveFormTab('tenant')
     didInitFormRef.current = true
   }, [drawerOpen, drawerInitialValues, form])
-
-  useEffect(() => {
-    if (!drawerOpen) {
-      return
-    }
-
-    let cancelled = false
-    const validateSaveState = async () => {
-      try {
-        await form.validateFields(requiredFieldPaths, { validateOnly: true })
-        if (!cancelled) {
-          const dirty = drawerMode === 'edit' ? isDirty() : true
-          setCanSave(dirty)
-        }
-      } catch {
-        if (!cancelled) {
-          setCanSave(false)
-        }
-      }
-    }
-
-    void validateSaveState()
-    return () => {
-      cancelled = true
-    }
-  }, [drawerMode, drawerOpen, form, isDirty, requiredFieldPaths, watchedValues])
 
   const filteredRoomsForFilter = useMemo(() => {
     if (!buildingFilter) {
@@ -313,8 +309,8 @@ export function TenantsPage() {
           end_date: data.current_contract?.end_date ?? undefined,
           move_in_date: data.current_contract?.move_in_date ?? undefined,
           move_out_date: data.current_contract?.move_out_date ?? undefined,
-          rent_price: data.current_contract?.rent_price,
-          deposit_amount: data.current_contract?.deposit_amount,
+          rent_price: toNumberOrUndefined(data.current_contract?.rent_price),
+          deposit_amount: toNumberOrUndefined(data.current_contract?.deposit_amount),
           billing_day: data.current_contract?.billing_day,
           contract_note: data.current_contract?.note ?? undefined,
         },
@@ -362,14 +358,15 @@ export function TenantsPage() {
       },
       contract: hasRental
         ? {
+            building_id: values.rental.building_id ?? null,
             room_id: values.rental.room_id ?? null,
             status: values.rental.contract_status ?? 'DRAFT',
             start_date: values.rental.start_date ?? null,
             end_date: values.rental.end_date ?? null,
             move_in_date: values.rental.move_in_date ?? null,
             move_out_date: values.rental.move_out_date ?? null,
-            rent_price: values.rental.rent_price ?? null,
-            deposit_amount: values.rental.deposit_amount ?? null,
+            rent_price: toNumberOrNull(values.rental.rent_price),
+            deposit_amount: toNumberOrNull(values.rental.deposit_amount),
             billing_day: values.rental.billing_day ?? null,
             note: values.rental.contract_note ?? null,
           }
@@ -377,24 +374,42 @@ export function TenantsPage() {
     }
   }, [])
 
-  const switchToErrorTab = useCallback(
+  const getFieldTab = useCallback(
     (fieldNamePath: (string | number)[]) => {
       const [root] = fieldNamePath
       if (root === 'rental') {
-        setActiveFormTab('rental')
-      } else if (typeof root === 'string' && tenantInfoFieldNames.has(root)) {
-        setActiveFormTab('tenant')
+        return 'rental'
       }
+      if (typeof root === 'string' && tenantInfoFieldNames.has(root)) {
+        return 'tenant'
+      }
+
+      return undefined
     },
     [],
   )
 
+  const showFirstValidationError = useCallback(
+    (fieldNamePath: (string | number)[]) => {
+      const fieldTab = getFieldTab(fieldNamePath)
+      if (fieldTab) {
+        setActiveFormTab(fieldTab)
+      }
+
+      window.setTimeout(() => {
+        form.scrollToField(fieldNamePath, { block: 'center' })
+      }, 0)
+    },
+    [form, getFieldTab],
+  )
+
   const submitForm = useCallback(async () => {
+    setSaveLoading(true)
+
     try {
       const values = await form.validateFields()
       const payload = mapToPayload(values)
 
-      setSaveLoading(true)
       if (drawerMode === 'create') {
         await createTenant(payload)
         message.success('Tenant created successfully')
@@ -409,34 +424,44 @@ export function TenantsPage() {
       const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
       const firstError = formError.errorFields?.[0]
       if (firstError?.name) {
-        switchToErrorTab(firstError.name)
-        form.scrollToField(firstError.name, { block: 'center' })
+        showFirstValidationError(firstError.name)
       } else {
         message.error('Failed to save tenant')
       }
     } finally {
       setSaveLoading(false)
     }
-  }, [drawerMode, editingTenantId, form, loadTenants, mapToPayload, switchToErrorTab])
+  }, [drawerMode, editingTenantId, form, loadTenants, mapToPayload, showFirstValidationError])
 
-  const handleDelete = useCallback(
-    (id: string) => {
-      Modal.confirm({
-        title: 'Delete tenant?',
-        icon: <ExclamationCircleOutlined />,
-        content: 'This action cannot be undone.',
-        okText: 'Delete',
-        okButtonProps: { danger: true },
-        cancelText: 'Cancel',
-        async onOk() {
-          await deleteTenant(id)
-          message.success('Tenant deleted successfully')
-          await loadTenants()
-        },
-      })
-    },
-    [loadTenants],
-  )
+  const handleDeleteClick = useCallback((tenant: TenantListItem) => {
+    setDeleteTarget(tenant)
+  }, [])
+
+  const confirmDeleteTenant = useCallback(async () => {
+    if (!deleteTarget || deletingTenantId) {
+      return
+    }
+
+    const tenantId = deleteTarget.id
+    setDeletingTenantId(tenantId)
+
+    try {
+      await deleteTenant(tenantId)
+      setItems((currentItems) => currentItems.filter((item) => item.id !== tenantId))
+      if (selectedTenant?.id === tenantId) {
+        setSelectedTenant(null)
+        setDetailOpen(false)
+      }
+      setDeleteTarget(null)
+      message.success('Xóa người thuê thành công')
+      await loadTenants()
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Không thể xóa người thuê'
+      message.error(detail)
+    } finally {
+      setDeletingTenantId(null)
+    }
+  }, [deleteTarget, deletingTenantId, loadTenants, selectedTenant?.id])
 
   const handleView = useCallback(async (id: string) => {
     setDetailOpen(true)
@@ -527,12 +552,22 @@ export function TenantsPage() {
             >
               Export
             </Button>
-            <Button type="text" danger icon={<DeleteOutlined />} onClick={() => handleDelete(item.id)} />
+            <Button
+              type="text"
+              danger
+              icon={<DeleteOutlined />}
+              loading={deletingTenantId === item.id}
+              disabled={Boolean(deletingTenantId)}
+              onClick={(event) => {
+                event.stopPropagation()
+                handleDeleteClick(item)
+              }}
+            />
           </Space>
         ),
       },
     ],
-    [exportingTenantId, handleDelete, handleExportContract, handleView, openEdit],
+    [deletingTenantId, exportingTenantId, handleDeleteClick, handleExportContract, handleView, openEdit],
   )
 
   return (
@@ -635,6 +670,7 @@ export function TenantsPage() {
               items={[
                 {
                   key: 'tenant',
+                  forceRender: true,
                   label: 'Thông tin người thuê',
                   children: (
                     <div className={`tenant-tab-grid ${isDesktop ? 'desktop-two-cols' : ''}`}>
@@ -700,6 +736,7 @@ export function TenantsPage() {
                 },
                 {
                   key: 'rental',
+                  forceRender: true,
                   label: 'Thuê phòng',
                   children: (
                     <div className={`tenant-tab-grid ${isDesktop ? 'desktop-two-cols' : ''}`}>
@@ -720,7 +757,7 @@ export function TenantsPage() {
                       >
                         <Select
                           allowClear
-                          disabled={!form.getFieldValue(['rental', 'building_id'])}
+                          disabled={!selectedRentalBuildingId}
                           options={filteredRoomsForDrawer.map((room) => ({ label: room.code, value: room.id }))}
                         />
                       </Form.Item>
@@ -746,16 +783,30 @@ export function TenantsPage() {
                       <Form.Item
                         name={['rental', 'rent_price']}
                         label="Tiền thuê"
-                        rules={[{ required: true, message: 'Vui lòng nhập tiền thuê' }, { type: 'number', min: 0, message: 'Giá trị phải là số hợp lệ' }]}
+                        rules={[{ required: true, message: 'Vui lòng nhập tiền thuê' }, { validator: validateMoneyValue }]}
                       >
-                        <InputNumber min={0} precision={0} controls={false} style={{ width: '100%' }} />
+                        <InputNumber
+                          min={0}
+                          precision={0}
+                          controls={false}
+                          formatter={formatMoneyInput}
+                          parser={parseMoneyInput}
+                          style={{ width: '100%' }}
+                        />
                       </Form.Item>
                       <Form.Item
                         name={['rental', 'deposit_amount']}
                         label="Tiền cọc"
-                        rules={[{ required: true, message: 'Vui lòng nhập tiền cọc' }, { type: 'number', min: 0, message: 'Giá trị phải là số hợp lệ' }]}
+                        rules={[{ required: true, message: 'Vui lòng nhập tiền cọc' }, { validator: validateMoneyValue }]}
                       >
-                        <InputNumber min={0} precision={0} controls={false} style={{ width: '100%' }} />
+                        <InputNumber
+                          min={0}
+                          precision={0}
+                          controls={false}
+                          formatter={formatMoneyInput}
+                          parser={parseMoneyInput}
+                          style={{ width: '100%' }}
+                        />
                       </Form.Item>
                       <Form.Item
                         name={['rental', 'billing_day']}
@@ -794,7 +845,7 @@ export function TenantsPage() {
                   size={isMobile ? 'large' : 'middle'}
                   type="primary"
                   loading={saveLoading}
-                  disabled={!canSave}
+                  disabled={saveLoading}
                   onClick={() => void submitForm()}
                 >
                   Save
@@ -859,6 +910,23 @@ export function TenantsPage() {
           </Space>
         )}
       </Drawer>
+
+      <Modal
+        open={Boolean(deleteTarget)}
+        title="Xác nhận xóa người thuê"
+        onCancel={() => setDeleteTarget(null)}
+        onOk={() => void confirmDeleteTenant()}
+        okText="Xóa"
+        okButtonProps={{ danger: true, loading: Boolean(deletingTenantId) }}
+        cancelText="Hủy"
+        maskClosable={!deletingTenantId}
+        keyboard={!deletingTenantId}
+        confirmLoading={Boolean(deletingTenantId)}
+        zIndex={1200}
+        getContainer={() => document.body}
+      >
+        Bạn có chắc muốn xóa người thuê này không?
+      </Modal>
 
       <Modal
         open={discardModalOpen}
