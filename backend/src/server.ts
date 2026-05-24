@@ -2,6 +2,16 @@ import { app } from './app';
 import { env } from './config/env';
 import { assertDatabaseConnection } from './db/connection';
 
+process.on('unhandledRejection', (reason) => {
+  // eslint-disable-next-line no-console
+  console.error('Unhandled Rejection:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  // eslint-disable-next-line no-console
+  console.error('Uncaught Exception:', error);
+});
+
 async function bootstrap() {
   try {
     await assertDatabaseConnection();

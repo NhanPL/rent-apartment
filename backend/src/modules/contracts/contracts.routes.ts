@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import { query, withTransaction } from '../../db';
 import { requireRole } from '../../shared/middleware/auth';
+import { asyncHandler } from '../../shared/middleware/async-handler';
 
 const router = Router();
+type DbRow = Record<string, any>;
+
 const generateContractCode = async (client: Parameters<Parameters<typeof withTransaction>[0]>[0]): Promise<string> => {
   const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
   for (let i = 0; i < 5; i += 1) {
@@ -14,24 +17,24 @@ const generateContractCode = async (client: Parameters<Parameters<typeof withTra
   throw new Error('Unable to generate unique contract code');
 };
 
-router.get('/', requireRole('MANAGER'), async (_req, res) => {
+router.get('/', requireRole('MANAGER'), asyncHandler(async (_req, res) => {
   const { rows } = await query('SELECT * FROM contract ORDER BY created_at DESC');
   res.json(rows);
-});
+}));
 
-router.get('/:id', requireRole('MANAGER'), async (req, res) => {
+router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const [contract, tenants] = await Promise.all([
     query('SELECT * FROM contract WHERE id=$1', [req.params.id]),
     query('SELECT * FROM contract_tenant WHERE contract_id=$1', [req.params.id])
   ]);
   res.json({ ...contract.rows[0], tenants: tenants.rows });
-});
+}));
 
-router.post('/', requireRole('MANAGER'), async (req, res) => {
-  const b = req.body;
+router.post('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  const b = req.body as Record<string, any>;
   const data = await withTransaction(async (client) => {
     const contractCode = b.contract_code ?? (await generateContractCode(client));
-    const c = await client.query(
+    const c = await client.query<DbRow>(
       `INSERT INTO contract(room_id,contract_code,status,start_date,end_date,move_in_date,move_out_date,rent_price,deposit_amount,billing_day,note)
        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
       [b.room_id, contractCode, b.status ?? 'DRAFT', b.start_date, b.end_date ?? null, b.move_in_date ?? null, b.move_out_date ?? null, b.rent_price ?? 0, b.deposit_amount ?? 0, b.billing_day ?? 1, b.note ?? null]
@@ -49,6 +52,6 @@ router.post('/', requireRole('MANAGER'), async (req, res) => {
   });
 
   res.status(201).json(data);
-});
+}));
 
 export default router;

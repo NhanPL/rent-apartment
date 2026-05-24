@@ -2,6 +2,8 @@ import { query, withTransaction } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
 import { firstDayOfMonth } from '../../shared/utils/date';
 
+type DbRow = Record<string, any>;
+
 export const getUtilityReadingById = async (id: string) => {
   const { rows } = await query('SELECT * FROM utility_reading WHERE id=$1', [id]);
   if (!rows[0]) throw new AppError(404, 'Utility reading not found');
@@ -25,7 +27,7 @@ export const createUtilityReading = async (payload: any, userId: string) => {
     );
     if (!roomContract.rows[0]) throw new AppError(403, 'Tenant is not active in this room');
 
-    const prev = await client.query(
+    const prev = await client.query<DbRow>(
       `SELECT electricity_curr, water_curr FROM utility_reading WHERE room_id=$1 AND month < $2 AND status IN ('APPROVED','INVOICED') ORDER BY month DESC LIMIT 1`,
       [payload.room_id, month]
     );

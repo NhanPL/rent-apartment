@@ -2,11 +2,13 @@ import { query, withTransaction } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
 import { firstDayOfMonth } from '../../shared/utils/date';
 
+type DbRow = Record<string, any>;
+
 const calc = (q: number, p: number) => Number((q * p).toFixed(2));
 
 export const createInvoiceFromReading = async (utilityReadingId: string, managerId: string) =>
   withTransaction(async (client) => {
-    const readingRs = await client.query(
+    const readingRs = await client.query<DbRow>(
       `SELECT ur.*, b.id building_id FROM utility_reading ur
        JOIN room r ON r.id=ur.room_id
        JOIN building b ON b.id=r.building_id
@@ -17,7 +19,7 @@ export const createInvoiceFromReading = async (utilityReadingId: string, manager
     if (!reading) throw new AppError(404, 'Reading not found');
     if (reading.status !== 'APPROVED') throw new AppError(409, 'Reading must be APPROVED to invoice');
 
-    const contractRs = await client.query(
+    const contractRs = await client.query<DbRow>(
       `SELECT * FROM contract WHERE room_id=$1 AND status='ACTIVE' ORDER BY start_date DESC LIMIT 1`,
       [reading.room_id]
     );
@@ -28,7 +30,7 @@ export const createInvoiceFromReading = async (utilityReadingId: string, manager
     const existed = await client.query('SELECT id FROM invoice WHERE contract_id=$1 AND month=$2', [contract.id, month]);
     if (existed.rows[0]) throw new AppError(409, 'Invoice already exists for contract/month');
 
-    const rateRs = await client.query(
+    const rateRs = await client.query<DbRow>(
       `SELECT * FROM utility_rate WHERE building_id=$1 AND effective_from <= $2 ORDER BY effective_from DESC LIMIT 1`,
       [reading.building_id, month]
     );
@@ -42,7 +44,7 @@ export const createInvoiceFromReading = async (utilityReadingId: string, manager
     const waterAmount = calc(waterUsage, Number(rate.water_unit_price));
     const rent = Number(contract.rent_price);
 
-    const invRs = await client.query(
+    const invRs = await client.query<DbRow>(
       `INSERT INTO invoice(contract_id, room_id, utility_reading_id, month, status, issued_at, due_date, subtotal, discount, total, approved_by_user_id, approved_at)
        VALUES($1,$2,$3,$4,'ISSUED',now(),$5,$6,0,$6,$7,now()) RETURNING *`,
       [contract.id, reading.room_id, reading.id, month, month, rent + elecAmount + waterAmount, managerId]
@@ -70,7 +72,7 @@ export const createInvoiceFromReading = async (utilityReadingId: string, manager
 
 export const addInvoiceAdjustment = async (invoiceId: string, amount: number, reason: string, userId: string) =>
   withTransaction(async (client) => {
-    const invRs = await client.query('SELECT * FROM invoice WHERE id=$1', [invoiceId]);
+    const invRs = await client.query<DbRow>('SELECT * FROM invoice WHERE id=$1', [invoiceId]);
     const inv = invRs.rows[0];
     if (!inv) throw new AppError(404, 'Invoice not found');
     if (inv.status === 'PAID' || inv.status === 'VOID') throw new AppError(409, 'Cannot adjust closed invoice');
@@ -87,7 +89,7 @@ export const addInvoiceAdjustment = async (invoiceId: string, amount: number, re
 
     const subtotal = Number(inv.subtotal) + (amount > 0 ? amount : 0);
     const discount = Number(inv.discount) + (amount < 0 ? Math.abs(amount) : 0);
-    const updated = await client.query(
+    const updated = await client.query<DbRow>(
       `UPDATE invoice SET subtotal=$1, discount=$2, total=$3, adjustment_note=$4 WHERE id=$5 RETURNING *`,
       [subtotal, discount, total, reason, invoiceId]
     );
