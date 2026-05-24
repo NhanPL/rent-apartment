@@ -36,7 +36,7 @@ export function RoomsTable({ loading, data, tenantCountByRoomId, onView, onEdit,
       title: 'Price',
       dataIndex: 'base_rent',
       width: 120,
-      render: (value: number) => `$${value.toFixed(0)}`,
+      render: (value: number) => `${(+value).toFixed(0)}`,
     },
     {
       title: 'Tenants',
