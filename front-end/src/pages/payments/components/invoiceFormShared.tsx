@@ -3,60 +3,7 @@ import { useEffect, useMemo } from 'react'
 import type { FormInstance } from 'antd/es/form'
 import { getEffectiveUtilityRate } from '../../../services/paymentsService'
 import type { Contract, InvoiceStatus, Room } from '../types'
-
-export interface InvoiceFormValues {
-  contract_id?: string
-  room_id?: string
-  month: string
-  status: InvoiceStatus
-  issued_at?: string
-  due_date?: string
-  rent_amount: number
-  electricity_prev: number
-  electricity_curr: number
-  water_prev: number
-  water_curr: number
-  electric_unit_price: number
-  water_unit_price: number
-  other_fees: number
-  discount: number
-  note?: string
-}
-
-export const invoiceFormDefaultValues: InvoiceFormValues = {
-  month: new Date().toISOString().slice(0, 10),
-  status: 'DRAFT',
-  rent_amount: 0,
-  electricity_prev: 0,
-  electricity_curr: 0,
-  water_prev: 0,
-  water_curr: 0,
-  electric_unit_price: 0,
-  water_unit_price: 0,
-  other_fees: 0,
-  discount: 0,
-}
-
-export function useInvoiceDerivedValues(form: FormInstance<InvoiceFormValues>) {
-  const rentAmount = Form.useWatch('rent_amount', form) ?? 0
-  const electricityPrev = Form.useWatch('electricity_prev', form) ?? 0
-  const electricityCurr = Form.useWatch('electricity_curr', form) ?? 0
-  const waterPrev = Form.useWatch('water_prev', form) ?? 0
-  const waterCurr = Form.useWatch('water_curr', form) ?? 0
-  const electricUnitPrice = Form.useWatch('electric_unit_price', form) ?? 0
-  const waterUnitPrice = Form.useWatch('water_unit_price', form) ?? 0
-  const otherFees = Form.useWatch('other_fees', form) ?? 0
-  const discount = Form.useWatch('discount', form) ?? 0
-
-  const electricUsage = useMemo(() => Math.max(0, electricityCurr - electricityPrev), [electricityCurr, electricityPrev])
-  const waterUsage = useMemo(() => Math.max(0, waterCurr - waterPrev), [waterCurr, waterPrev])
-  const electricAmount = useMemo(() => electricUsage * electricUnitPrice, [electricUsage, electricUnitPrice])
-  const waterAmount = useMemo(() => waterUsage * waterUnitPrice, [waterUsage, waterUnitPrice])
-  const subtotal = useMemo(() => rentAmount + electricAmount + waterAmount + otherFees, [rentAmount, electricAmount, waterAmount, otherFees])
-  const totalAmount = useMemo(() => Math.max(0, subtotal - discount), [subtotal, discount])
-
-  return { electricUsage, waterUsage, electricAmount, waterAmount, subtotal, totalAmount }
-}
+import { useInvoiceDerivedValues, type InvoiceFormValues } from './invoiceFormState'
 
 interface InvoiceFormFieldsProps {
   form: FormInstance<InvoiceFormValues>

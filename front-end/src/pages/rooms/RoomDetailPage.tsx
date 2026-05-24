@@ -1,6 +1,6 @@
 import { ArrowLeftOutlined, DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import { Button, Card, Descriptions, Empty, Grid, Modal, Skeleton, Space, Table, Tag, Typography, message } from 'antd'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   createMonthlyBill,
   deleteMonthlyBill,
@@ -59,7 +59,7 @@ export function RoomDetailPage({ roomId, buildings }: RoomDetailPageProps) {
   const [deleteRoomModalOpen, setDeleteRoomModalOpen] = useState(false)
   const [billToDelete, setBillToDelete] = useState<MonthlyBill | null>(null)
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setLoading(true)
     try {
       const [roomData, tenantsData, billsData, contractsData] = await Promise.all([
@@ -75,11 +75,11 @@ export function RoomDetailPage({ roomId, buildings }: RoomDetailPageProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [buildings, roomId])
 
   useEffect(() => {
     void refresh()
-  }, [roomId])
+  }, [refresh])
 
   const query = useMemo(() => new URLSearchParams(window.location.search), [])
   const buildingId = query.get('buildingId')

@@ -17,7 +17,7 @@ interface PaginatedTenantsResponse {
   total: number
 }
 
-export interface TenantListResponse extends PaginatedTenantsResponse {}
+export type TenantListResponse = PaginatedTenantsResponse
 
 export function listTenants(params: TenantListParams): Promise<TenantListResponse> {
   const searchParams = new URLSearchParams()

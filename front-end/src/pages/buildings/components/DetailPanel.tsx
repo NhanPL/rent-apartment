@@ -1,6 +1,6 @@
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import { Button, Descriptions, Empty, Grid, Input, Modal, Select, Skeleton, Space, Tabs, Tag, Timeline, Typography, message } from 'antd'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { createRoom, deleteRoom, listRoomsByBuildingId, listTenantsByRoomId, updateRoom } from './roomService'
 import { RoomsTable } from './RoomsTable'
 import { RoomsUpsertDrawer } from './RoomsUpsertDrawer'
@@ -44,7 +44,7 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
     return () => window.clearTimeout(timer)
   }, [roomsSearchInput])
 
-  const loadRooms = async (buildingId: string) => {
+  const loadRooms = useCallback(async (buildingId: string) => {
     setRoomsLoading(true)
     try {
       const rooms = await listRoomsByBuildingId({ building_id: buildingId, search: roomsSearch, status: roomsFilter })
@@ -59,7 +59,7 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
     } finally {
       setRoomsLoading(false)
     }
-  }
+  }, [roomsFilter, roomsSearch])
 
   useEffect(() => {
     if (!item) {
@@ -73,7 +73,7 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
       return
     }
     void loadRooms(item.id)
-  }, [item?.id, roomsSearch, roomsFilter])
+  }, [item, loadRooms])
 
   if (!item && !loading) {
     return <Empty description="Select an item from the list to see details" style={{ marginTop: 90 }} />

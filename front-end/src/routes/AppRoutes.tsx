@@ -10,7 +10,7 @@ import { PaymentsPage } from '../pages/payments/PaymentsPage'
 import { TenantRoomPage } from '../pages/tenant-room/TenantRoomPage'
 import { routeItems, sidebarRouteItems } from './routeConfig'
 import { LoginPage } from '../features/auth/pages/LoginPage'
-import { useAuth } from '../features/auth/AuthContext'
+import { useAuth } from '../features/auth/useAuth'
 import type { AppRole } from '../features/auth/types/auth'
 
 const adminPaths = new Set(['/dashboard', '/buildings', '/rooms', '/tenants', '/contracts', '/payments', '/reports'])

@@ -1,10 +1,7 @@
 import { Button, Drawer, Form, Grid, Space } from 'antd'
 import { useEffect, useMemo } from 'react'
-import {
-  InvoiceFormFields,
-  invoiceFormDefaultValues,
-  type InvoiceFormValues,
-} from '../../payments/components/invoiceFormShared'
+import { InvoiceFormFields } from '../../payments/components/invoiceFormShared'
+import { invoiceFormDefaultValues, type InvoiceFormValues } from '../../payments/components/invoiceFormState'
 import '../../payments/components/invoiceFormShared.css'
 import type { Contract, InvoiceStatus, Room } from '../../payments/types'
 import type { MonthlyBill, MonthlyBillUpsertPayload } from '../../buildings/components/roomTypes'
