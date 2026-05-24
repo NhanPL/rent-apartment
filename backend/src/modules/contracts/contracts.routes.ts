@@ -5,9 +5,11 @@ import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
 import { parseBody } from '../../shared/utils/validation';
+import { assertRoomCanHostActiveContract, CURRENT_CONTRACT_STATUS, getContractRoomForManager } from './contracts.rules';
 
 const router = Router();
 type DbRow = Record<string, any>;
+const contractStatusSchema = z.enum(['DRAFT', 'ACTIVE', 'ENDED', 'CANCELLED']);
 
 const contractTenantSchema = z.object({
   tenant_id: z.string().uuid(),
@@ -19,14 +21,14 @@ const contractTenantSchema = z.object({
 const contractCreateSchema = z.object({
   room_id: z.string().uuid(),
   contract_code: z.string().trim().min(1).optional(),
-  status: z.string().trim().min(1).optional(),
+  status: contractStatusSchema.optional(),
   start_date: z.string().trim().min(1),
   end_date: z.string().trim().nullable().optional(),
   move_in_date: z.string().trim().nullable().optional(),
   move_out_date: z.string().trim().nullable().optional(),
   rent_price: z.coerce.number().nullable().optional(),
   deposit_amount: z.coerce.number().nullable().optional(),
-  billing_day: z.coerce.number().int().min(1).max(31).nullable().optional(),
+  billing_day: z.coerce.number().int().min(1).max(28).nullable().optional(),
   note: z.string().trim().nullable().optional(),
   tenants: z.array(contractTenantSchema).optional()
 });
@@ -72,21 +74,24 @@ router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 
 router.post('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const b = parseBody(contractCreateSchema, req.body);
-  const room = await query(
-    `SELECT r.id
-     FROM room r
-     JOIN building b ON b.id = r.building_id
-     WHERE r.id=$1 AND b.manager_user_id=$2`,
-    [b.room_id, req.auth!.userId]
-  );
-  if (!room.rows[0]) throw new AppError(404, 'Room not found', 'ROOM_NOT_FOUND');
 
   const data = await withTransaction(async (client) => {
+    const status = b.status ?? 'DRAFT';
+    if (status === CURRENT_CONTRACT_STATUS) {
+      await assertRoomCanHostActiveContract(client, {
+        roomId: b.room_id,
+        managerId: req.auth!.userId,
+        requestedOccupants: b.tenants?.filter((tenant) => !tenant.left_at).length ?? 0
+      });
+    } else {
+      await getContractRoomForManager(client, { roomId: b.room_id, managerId: req.auth!.userId });
+    }
+
     const contractCode = b.contract_code ?? (await generateContractCode(client));
     const c = await client.query<DbRow>(
       `INSERT INTO contract(room_id,contract_code,status,start_date,end_date,move_in_date,move_out_date,rent_price,deposit_amount,billing_day,note)
        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-      [b.room_id, contractCode, b.status ?? 'DRAFT', b.start_date, b.end_date ?? null, b.move_in_date ?? null, b.move_out_date ?? null, b.rent_price ?? 0, b.deposit_amount ?? 0, b.billing_day ?? 1, b.note ?? null]
+      [b.room_id, contractCode, status, b.start_date, b.end_date ?? null, b.move_in_date ?? null, b.move_out_date ?? null, b.rent_price ?? 0, b.deposit_amount ?? 0, b.billing_day ?? 1, b.note ?? null]
     );
 
     if (b.tenants) {
@@ -103,7 +108,7 @@ router.post('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
                  JOIN contract c_scope ON c_scope.id=ct_scope.contract_id
                  WHERE ct_scope.tenant_id=tenant.id
                    AND ct_scope.left_at IS NULL
-                   AND c_scope.status NOT IN ('ENDED','CANCELLED')
+                   AND c_scope.status='ACTIVE'
                )
                OR EXISTS (
                  SELECT 1
@@ -113,7 +118,7 @@ router.post('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
                  JOIN building b_scope ON b_scope.id=r_scope.building_id
                  WHERE ct_scope.tenant_id=tenant.id
                    AND ct_scope.left_at IS NULL
-                   AND c_scope.status NOT IN ('ENDED','CANCELLED')
+                   AND c_scope.status='ACTIVE'
                    AND b_scope.manager_user_id=$3
                )
              )`,

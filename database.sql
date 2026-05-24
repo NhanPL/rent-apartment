@@ -767,6 +767,7 @@ SELECT
   r.id AS room_id,
   r.building_id,
   r.code AS room_code,
+  r.max_occupants,
   c.id AS active_contract_id,
   c.start_date,
   c.rent_price,
@@ -776,7 +777,7 @@ LEFT JOIN contract c
   ON c.room_id = r.id AND c.status = 'ACTIVE'
 LEFT JOIN contract_tenant ct
   ON ct.contract_id = c.id
-GROUP BY r.id, r.building_id, r.code, c.id, c.start_date, c.rent_price;
+GROUP BY r.id, r.building_id, r.code, r.max_occupants, c.id, c.start_date, c.rent_price;
 
 CREATE OR REPLACE VIEW vw_tenant_current_room AS
 SELECT
@@ -792,7 +793,7 @@ SELECT
   c.start_date
 FROM tenant t
 JOIN contract_tenant ct ON ct.tenant_id = t.id AND ct.left_at IS NULL
-JOIN contract c ON c.id = ct.contract_id AND c.status NOT IN ('ENDED','CANCELLED')
+JOIN contract c ON c.id = ct.contract_id AND c.status = 'ACTIVE'
 JOIN room r ON r.id = c.room_id
 JOIN building b ON b.id = r.building_id;
 

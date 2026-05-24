@@ -5,6 +5,7 @@ import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
 import { parseBody } from '../../shared/utils/validation';
+import { CURRENT_CONTRACT_STATUS } from '../contracts/contracts.rules';
 import {
   createTenant as createTenantService,
   createTenantContract,
@@ -49,6 +50,7 @@ interface TenantDeleteRow {
 }
 
 const nullableString = z.string().trim().nullable().optional();
+const tenantWritableStatusSchema = z.enum(['ACTIVE', 'MOVED_OUT', 'BLACKLIST']);
 
 const tenantContractSchema = z.object({
   building_id: z.string().uuid().nullable().optional(),
@@ -74,7 +76,7 @@ const tenantCreatePayloadSchema = z.object({
   email: z.string().trim().email(),
   phone: z.string().trim().min(1),
   permanent_address: nullableString,
-  status: z.string().trim().min(1).optional(),
+  status: tenantWritableStatusSchema.optional(),
   note: nullableString
 });
 
@@ -101,10 +103,10 @@ const upsertTenantContract = async (client: Parameters<Parameters<typeof withTra
     `SELECT ct.contract_id, c.room_id, ct.joined_at::text
      FROM contract_tenant ct
      JOIN contract c ON c.id=ct.contract_id
-     WHERE ct.tenant_id=$1 AND ct.left_at IS NULL AND c.status NOT IN ('ENDED','CANCELLED')
-     ORDER BY (c.status='ACTIVE') DESC, ct.joined_at DESC, c.created_at DESC
+     WHERE ct.tenant_id=$1 AND ct.left_at IS NULL AND c.status=$2
+     ORDER BY ct.joined_at DESC, c.created_at DESC
      LIMIT 1`,
-    [tenantId]
+    [tenantId, CURRENT_CONTRACT_STATUS]
   );
 
   const current = activeRs.rows[0];
@@ -165,7 +167,7 @@ router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
        JOIN contract c_scope ON c_scope.id=ct_scope.contract_id
        WHERE ct_scope.tenant_id=t.id
          AND ct_scope.left_at IS NULL
-         AND c_scope.status NOT IN ('ENDED','CANCELLED')
+         AND c_scope.status='ACTIVE'
      ))`
   ];
   const params: unknown[] = [req.auth!.userId];
@@ -198,9 +200,9 @@ router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
        JOIN contract c ON c.id=ct.contract_id
        JOIN room r ON r.id=c.room_id
        JOIN building b ON b.id=r.building_id
-       WHERE ct.tenant_id=t.id AND ct.left_at IS NULL AND c.status NOT IN ('ENDED','CANCELLED')
+       WHERE ct.tenant_id=t.id AND ct.left_at IS NULL AND c.status='ACTIVE'
         AND b.manager_user_id=$1
-       ORDER BY (c.status='ACTIVE') DESC, c.start_date DESC, c.created_at DESC
+       ORDER BY c.start_date DESC, c.created_at DESC
        LIMIT 1
      ) v ON true`;
 
@@ -257,7 +259,7 @@ router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
            JOIN contract c_scope ON c_scope.id=ct_scope.contract_id
            WHERE ct_scope.tenant_id=t.id
              AND ct_scope.left_at IS NULL
-             AND c_scope.status NOT IN ('ENDED','CANCELLED')
+             AND c_scope.status='ACTIVE'
          )
          OR EXISTS (
            SELECT 1
@@ -267,7 +269,7 @@ router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
            JOIN building b_scope ON b_scope.id=r_scope.building_id
            WHERE ct_scope.tenant_id=t.id
              AND ct_scope.left_at IS NULL
-             AND c_scope.status NOT IN ('ENDED','CANCELLED')
+             AND c_scope.status='ACTIVE'
              AND b_scope.manager_user_id=$3
          )
        )`,
@@ -283,11 +285,11 @@ router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
               c.id AS contract_id, c.start_date, c.status AS contract_status
        FROM tenant t
        JOIN contract_tenant ct ON ct.tenant_id=t.id AND ct.left_at IS NULL
-       JOIN contract c ON c.id=ct.contract_id AND c.status NOT IN ('ENDED','CANCELLED')
+       JOIN contract c ON c.id=ct.contract_id AND c.status='ACTIVE'
        JOIN room r ON r.id=c.room_id
        JOIN building b ON b.id=r.building_id
        WHERE t.id=$1 AND b.manager_user_id=$2
-       ORDER BY (c.status='ACTIVE') DESC, c.start_date DESC, c.created_at DESC
+       ORDER BY c.start_date DESC, c.created_at DESC
        LIMIT 1`,
       [req.params.id, req.auth!.userId]
     ),
@@ -296,8 +298,8 @@ router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
        JOIN contract_tenant ct ON ct.contract_id=c.id
        JOIN room r ON r.id=c.room_id
        JOIN building b ON b.id=r.building_id
-       WHERE ct.tenant_id=$1 AND ct.left_at IS NULL AND c.status NOT IN ('ENDED','CANCELLED') AND b.manager_user_id=$2
-       ORDER BY (c.status='ACTIVE') DESC, c.created_at DESC
+       WHERE ct.tenant_id=$1 AND ct.left_at IS NULL AND c.status='ACTIVE' AND b.manager_user_id=$2
+       ORDER BY c.created_at DESC
        LIMIT 1`,
       [req.params.id, req.auth!.userId]
     )
@@ -343,7 +345,7 @@ router.patch('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
         JOIN contract c_scope ON c_scope.id=ct_scope.contract_id
         WHERE ct_scope.tenant_id=tenant.id
           AND ct_scope.left_at IS NULL
-          AND c_scope.status NOT IN ('ENDED','CANCELLED')
+          AND c_scope.status='ACTIVE'
       )
       OR EXISTS (
         SELECT 1
@@ -353,12 +355,31 @@ router.patch('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
         JOIN building b_scope ON b_scope.id=r_scope.building_id
         WHERE ct_scope.tenant_id=tenant.id
           AND ct_scope.left_at IS NULL
-          AND c_scope.status NOT IN ('ENDED','CANCELLED')
+          AND c_scope.status='ACTIVE'
           AND b_scope.manager_user_id=$${managerParam}
       )
     )`;
 
   const result = await withTransaction(async (client) => {
+    if (tenantPayload.status === 'MOVED_OUT') {
+      const activeContract = await client.query<{ id: string }>(
+        `SELECT c.id
+         FROM contract_tenant ct
+         JOIN contract c ON c.id=ct.contract_id
+         JOIN room r ON r.id=c.room_id
+         JOIN building b ON b.id=r.building_id
+         WHERE ct.tenant_id=$1
+           AND ct.left_at IS NULL
+           AND c.status='ACTIVE'
+           AND b.manager_user_id=$2
+         LIMIT 1`,
+        [req.params.id, req.auth!.userId]
+      );
+      if (activeContract.rows[0]) {
+        throw new AppError(409, 'End active contract before marking tenant as moved out', 'TENANT_HAS_ACTIVE_CONTRACT');
+      }
+    }
+
     const updated =
       entries.length > 0
         ? await client.query(`UPDATE tenant SET ${sets.join(',')} WHERE ${scopedTenantWhere} RETURNING *`, params)
@@ -388,7 +409,7 @@ router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
              JOIN contract c_scope ON c_scope.id=ct_scope.contract_id
              WHERE ct_scope.tenant_id=tenant.id
                AND ct_scope.left_at IS NULL
-               AND c_scope.status NOT IN ('ENDED','CANCELLED')
+               AND c_scope.status='ACTIVE'
            )
            OR EXISTS (
              SELECT 1
@@ -398,7 +419,7 @@ router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
              JOIN building b_scope ON b_scope.id=r_scope.building_id
              WHERE ct_scope.tenant_id=tenant.id
                AND ct_scope.left_at IS NULL
-               AND c_scope.status NOT IN ('ENDED','CANCELLED')
+               AND c_scope.status='ACTIVE'
                AND b_scope.manager_user_id=$3
            )
          )
@@ -414,7 +435,7 @@ router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
        JOIN contract c ON c.id=ct.contract_id
        WHERE ct.tenant_id=$1
          AND ct.left_at IS NULL
-         AND c.status NOT IN ('ENDED','CANCELLED')
+         AND c.status='ACTIVE'
        LIMIT 1`,
       [tenant.id]
     );
