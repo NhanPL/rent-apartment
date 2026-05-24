@@ -46,10 +46,18 @@ const generateContractCode = async (client: Parameters<Parameters<typeof withTra
 
 router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const { rows } = await query(
-    `SELECT c.*
+    `SELECT c.*, tenant.id AS tenant_id, tenant.full_name AS tenant_name
      FROM contract c
      JOIN room r ON r.id = c.room_id
      JOIN building b ON b.id = r.building_id
+     LEFT JOIN LATERAL (
+       SELECT t.id, t.full_name
+       FROM contract_tenant ct
+       JOIN tenant t ON t.id=ct.tenant_id
+       WHERE ct.contract_id=c.id AND ct.left_at IS NULL
+       ORDER BY ct.is_primary DESC, ct.joined_at DESC
+       LIMIT 1
+     ) tenant ON true
      WHERE b.manager_user_id=$1
      ORDER BY c.created_at DESC`,
     [req.auth!.userId]

@@ -1,442 +1,158 @@
 import dayjs from 'dayjs'
+import { API_ROUTES } from './apiRoutes'
+import { apiRequest } from './apiClient'
 import type {
   Building,
   Contract,
-  ContractTenant,
-  Invoice,
-  InvoiceItem,
-  Payment,
+  InvoicePrefill,
   PaymentListItem,
   PaymentListParams,
   PaymentSummary,
   PaymentUpsertPayload,
-  InvoicePrefill,
   Room,
   Tenant,
-  UtilityRate,
-  UtilityReading,
 } from '../pages/payments/types'
 
-const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
-
-const buildingsDb: Building[] = [
-  { id: 'b-1', name: 'Sunrise Riverside' },
-  { id: 'b-2', name: 'Lotus Garden' },
-]
-
-const roomsDb: Room[] = [
-  { id: 'r-101', building_id: 'b-1', code: 'A-101', base_rent: 5500000 },
-  { id: 'r-102', building_id: 'b-1', code: 'A-102', base_rent: 4800000 },
-  { id: 'r-201', building_id: 'b-2', code: 'B-201', base_rent: 6200000 },
-  { id: 'r-202', building_id: 'b-2', code: 'B-202', base_rent: 5200000 },
-]
-
-const tenantsDb: Tenant[] = [
-  { id: 't-1', full_name: 'Nguyen Minh Anh' },
-  { id: 't-2', full_name: 'Tran Gia Bao' },
-  { id: 't-3', full_name: 'Le Thanh Binh' },
-]
-
-const contractsDb: Contract[] = [
-  { id: 'c-1', room_id: 'r-101', status: 'ACTIVE', rent_price: 5500000, billing_day: 5 },
-  { id: 'c-2', room_id: 'r-102', status: 'ACTIVE', rent_price: 4800000, billing_day: 8 },
-  { id: 'c-3', room_id: 'r-201', status: 'ACTIVE', rent_price: 6200000, billing_day: 10 },
-]
-
-const contractTenantsDb: ContractTenant[] = [
-  { contract_id: 'c-1', tenant_id: 't-1', is_primary: true, left_at: null },
-  { contract_id: 'c-2', tenant_id: 't-2', is_primary: true, left_at: null },
-  { contract_id: 'c-3', tenant_id: 't-3', is_primary: true, left_at: null },
-]
-
-const utilityRatesDb: UtilityRate[] = [
-  { id: 'ur-1', building_id: 'b-1', effective_from: '2025-01-01', electricity_unit_price: 3500, water_unit_price: 18000 },
-  { id: 'ur-2', building_id: 'b-2', effective_from: '2025-01-01', electricity_unit_price: 3800, water_unit_price: 20000 },
-]
-
-let utilityReadingsDb: UtilityReading[] = [
-  {
-    id: 'read-1',
-    room_id: 'r-101',
-    month: dayjs().startOf('month').format('YYYY-MM-DD'),
-    electricity_prev: 1200,
-    electricity_curr: 1300,
-    water_prev: 380,
-    water_curr: 388,
-    note: null,
-  },
-  {
-    id: 'read-2',
-    room_id: 'r-201',
-    month: dayjs().startOf('month').format('YYYY-MM-DD'),
-    electricity_prev: 930,
-    electricity_curr: 1050,
-    water_prev: 250,
-    water_curr: 258,
-    note: null,
-  },
-]
-
-let invoicesDb: Invoice[] = [
-  {
-    id: 'inv-1',
-    contract_id: 'c-1',
-    room_id: 'r-101',
-    month: dayjs().startOf('month').format('YYYY-MM-DD'),
-    status: 'ISSUED',
-    issued_at: dayjs().startOf('month').add(1, 'day').toISOString(),
-    due_date: dayjs().startOf('month').add(5, 'day').format('YYYY-MM-DD'),
-    note: 'Monthly billing',
-    subtotal: 0,
-    discount: 50000,
-    total: 0,
-    created_at: dayjs().toISOString(),
-    updated_at: dayjs().toISOString(),
-  },
-  {
-    id: 'inv-2',
-    contract_id: 'c-3',
-    room_id: 'r-201',
-    month: dayjs().startOf('month').format('YYYY-MM-DD'),
-    status: 'PAID',
-    issued_at: dayjs().startOf('month').add(1, 'day').toISOString(),
-    due_date: dayjs().startOf('month').add(10, 'day').format('YYYY-MM-DD'),
-    note: null,
-    subtotal: 0,
-    discount: 0,
-    total: 0,
-    created_at: dayjs().toISOString(),
-    updated_at: dayjs().toISOString(),
-  },
-]
-
-let invoiceItemsDb: InvoiceItem[] = []
-
-const paymentsDb: Payment[] = [
-  { id: 'p-1', invoice_id: 'inv-1', method: 'BANK_TRANSFER', status: 'PENDING', amount: 3000000, paid_at: null },
-  { id: 'p-2', invoice_id: 'inv-2', method: 'CASH', status: 'SUCCEEDED', amount: 7000000, paid_at: dayjs().toISOString() },
-]
-
-function getPrimaryTenant(contractId: string): Tenant | null {
-  const linked = contractTenantsDb.filter((item) => item.contract_id === contractId && item.left_at === null)
-  const selected = linked.find((item) => item.is_primary) ?? linked[0]
-  return selected ? tenantsDb.find((tenant) => tenant.id === selected.tenant_id) ?? null : null
+interface TenantListResponse {
+  items: Array<Tenant & { current_room?: { contract_id: string | null } | null }>
+  page: number
+  pageSize: number
+  total: number
 }
 
-function getRoom(roomId: string) {
-  return roomsDb.find((room) => room.id === roomId) ?? null
+type NumericInvoiceFields =
+  | 'subtotal'
+  | 'discount'
+  | 'total'
+  | 'rent_amount'
+  | 'electric_unit_price'
+  | 'water_unit_price'
+  | 'electricity_prev'
+  | 'electricity_curr'
+  | 'water_prev'
+  | 'water_curr'
+  | 'electric_usage'
+  | 'water_usage'
+  | 'electric_amount'
+  | 'water_amount'
+  | 'other_fees'
+  | 'paid_amount'
+
+type InvoiceApiRow = Omit<PaymentListItem, NumericInvoiceFields> & Record<NumericInvoiceFields, number | string | null>
+
+const toNumber = (value: unknown): number => Number(value ?? 0)
+
+const toPaymentListItem = (row: InvoiceApiRow): PaymentListItem => ({
+  ...row,
+  subtotal: toNumber(row.subtotal),
+  discount: toNumber(row.discount),
+  total: toNumber(row.total),
+  rent_amount: toNumber(row.rent_amount),
+  electric_unit_price: toNumber(row.electric_unit_price),
+  water_unit_price: toNumber(row.water_unit_price),
+  electricity_prev: toNumber(row.electricity_prev),
+  electricity_curr: toNumber(row.electricity_curr),
+  water_prev: toNumber(row.water_prev),
+  water_curr: toNumber(row.water_curr),
+  electric_usage: toNumber(row.electric_usage),
+  water_usage: toNumber(row.water_usage),
+  electric_amount: toNumber(row.electric_amount),
+  water_amount: toNumber(row.water_amount),
+  other_fees: toNumber(row.other_fees),
+  paid_amount: toNumber(row.paid_amount),
+})
+
+const toPaymentPayload = (payload: PaymentUpsertPayload) => ({
+  ...payload,
+  month: dayjs(payload.month).startOf('month').format('YYYY-MM-DD'),
+})
+
+function matchesPaymentFilters(item: PaymentListItem, params: PaymentListParams) {
+  const search = params.search?.trim().toLowerCase() ?? ''
+  const matchesSearch =
+    search.length === 0 ||
+    item.building_name.toLowerCase().includes(search) ||
+    item.room_code.toLowerCase().includes(search) ||
+    item.tenant_name.toLowerCase().includes(search)
+
+  const matchesMonth = !params.month || dayjs(item.month).format('YYYY-MM') === params.month
+  const matchesInvoiceStatus = !params.invoice_status || item.status === params.invoice_status
+  const matchesPaymentStatus = !params.payment_status || item.payment_status === params.payment_status
+  const matchesBuilding = !params.building_id || item.building_id === params.building_id
+  const matchesRoom = !params.room_id || item.room_id === params.room_id
+  const matchesTenant = !params.tenant_id || item.tenant_id === params.tenant_id
+
+  return matchesSearch && matchesMonth && matchesInvoiceStatus && matchesPaymentStatus && matchesBuilding && matchesRoom && matchesTenant
 }
 
-function resolveRate(buildingId: string, month: string) {
-  const monthDate = dayjs(month)
-  const row = utilityRatesDb
-    .filter((rate) => rate.building_id === buildingId && dayjs(rate.effective_from).valueOf() <= monthDate.valueOf())
-    .sort((a, b) => dayjs(b.effective_from).valueOf() - dayjs(a.effective_from).valueOf())[0]
-
-  return row ?? null
+export async function listBuildings(): Promise<Building[]> {
+  const rows = await apiRequest<Array<Building & { units?: number }>>(API_ROUTES.buildings.list)
+  return rows.map((row) => ({ id: row.id, name: row.name }))
 }
 
-function findReading(roomId: string, month: string) {
-  return utilityReadingsDb.find((item) => item.room_id === roomId && item.month === month) ?? null
+export async function listRooms(): Promise<Room[]> {
+  const rows = await apiRequest<Array<Room & { base_rent: number | string }>>(API_ROUTES.rooms.list)
+  return rows.map((row) => ({
+    id: row.id,
+    building_id: row.building_id,
+    code: row.code,
+    base_rent: toNumber(row.base_rent),
+  }))
 }
 
-function findLatestReading(roomId: string, month: string) {
-  const normalizedMonth = ensureInvoiceMonth(month)
-  const roomReadings = utilityReadingsDb
-    .filter((item) => item.room_id === roomId)
-    .sort((left, right) => dayjs(right.month).valueOf() - dayjs(left.month).valueOf())
+export async function listTenants(): Promise<Tenant[]> {
+  const firstPage = await apiRequest<TenantListResponse>(`${API_ROUTES.tenants.list}?page=1&pageSize=100`)
+  const pages = [firstPage]
 
-  return roomReadings.find((item) => dayjs(item.month).valueOf() <= dayjs(normalizedMonth).valueOf()) ?? roomReadings[0] ?? null
-}
-
-function findLatestInvoice(roomId: string, month: string) {
-  const normalizedMonth = ensureInvoiceMonth(month)
-  const roomInvoices = invoicesDb
-    .filter((item) => item.room_id === roomId)
-    .sort((left, right) => dayjs(right.month).valueOf() - dayjs(left.month).valueOf())
-
-  return roomInvoices.find((item) => dayjs(item.month).valueOf() <= dayjs(normalizedMonth).valueOf()) ?? roomInvoices[0] ?? null
-}
-
-function getAmountByCode(invoiceId: string, code: string) {
-  return invoiceItemsDb.filter((item) => item.invoice_id === invoiceId && item.code === code).reduce((acc, item) => acc + item.amount, 0)
-}
-
-function getLatestPayment(invoiceId: string) {
-  const rows = paymentsDb.filter((item) => item.invoice_id === invoiceId)
-  if (rows.length === 0) {
-    return null
+  for (let page = 2; (page - 1) * firstPage.pageSize < firstPage.total; page += 1) {
+    pages.push(await apiRequest<TenantListResponse>(`${API_ROUTES.tenants.list}?page=${page}&pageSize=100`))
   }
 
-  return rows[rows.length - 1]
+  return pages.flatMap((response) => response.items.map((tenant) => ({ id: tenant.id, full_name: tenant.full_name })))
 }
 
-function calculateUtility(prev: number | null, curr: number | null, unitPrice: number) {
-  if (prev === null || curr === null) {
-    return { prev, curr, usage: 0, amount: 0 }
-  }
-
-  const usage = Math.max(0, curr - prev)
-  return { prev, curr, usage, amount: usage * unitPrice }
-}
-
-function upsertInvoiceItems(invoice: Invoice, rentAmount: number, electricAmount: number, waterAmount: number, otherFees: number) {
-  invoiceItemsDb = invoiceItemsDb.filter((item) => item.invoice_id !== invoice.id)
-  const next: InvoiceItem[] = [
-    { id: crypto.randomUUID(), invoice_id: invoice.id, code: 'RENT', name: 'Room rent', quantity: 1, unit_price: rentAmount, amount: rentAmount },
-    { id: crypto.randomUUID(), invoice_id: invoice.id, code: 'ELECTRIC', name: 'Electricity', quantity: 1, unit_price: electricAmount, amount: electricAmount },
-    { id: crypto.randomUUID(), invoice_id: invoice.id, code: 'WATER', name: 'Water', quantity: 1, unit_price: waterAmount, amount: waterAmount },
-    { id: crypto.randomUUID(), invoice_id: invoice.id, code: 'OTHER', name: 'Other fees', quantity: 1, unit_price: otherFees, amount: otherFees },
-  ]
-
-  invoiceItemsDb = [...invoiceItemsDb, ...next]
-}
-
-function hydrateInvoiceTotals(invoice: Invoice) {
-  const rent = getAmountByCode(invoice.id, 'RENT')
-  const electric = getAmountByCode(invoice.id, 'ELECTRIC')
-  const water = getAmountByCode(invoice.id, 'WATER')
-  const other = getAmountByCode(invoice.id, 'OTHER')
-  const subtotal = rent + electric + water + other
-  const total = Math.max(0, subtotal - invoice.discount)
-
-  return { ...invoice, subtotal, total }
-}
-
-function toListItem(invoice: Invoice): PaymentListItem {
-  const hydratedInvoice = hydrateInvoiceTotals(invoice)
-  const room = getRoom(hydratedInvoice.room_id)
-  const building = room ? buildingsDb.find((item) => item.id === room.building_id) : null
-  const tenant = getPrimaryTenant(hydratedInvoice.contract_id)
-  const payment = getLatestPayment(hydratedInvoice.id)
-  const reading = findReading(hydratedInvoice.room_id, hydratedInvoice.month)
-  const rates = building ? resolveRate(building.id, hydratedInvoice.month) : null
-
-  const electricRate = rates?.electricity_unit_price ?? 0
-  const waterRate = rates?.water_unit_price ?? 0
-  const electricData = calculateUtility(reading?.electricity_prev ?? null, reading?.electricity_curr ?? null, electricRate)
-  const waterData = calculateUtility(reading?.water_prev ?? null, reading?.water_curr ?? null, waterRate)
-
-  return {
-    ...hydratedInvoice,
-    building_id: building?.id ?? '',
-    building_name: building?.name ?? '-',
-    room_code: room?.code ?? '-',
-    tenant_id: tenant?.id ?? null,
-    tenant_name: tenant?.full_name ?? '-',
-    rent_amount: getAmountByCode(hydratedInvoice.id, 'RENT'),
-    electric_unit_price: electricRate,
-    water_unit_price: waterRate,
-    electricity_prev: electricData.prev,
-    electricity_curr: electricData.curr,
-    water_prev: waterData.prev,
-    water_curr: waterData.curr,
-    electric_usage: electricData.usage,
-    water_usage: waterData.usage,
-    electric_amount: getAmountByCode(hydratedInvoice.id, 'ELECTRIC'),
-    water_amount: getAmountByCode(hydratedInvoice.id, 'WATER'),
-    other_fees: getAmountByCode(hydratedInvoice.id, 'OTHER'),
-    paid_amount: paymentsDb
-      .filter((item) => item.invoice_id === hydratedInvoice.id && item.status === 'SUCCEEDED')
-      .reduce((acc, item) => acc + item.amount, 0),
-    paid_at: payment?.paid_at ?? null,
-    payment_status: payment?.status ?? null,
-  }
-}
-
-function ensureInvoiceMonth(value: string) {
-  return dayjs(value).startOf('month').format('YYYY-MM-DD')
-}
-
-function seedInvoiceItemsFromReading() {
-  invoicesDb.forEach((invoice) => {
-    const room = getRoom(invoice.room_id)
-    const buildingId = room?.building_id
-    const rates = buildingId ? resolveRate(buildingId, invoice.month) : null
-    const reading = findReading(invoice.room_id, invoice.month)
-    const rentAmount = contractsDb.find((contract) => contract.id === invoice.contract_id)?.rent_price ?? 0
-    const electricUsage =
-      reading?.electricity_prev !== null && reading?.electricity_prev !== undefined && reading.electricity_curr !== null
-        ? Math.max(0, reading.electricity_curr - reading.electricity_prev)
-        : 0
-    const waterUsage =
-      reading?.water_prev !== null && reading?.water_prev !== undefined && reading.water_curr !== null
-        ? Math.max(0, reading.water_curr - reading.water_prev)
-        : 0
-    const electricAmount = electricUsage * (rates?.electricity_unit_price ?? 0)
-    const waterAmount = waterUsage * (rates?.water_unit_price ?? 0)
-
-    upsertInvoiceItems(invoice, rentAmount, electricAmount, waterAmount, 80000)
-  })
-}
-
-seedInvoiceItemsFromReading()
-
-export async function listBuildings() {
-  await wait(100)
-  return [...buildingsDb]
-}
-
-export async function listRooms() {
-  await wait(100)
-  return [...roomsDb]
-}
-
-export async function listTenants() {
-  await wait(100)
-  return [...tenantsDb]
-}
-
-export async function listContracts() {
-  await wait(100)
-  return contractsDb.map((contract) => {
-    const tenant = getPrimaryTenant(contract.id)
-    return {
-      ...contract,
-      tenant_id: tenant?.id ?? null,
-      tenant_name: tenant?.full_name ?? null,
-    }
-  })
+export async function listContracts(): Promise<Contract[]> {
+  const rows = await apiRequest<Array<Contract & { rent_price: number | string; billing_day: number | string }>>(API_ROUTES.contracts.list)
+  return rows.map((contract) => ({
+    ...contract,
+    rent_price: toNumber(contract.rent_price),
+    billing_day: toNumber(contract.billing_day),
+    tenant_id: contract.tenant_id ?? null,
+    tenant_name: contract.tenant_name ?? null,
+  }))
 }
 
 export async function listPayments(params: PaymentListParams): Promise<PaymentListItem[]> {
-  await wait(220)
-  const search = params.search?.trim().toLowerCase() ?? ''
-
-  return invoicesDb
-    .map(toListItem)
-    .filter((item) => {
-      const matchesSearch =
-        search.length === 0 ||
-        item.building_name.toLowerCase().includes(search) ||
-        item.room_code.toLowerCase().includes(search) ||
-        item.tenant_name.toLowerCase().includes(search)
-
-      const matchesMonth = !params.month || dayjs(item.month).format('YYYY-MM') === params.month
-      const matchesInvoiceStatus = !params.invoice_status || item.status === params.invoice_status
-      const matchesPaymentStatus = !params.payment_status || item.payment_status === params.payment_status
-      const matchesBuilding = !params.building_id || item.building_id === params.building_id
-      const matchesRoom = !params.room_id || item.room_id === params.room_id
-      const matchesTenant = !params.tenant_id || item.tenant_id === params.tenant_id
-
-      return matchesSearch && matchesMonth && matchesInvoiceStatus && matchesPaymentStatus && matchesBuilding && matchesRoom && matchesTenant
-    })
-    .sort((a, b) => dayjs(b.month).valueOf() - dayjs(a.month).valueOf())
+  const rows = await apiRequest<InvoiceApiRow[]>(API_ROUTES.invoices.list)
+  return rows
+    .map(toPaymentListItem)
+    .filter((item) => matchesPaymentFilters(item, params))
+    .sort((left, right) => dayjs(right.month).valueOf() - dayjs(left.month).valueOf())
 }
 
 export async function getPayment(id: string): Promise<PaymentListItem> {
-  await wait(160)
-  const invoice = invoicesDb.find((item) => item.id === id)
-  if (!invoice) {
-    throw new Error('Invoice not found')
-  }
-
-  return toListItem(invoice)
-}
-
-function upsertUtilityReading(payload: PaymentUpsertPayload) {
-  const normalizedMonth = ensureInvoiceMonth(payload.month)
-  const existing = utilityReadingsDb.find((item) => item.room_id === payload.room_id && item.month === normalizedMonth)
-
-  if (existing) {
-    existing.electricity_prev = payload.electricity_prev
-    existing.electricity_curr = payload.electricity_curr
-    existing.water_prev = payload.water_prev
-    existing.water_curr = payload.water_curr
-    existing.note = payload.note
-    return
-  }
-
-  utilityReadingsDb = [
-    ...utilityReadingsDb,
-    {
-      id: crypto.randomUUID(),
-      room_id: payload.room_id,
-      month: normalizedMonth,
-      electricity_prev: payload.electricity_prev,
-      electricity_curr: payload.electricity_curr,
-      water_prev: payload.water_prev,
-      water_curr: payload.water_curr,
-      note: payload.note,
-    },
-  ]
-}
-
-function computeAmounts(payload: PaymentUpsertPayload) {
-  const electricUsage = Math.max(0, payload.electricity_curr - payload.electricity_prev)
-  const waterUsage = Math.max(0, payload.water_curr - payload.water_prev)
-  const electricAmount = electricUsage * payload.electric_unit_price
-  const waterAmount = waterUsage * payload.water_unit_price
-  const subtotal = payload.rent_amount + electricAmount + waterAmount + payload.other_fees
-  const total = Math.max(0, subtotal - payload.discount)
-
-  return { electricAmount, waterAmount, subtotal, total }
+  const row = await apiRequest<InvoiceApiRow>(API_ROUTES.invoices.detail(id))
+  return toPaymentListItem(row)
 }
 
 export async function createPayment(payload: PaymentUpsertPayload): Promise<PaymentListItem> {
-  await wait(220)
-  const month = ensureInvoiceMonth(payload.month)
-  const now = new Date().toISOString()
-  const amounts = computeAmounts(payload)
-
-  const invoice: Invoice = {
-    id: crypto.randomUUID(),
-    contract_id: payload.contract_id,
-    room_id: payload.room_id,
-    month,
-    status: payload.status,
-    issued_at: payload.issued_at,
-    due_date: payload.due_date,
-    note: payload.note,
-    subtotal: amounts.subtotal,
-    discount: payload.discount,
-    total: amounts.total,
-    created_at: now,
-    updated_at: now,
-  }
-
-  invoicesDb = [...invoicesDb, invoice]
-  upsertUtilityReading(payload)
-  upsertInvoiceItems(invoice, payload.rent_amount, amounts.electricAmount, amounts.waterAmount, payload.other_fees)
-  return toListItem(invoice)
+  const row = await apiRequest<InvoiceApiRow>(API_ROUTES.invoices.list, {
+    method: 'POST',
+    body: toPaymentPayload(payload),
+  })
+  return toPaymentListItem(row)
 }
 
 export async function updatePayment(id: string, payload: PaymentUpsertPayload): Promise<PaymentListItem> {
-  await wait(220)
-  const index = invoicesDb.findIndex((item) => item.id === id)
-  if (index < 0) {
-    throw new Error('Invoice not found')
-  }
-
-  const month = ensureInvoiceMonth(payload.month)
-  const amounts = computeAmounts(payload)
-
-  const updated: Invoice = {
-    ...invoicesDb[index],
-    contract_id: payload.contract_id,
-    room_id: payload.room_id,
-    month,
-    status: payload.status,
-    issued_at: payload.issued_at,
-    due_date: payload.due_date,
-    note: payload.note,
-    subtotal: amounts.subtotal,
-    discount: payload.discount,
-    total: amounts.total,
-    updated_at: new Date().toISOString(),
-  }
-
-  invoicesDb[index] = updated
-  upsertUtilityReading(payload)
-  upsertInvoiceItems(updated, payload.rent_amount, amounts.electricAmount, amounts.waterAmount, payload.other_fees)
-
-  return toListItem(updated)
+  const row = await apiRequest<InvoiceApiRow>(API_ROUTES.invoices.detail(id), {
+    method: 'PUT',
+    body: toPaymentPayload(payload),
+  })
+  return toPaymentListItem(row)
 }
 
-export async function deletePayment(id: string): Promise<void> {
-  await wait(180)
-  invoicesDb = invoicesDb.filter((item) => item.id !== id)
-  invoiceItemsDb = invoiceItemsDb.filter((item) => item.invoice_id !== id)
+export function deletePayment(id: string): Promise<void> {
+  return apiRequest<void>(API_ROUTES.invoices.detail(id), { method: 'DELETE' })
 }
 
 export async function getPaymentsSummary(month: string): Promise<PaymentSummary> {
@@ -449,47 +165,24 @@ export async function getPaymentsSummary(month: string): Promise<PaymentSummary>
   }
 }
 
-export async function getEffectiveUtilityRate(roomId: string, month: string) {
-  await wait(80)
-  const room = getRoom(roomId)
-  if (!room) {
-    return { electricity_unit_price: 0, water_unit_price: 0 }
-  }
+export async function getInvoicePrefill(roomId: string, month: string): Promise<InvoicePrefill> {
+  const params = new URLSearchParams({ room_id: roomId, month: dayjs(month).startOf('month').format('YYYY-MM-DD') })
+  const prefill = await apiRequest<InvoicePrefill>(`${API_ROUTES.invoices.prefill}?${params.toString()}`)
 
-  const rate = resolveRate(room.building_id, ensureInvoiceMonth(month))
   return {
-    electricity_unit_price: rate?.electricity_unit_price ?? 0,
-    water_unit_price: rate?.water_unit_price ?? 0,
+    ...prefill,
+    rent_amount: toNumber(prefill.rent_amount),
+    electricity_prev: toNumber(prefill.electricity_prev),
+    water_prev: toNumber(prefill.water_prev),
+    electric_unit_price: toNumber(prefill.electric_unit_price),
+    water_unit_price: toNumber(prefill.water_unit_price),
   }
 }
 
-export async function getInvoicePrefill(roomId: string, month: string): Promise<InvoicePrefill> {
-  await wait(100)
-  const room = getRoom(roomId)
-  if (!room) {
-    throw new Error('Room not found')
-  }
-
-  const normalizedMonth = ensureInvoiceMonth(month)
-  const activeContract = contractsDb.find((contract) => contract.room_id === roomId && contract.status === 'ACTIVE')
-  const tenant = activeContract ? getPrimaryTenant(activeContract.id) : null
-  const latestReading = findLatestReading(roomId, normalizedMonth)
-  const latestInvoice = findLatestInvoice(roomId, normalizedMonth)
-  const rate = resolveRate(room.building_id, normalizedMonth)
-  const latestRentAmount = latestInvoice ? getAmountByCode(latestInvoice.id, 'RENT') : 0
-  const rentAmount = latestRentAmount > 0 ? latestRentAmount : activeContract?.rent_price ?? room.base_rent
-
+export async function getEffectiveUtilityRate(roomId: string, month: string) {
+  const prefill = await getInvoicePrefill(roomId, month)
   return {
-    building_id: room.building_id,
-    contract_id: activeContract?.id ?? '',
-    tenant_id: tenant?.id ?? null,
-    tenant_name: tenant?.full_name ?? null,
-    issued_at: dayjs().format('YYYY-MM-DD'),
-    due_date: activeContract?.billing_day ? dayjs(normalizedMonth).date(activeContract.billing_day).format('YYYY-MM-DD') : null,
-    rent_amount: rentAmount,
-    electricity_prev: Number(latestReading?.electricity_curr ?? latestReading?.electricity_prev ?? 0),
-    water_prev: Number(latestReading?.water_curr ?? latestReading?.water_prev ?? 0),
-    electric_unit_price: rate?.electricity_unit_price ?? 0,
-    water_unit_price: rate?.water_unit_price ?? 0,
+    electricity_unit_price: prefill.electric_unit_price,
+    water_unit_price: prefill.water_unit_price,
   }
 }
