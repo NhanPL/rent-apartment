@@ -3,13 +3,22 @@ import { env } from '../../config/env';
 import { AppError } from '../../shared/errors/app-error';
 
 type DbRow = Record<string, any>;
+type AuthScope = { userId: string; role: 'MANAGER' | 'TENANT' };
 
 const buildQrContent = (amount: number, transferNote: string) =>
   JSON.stringify({ bankCode: env.DEFAULT_BANK_CODE, accountNo: env.DEFAULT_BANK_ACCOUNT_NO, amount, transferNote });
 
 export const createPaymentRequest = async (invoiceId: string, managerId: string, payload: any) =>
   withTransaction(async (client) => {
-    const invRs = await client.query<DbRow>('SELECT * FROM invoice WHERE id=$1', [invoiceId]);
+    const invRs = await client.query<DbRow>(
+      `SELECT i.*
+       FROM invoice i
+       JOIN contract c ON c.id=i.contract_id
+       JOIN room r ON r.id=c.room_id
+       JOIN building b ON b.id=r.building_id
+       WHERE i.id=$1 AND b.manager_user_id=$2`,
+      [invoiceId, managerId]
+    );
     const inv = invRs.rows[0];
     if (!inv) throw new AppError(404, 'Invoice not found');
     if (inv.status === 'PAID' || inv.status === 'VOID') throw new AppError(409, 'Cannot request payment for closed invoice');
@@ -51,12 +60,11 @@ export const submitPaymentProof = async (paymentRequestId: string, payload: any,
        JOIN invoice i ON i.id=pr.invoice_id
        JOIN contract_tenant ct ON ct.contract_id=i.contract_id AND ct.left_at IS NULL
        JOIN tenant t ON t.id=ct.tenant_id
-       WHERE pr.id=$1`,
-      [paymentRequestId]
+       WHERE pr.id=$1 AND t.user_id=$2`,
+      [paymentRequestId, tenantUserId]
     );
     const data = reqRs.rows[0];
     if (!data) throw new AppError(404, 'Payment request not found');
-    if (data.tenant_user_id !== tenantUserId) throw new AppError(403, 'Not your payment request');
     if (!['WAITING_TRANSFER', 'REJECTED'].includes(data.status)) throw new AppError(409, 'Payment request not accepting proofs');
 
     const created = await client.query<DbRow>(
@@ -72,8 +80,14 @@ export const reviewPaymentProof = async (proofId: string, approve: boolean, mana
   withTransaction(async (client) => {
     const pfRs = await client.query<DbRow>(
       `SELECT pf.*, pr.invoice_id, pr.id payment_request_id, pr.amount request_amount
-       FROM payment_proof pf JOIN payment_request pr ON pr.id=pf.payment_request_id WHERE pf.id=$1`,
-      [proofId]
+       FROM payment_proof pf
+       JOIN payment_request pr ON pr.id=pf.payment_request_id
+       JOIN invoice i ON i.id=pr.invoice_id
+       JOIN contract c ON c.id=i.contract_id
+       JOIN room r ON r.id=c.room_id
+       JOIN building b ON b.id=r.building_id
+       WHERE pf.id=$1 AND b.manager_user_id=$2`,
+      [proofId, managerId]
     );
     const proof = pfRs.rows[0];
     if (!proof) throw new AppError(404, 'Proof not found');
@@ -107,9 +121,30 @@ export const reviewPaymentProof = async (proofId: string, approve: boolean, mana
     return { proof: approved.rows[0], payment: payment.rows[0] };
   });
 
-export const getPaymentRequestDetail = async (id: string) => {
+export const getPaymentRequestDetail = async (id: string, scope: AuthScope) => {
+  const requestQuery = scope.role === 'MANAGER'
+    ? query(
+      `SELECT pr.*
+       FROM payment_request pr
+       JOIN invoice i ON i.id=pr.invoice_id
+       JOIN contract c ON c.id=i.contract_id
+       JOIN room r ON r.id=c.room_id
+       JOIN building b ON b.id=r.building_id
+       WHERE pr.id=$1 AND b.manager_user_id=$2`,
+      [id, scope.userId]
+    )
+    : query(
+      `SELECT DISTINCT pr.*
+       FROM payment_request pr
+       JOIN invoice i ON i.id=pr.invoice_id
+       JOIN contract_tenant ct ON ct.contract_id=i.contract_id
+       JOIN tenant t ON t.id=ct.tenant_id
+       WHERE pr.id=$1 AND t.user_id=$2`,
+      [id, scope.userId]
+    );
+
   const [reqRs, proofs, payment] = await Promise.all([
-    query('SELECT * FROM payment_request WHERE id=$1', [id]),
+    requestQuery,
     query('SELECT * FROM payment_proof WHERE payment_request_id=$1 ORDER BY created_at DESC', [id]),
     query('SELECT * FROM payment WHERE payment_request_id=$1', [id])
   ]);
@@ -117,4 +152,29 @@ export const getPaymentRequestDetail = async (id: string) => {
   return { ...reqRs.rows[0], proofs: proofs.rows, payment: payment.rows[0] ?? null };
 };
 
-export const listPaymentRequests = async () => (await query('SELECT * FROM payment_request ORDER BY created_at DESC')).rows;
+export const listPaymentRequests = async (scope: AuthScope) => {
+  if (scope.role === 'MANAGER') {
+    return (await query(
+      `SELECT pr.*
+       FROM payment_request pr
+       JOIN invoice i ON i.id=pr.invoice_id
+       JOIN contract c ON c.id=i.contract_id
+       JOIN room r ON r.id=c.room_id
+       JOIN building b ON b.id=r.building_id
+       WHERE b.manager_user_id=$1
+       ORDER BY pr.created_at DESC`,
+      [scope.userId]
+    )).rows;
+  }
+
+  return (await query(
+    `SELECT DISTINCT pr.*
+     FROM payment_request pr
+     JOIN invoice i ON i.id=pr.invoice_id
+     JOIN contract_tenant ct ON ct.contract_id=i.contract_id
+     JOIN tenant t ON t.id=ct.tenant_id
+     WHERE t.user_id=$1
+     ORDER BY pr.created_at DESC`,
+    [scope.userId]
+  )).rows;
+};

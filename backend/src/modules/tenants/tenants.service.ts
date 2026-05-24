@@ -104,11 +104,18 @@ export const normalizeTenantContractInput = (input: Record<string, unknown>): Te
 export const validateTenantContractRoom = async (
   client: PoolClient,
   payload: TenantContractPayload,
+  managerId?: string,
   excludeContractId?: string
 ): Promise<void> => {
   const roomRs = await client.query<{ id: string; building_id: string }>(
-    'SELECT id, building_id FROM room WHERE id=$1 LIMIT 1',
-    [payload.room_id]
+    managerId
+      ? `SELECT r.id, r.building_id
+         FROM room r
+         JOIN building b ON b.id=r.building_id
+         WHERE r.id=$1 AND b.manager_user_id=$2
+         LIMIT 1`
+      : 'SELECT id, building_id FROM room WHERE id=$1 LIMIT 1',
+    managerId ? [payload.room_id, managerId] : [payload.room_id]
   );
   const room = roomRs.rows[0];
   if (!room) {
@@ -146,10 +153,11 @@ const generateContractCode = async (client: PoolClient): Promise<string> => {
 export const createTenantContract = async (
   client: PoolClient,
   tenantId: string,
-  contractInput: Record<string, unknown>
+  contractInput: Record<string, unknown>,
+  managerId?: string
 ): Promise<{ id: string }> => {
   const payload = normalizeTenantContractInput(contractInput);
-  await validateTenantContractRoom(client, payload);
+  await validateTenantContractRoom(client, payload, managerId);
 
   const code = await generateContractCode(client);
   const contractRs = await client.query<{ id: string }>(
@@ -178,7 +186,7 @@ export const createTenantContract = async (
   return contractRs.rows[0];
 };
 
-export const createTenant = async (raw: Record<string, unknown>): Promise<CreateTenantResult> => {
+export const createTenant = async (raw: Record<string, unknown>, managerId?: string): Promise<CreateTenantResult> => {
   const tenantPayload = validateCreateInput((raw.tenant as Record<string, unknown> | undefined) ?? raw);
   const contractPayload = (raw.contract as Record<string, unknown> | null | undefined) ?? null;
 
@@ -204,7 +212,7 @@ export const createTenant = async (raw: Record<string, unknown>): Promise<Create
       tenantId: tenant.id
     });
     if (contractPayload) {
-      await createTenantContract(client, tenant.id, contractPayload);
+      await createTenantContract(client, tenant.id, contractPayload, managerId);
     }
 
     return { tenantId: tenant.id, userId: user.id, loginEmail: user.email, username: user.username, tenantName: tenant.full_name };

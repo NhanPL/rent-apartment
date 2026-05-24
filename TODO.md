@@ -21,28 +21,28 @@
 
 ## P1 - Security And Data Isolation
 
-- [ ] Scope manager data by `building.manager_user_id`.
-  - [ ] Buildings list/detail/update.
-  - [ ] Rooms list/detail/update/occupancy.
-  - [ ] Contracts list/detail/create.
-  - [ ] Invoices list/detail/adjustments.
-  - [ ] Payment requests list/detail/review.
+- [x] Scope manager data by `building.manager_user_id`.
+  - [x] Buildings list/detail/update.
+  - [x] Rooms list/detail/update/occupancy.
+  - [x] Contracts list/detail/create.
+  - [x] Invoices list/detail/adjustments.
+  - [x] Payment requests list/detail/review.
 
-- [ ] Restrict tenant-visible data.
-  - [ ] Ensure tenants can only see their own invoices.
-  - [ ] Ensure tenants can only see their own payment requests.
-  - [ ] Ensure tenants can only see or submit utility readings for their current room.
-  - [ ] Ensure utility evidence upload checks ownership or manager role.
+- [x] Restrict tenant-visible data.
+  - [x] Ensure tenants can only see their own invoices.
+  - [x] Ensure tenants can only see their own payment requests.
+  - [x] Ensure tenants can only see or submit utility readings for their current room.
+  - [x] Ensure utility evidence upload checks ownership or manager role.
 
-- [ ] Add Zod validation for backend request bodies.
-  - [ ] Buildings.
-  - [ ] Rooms.
-  - [ ] Contracts.
-  - [ ] Tenants.
-  - [ ] Utility readings.
-  - [ ] Invoices.
-  - [ ] Payments.
-  - [ ] Upload metadata.
+- [x] Add Zod validation for backend request bodies.
+  - [x] Buildings.
+  - [x] Rooms.
+  - [x] Contracts.
+  - [x] Tenants.
+  - [x] Utility readings.
+  - [x] Invoices.
+  - [x] Payments.
+  - [x] Upload metadata.
 
 ## P2 - Business Rules
 

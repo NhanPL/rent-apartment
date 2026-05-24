@@ -3,6 +3,7 @@ import { AppError } from '../../shared/errors/app-error';
 import { firstDayOfMonth } from '../../shared/utils/date';
 
 type DbRow = Record<string, any>;
+type AuthScope = { userId: string; role: 'MANAGER' | 'TENANT' };
 
 const calc = (q: number, p: number) => Number((q * p).toFixed(2));
 
@@ -12,8 +13,8 @@ export const createInvoiceFromReading = async (utilityReadingId: string, manager
       `SELECT ur.*, b.id building_id FROM utility_reading ur
        JOIN room r ON r.id=ur.room_id
        JOIN building b ON b.id=r.building_id
-       WHERE ur.id=$1`,
-      [utilityReadingId]
+       WHERE ur.id=$1 AND b.manager_user_id=$2`,
+      [utilityReadingId, managerId]
     );
     const reading = readingRs.rows[0];
     if (!reading) throw new AppError(404, 'Reading not found');
@@ -72,7 +73,15 @@ export const createInvoiceFromReading = async (utilityReadingId: string, manager
 
 export const addInvoiceAdjustment = async (invoiceId: string, amount: number, reason: string, userId: string) =>
   withTransaction(async (client) => {
-    const invRs = await client.query<DbRow>('SELECT * FROM invoice WHERE id=$1', [invoiceId]);
+    const invRs = await client.query<DbRow>(
+      `SELECT i.*
+       FROM invoice i
+       JOIN contract c ON c.id=i.contract_id
+       JOIN room r ON r.id=c.room_id
+       JOIN building b ON b.id=r.building_id
+       WHERE i.id=$1 AND b.manager_user_id=$2`,
+      [invoiceId, userId]
+    );
     const inv = invRs.rows[0];
     if (!inv) throw new AppError(404, 'Invoice not found');
     if (inv.status === 'PAID' || inv.status === 'VOID') throw new AppError(409, 'Cannot adjust closed invoice');
@@ -96,11 +105,53 @@ export const addInvoiceAdjustment = async (invoiceId: string, amount: number, re
     return updated.rows[0];
   });
 
-export const listInvoices = async () => (await query('SELECT * FROM invoice ORDER BY month DESC, created_at DESC')).rows;
+export const listInvoices = async (scope: AuthScope) => {
+  if (scope.role === 'MANAGER') {
+    return (await query(
+      `SELECT i.*
+       FROM invoice i
+       JOIN contract c ON c.id=i.contract_id
+       JOIN room r ON r.id=c.room_id
+       JOIN building b ON b.id=r.building_id
+       WHERE b.manager_user_id=$1
+       ORDER BY i.month DESC, i.created_at DESC`,
+      [scope.userId]
+    )).rows;
+  }
 
-export const getInvoiceDetail = async (id: string) => {
+  return (await query(
+    `SELECT DISTINCT i.*
+     FROM invoice i
+     JOIN contract_tenant ct ON ct.contract_id=i.contract_id
+     JOIN tenant t ON t.id=ct.tenant_id
+     WHERE t.user_id=$1
+     ORDER BY i.month DESC, i.created_at DESC`,
+    [scope.userId]
+  )).rows;
+};
+
+export const getInvoiceDetail = async (id: string, scope: AuthScope) => {
+  const invoiceQuery = scope.role === 'MANAGER'
+    ? query(
+      `SELECT i.*
+       FROM invoice i
+       JOIN contract c ON c.id=i.contract_id
+       JOIN room r ON r.id=c.room_id
+       JOIN building b ON b.id=r.building_id
+       WHERE i.id=$1 AND b.manager_user_id=$2`,
+      [id, scope.userId]
+    )
+    : query(
+      `SELECT DISTINCT i.*
+       FROM invoice i
+       JOIN contract_tenant ct ON ct.contract_id=i.contract_id
+       JOIN tenant t ON t.id=ct.tenant_id
+       WHERE i.id=$1 AND t.user_id=$2`,
+      [id, scope.userId]
+    );
+
   const [invoice, items, adjustments] = await Promise.all([
-    query('SELECT * FROM invoice WHERE id=$1', [id]),
+    invoiceQuery,
     query('SELECT * FROM invoice_item WHERE invoice_id=$1 ORDER BY created_at', [id]),
     query('SELECT * FROM invoice_adjustment WHERE invoice_id=$1 ORDER BY created_at', [id])
   ]);
