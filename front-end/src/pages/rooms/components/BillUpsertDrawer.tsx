@@ -1,7 +1,11 @@
 import { Button, Drawer, Form, Grid, Space } from 'antd'
 import { useEffect, useMemo } from 'react'
 import { InvoiceFormFields } from '../../payments/components/invoiceFormShared'
-import { invoiceFormDefaultValues, type InvoiceFormValues } from '../../payments/components/invoiceFormState'
+import {
+  getInvoiceFormDefaultValues,
+  invoiceFormDefaultValues,
+  type InvoiceFormValues,
+} from '../../payments/components/invoiceFormState'
 import '../../payments/components/invoiceFormShared.css'
 import type { Contract, InvoiceStatus, Room } from '../../payments/types'
 import type { MonthlyBill, MonthlyBillUpsertPayload } from '../../buildings/components/roomTypes'
@@ -49,6 +53,7 @@ export function BillUpsertDrawer({
       return {
         contract_id: bill.contract_id,
         room_id: bill.room_id,
+        building_id: room.building_id,
         month: bill.month,
         status: bill.invoice_status,
         issued_at: bill.issued_at ?? undefined,
@@ -67,12 +72,13 @@ export function BillUpsertDrawer({
     }
 
     return {
-      ...invoiceFormDefaultValues,
+      ...getInvoiceFormDefaultValues(),
+      building_id: room.building_id,
       room_id,
       contract_id: contracts[0]?.id,
       rent_amount: room.base_rent,
     }
-  }, [mode, bill, room_id, contracts, room.base_rent])
+  }, [mode, bill, room_id, contracts, room.base_rent, room.building_id])
 
   useEffect(() => {
     if (!open) {

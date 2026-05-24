@@ -10,6 +10,7 @@ import type {
   PaymentListParams,
   PaymentSummary,
   PaymentUpsertPayload,
+  InvoicePrefill,
   Room,
   Tenant,
   UtilityRate,
@@ -27,6 +28,7 @@ const roomsDb: Room[] = [
   { id: 'r-101', building_id: 'b-1', code: 'A-101', base_rent: 5500000 },
   { id: 'r-102', building_id: 'b-1', code: 'A-102', base_rent: 4800000 },
   { id: 'r-201', building_id: 'b-2', code: 'B-201', base_rent: 6200000 },
+  { id: 'r-202', building_id: 'b-2', code: 'B-202', base_rent: 5200000 },
 ]
 
 const tenantsDb: Tenant[] = [
@@ -136,6 +138,24 @@ function resolveRate(buildingId: string, month: string) {
 
 function findReading(roomId: string, month: string) {
   return utilityReadingsDb.find((item) => item.room_id === roomId && item.month === month) ?? null
+}
+
+function findLatestReading(roomId: string, month: string) {
+  const normalizedMonth = ensureInvoiceMonth(month)
+  const roomReadings = utilityReadingsDb
+    .filter((item) => item.room_id === roomId)
+    .sort((left, right) => dayjs(right.month).valueOf() - dayjs(left.month).valueOf())
+
+  return roomReadings.find((item) => dayjs(item.month).valueOf() <= dayjs(normalizedMonth).valueOf()) ?? roomReadings[0] ?? null
+}
+
+function findLatestInvoice(roomId: string, month: string) {
+  const normalizedMonth = ensureInvoiceMonth(month)
+  const roomInvoices = invoicesDb
+    .filter((item) => item.room_id === roomId)
+    .sort((left, right) => dayjs(right.month).valueOf() - dayjs(left.month).valueOf())
+
+  return roomInvoices.find((item) => dayjs(item.month).valueOf() <= dayjs(normalizedMonth).valueOf()) ?? roomInvoices[0] ?? null
 }
 
 function getAmountByCode(invoiceId: string, code: string) {
@@ -269,7 +289,14 @@ export async function listTenants() {
 
 export async function listContracts() {
   await wait(100)
-  return [...contractsDb]
+  return contractsDb.map((contract) => {
+    const tenant = getPrimaryTenant(contract.id)
+    return {
+      ...contract,
+      tenant_id: tenant?.id ?? null,
+      tenant_name: tenant?.full_name ?? null,
+    }
+  })
 }
 
 export async function listPayments(params: PaymentListParams): Promise<PaymentListItem[]> {
@@ -432,6 +459,37 @@ export async function getEffectiveUtilityRate(roomId: string, month: string) {
   const rate = resolveRate(room.building_id, ensureInvoiceMonth(month))
   return {
     electricity_unit_price: rate?.electricity_unit_price ?? 0,
+    water_unit_price: rate?.water_unit_price ?? 0,
+  }
+}
+
+export async function getInvoicePrefill(roomId: string, month: string): Promise<InvoicePrefill> {
+  await wait(100)
+  const room = getRoom(roomId)
+  if (!room) {
+    throw new Error('Room not found')
+  }
+
+  const normalizedMonth = ensureInvoiceMonth(month)
+  const activeContract = contractsDb.find((contract) => contract.room_id === roomId && contract.status === 'ACTIVE')
+  const tenant = activeContract ? getPrimaryTenant(activeContract.id) : null
+  const latestReading = findLatestReading(roomId, normalizedMonth)
+  const latestInvoice = findLatestInvoice(roomId, normalizedMonth)
+  const rate = resolveRate(room.building_id, normalizedMonth)
+  const latestRentAmount = latestInvoice ? getAmountByCode(latestInvoice.id, 'RENT') : 0
+  const rentAmount = latestRentAmount > 0 ? latestRentAmount : activeContract?.rent_price ?? room.base_rent
+
+  return {
+    building_id: room.building_id,
+    contract_id: activeContract?.id ?? '',
+    tenant_id: tenant?.id ?? null,
+    tenant_name: tenant?.full_name ?? null,
+    issued_at: dayjs().format('YYYY-MM-DD'),
+    due_date: activeContract?.billing_day ? dayjs(normalizedMonth).date(activeContract.billing_day).format('YYYY-MM-DD') : null,
+    rent_amount: rentAmount,
+    electricity_prev: Number(latestReading?.electricity_curr ?? latestReading?.electricity_prev ?? 0),
+    water_prev: Number(latestReading?.water_curr ?? latestReading?.water_prev ?? 0),
+    electric_unit_price: rate?.electricity_unit_price ?? 0,
     water_unit_price: rate?.water_unit_price ?? 0,
   }
 }

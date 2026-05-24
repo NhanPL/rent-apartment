@@ -40,6 +40,7 @@ import {
   updatePayment,
 } from '../../services/paymentsService'
 import {
+  getInvoiceFormDefaultValues,
   invoiceFormDefaultValues,
   type InvoiceFormValues,
 } from './components/invoiceFormState'
@@ -83,7 +84,7 @@ export function PaymentsPage() {
 
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
-  const [monthFilter, setMonthFilter] = useState(dayjs().format('YYYY-MM'))
+  const [monthFilter, setMonthFilter] = useState('')
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<InvoiceStatus | undefined>()
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<PaymentStatus | undefined>()
   const [buildingFilter, setBuildingFilter] = useState<string | undefined>()
@@ -167,24 +168,29 @@ export function PaymentsPage() {
 
   const selectedContractId = Form.useWatch('contract_id', form)
 
-  const selectedTenant = useMemo(() => {
+  const selectedTenantName = useMemo(() => {
     if (!selectedContractId) {
       return null
     }
 
-    const row = items.find((item) => item.contract_id === selectedContractId)
-    if (row?.tenant_id) {
-      return tenants.find((tenant) => tenant.id === row.tenant_id) ?? null
+    const contract = contracts.find((item) => item.id === selectedContractId)
+    if (contract?.tenant_name) {
+      return contract.tenant_name
     }
 
-    return null
-  }, [selectedContractId, items, tenants])
+    if (contract?.tenant_id) {
+      return tenants.find((tenant) => tenant.id === contract.tenant_id)?.full_name ?? null
+    }
+
+    const row = items.find((item) => item.contract_id === selectedContractId)
+    return row?.tenant_name ?? null
+  }, [selectedContractId, contracts, items, tenants])
 
   const openCreate = useCallback(() => {
     setDrawerMode('create')
     setEditingId(null)
     form.resetFields()
-    form.setFieldsValue(invoiceFormDefaultValues)
+    form.setFieldsValue(getInvoiceFormDefaultValues())
     setDrawerOpen(true)
   }, [form])
 
@@ -194,6 +200,7 @@ export function PaymentsPage() {
     setEditingId(id)
     form.resetFields()
     form.setFieldsValue({
+      building_id: row.building_id,
       contract_id: row.contract_id,
       room_id: row.room_id,
       month: row.month,
@@ -329,7 +336,7 @@ export function PaymentsPage() {
           <Typography.Title level={3} style={{ margin: 0 }}>Payments</Typography.Title>
           <Typography.Text type="secondary">Manage monthly invoices from contracts, utility readings, and payment status.</Typography.Text>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>+ Add Invoice</Button>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Add Invoice</Button>
       </div>
 
       <Card>
@@ -382,11 +389,13 @@ export function PaymentsPage() {
         <Form form={form} layout="vertical" initialValues={invoiceFormDefaultValues}>
           <InvoiceFormFields
             form={form}
+            buildings={buildings}
             rooms={rooms}
             contracts={contracts}
-            tenantName={selectedTenant?.full_name}
+            tenantName={selectedTenantName ?? undefined}
             invoiceStatusOptions={invoiceStatusOptions.map((item) => ({ label: item.label, value: item.value }))}
             currencyFormatter={(value) => currency.format(value)}
+            autoFillFromLatest={drawerMode === 'create'}
           />
           <Space className="payments-drawer-actions">
             <Button onClick={() => setDrawerOpen(false)}>Cancel</Button>
