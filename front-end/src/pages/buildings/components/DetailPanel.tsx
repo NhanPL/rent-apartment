@@ -11,7 +11,7 @@ interface DetailPanelProps {
   loading: boolean
   item: BuildingEntity | null
   onEdit: (item: BuildingEntity) => void
-  onDelete: (id: string) => void
+  onDelete: (id: string) => Promise<void>
 }
 
 const statusColor: Record<BuildingEntity['status'], string> = {
@@ -56,6 +56,10 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
         }),
       )
       setTenantCountByRoomId(Object.fromEntries(entries))
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Unable to load rooms')
+      setRoomsData([])
+      setTenantCountByRoomId({})
     } finally {
       setRoomsLoading(false)
     }
@@ -225,6 +229,9 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
                 message.success('Room updated successfully')
               }
               await loadRooms(item.id)
+            } catch (error) {
+              message.error(error instanceof Error ? error.message : 'Unable to save room')
+              throw error
             } finally {
               setSavingRoom(false)
             }
@@ -236,8 +243,8 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
         open={deleteBuildingModalOpen}
         title="Delete this building?"
         onCancel={() => setDeleteBuildingModalOpen(false)}
-        onOk={() => {
-          onDelete(item.id)
+        onOk={async () => {
+          await onDelete(item.id)
           setDeleteBuildingModalOpen(false)
         }}
         okText="Delete"
@@ -255,10 +262,14 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
         onOk={async () => {
           if (!roomToDelete) return
           const id = roomToDelete.id
-          setRoomToDelete(null)
-          await deleteRoom(id)
-          await loadRooms(item.id)
-          message.success('Room deleted successfully')
+          try {
+            await deleteRoom(id)
+            setRoomToDelete(null)
+            await loadRooms(item.id)
+            message.success('Room deleted successfully')
+          } catch (error) {
+            message.error(error instanceof Error ? error.message : 'Unable to delete room')
+          }
         }}
         okText="Delete"
         okButtonProps={{ danger: true }}

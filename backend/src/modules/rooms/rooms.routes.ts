@@ -57,7 +57,7 @@ router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 
 router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const { rows } = await query(
-    `SELECT r.*
+    `SELECT r.*, b.name AS building_name
      FROM room r
      JOIN building b ON b.id = r.building_id
      WHERE r.id=$1 AND b.manager_user_id=$2`,
@@ -120,6 +120,30 @@ router.get('/:id/occupancy', requireRole('MANAGER'), asyncHandler(async (req, re
 
   const { rows } = await query('SELECT * FROM vw_room_occupancy WHERE room_id = $1', [req.params.id]);
   res.json(rows[0] ?? null);
+}));
+
+router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  const room = await query(
+    `SELECT r.id
+     FROM room r
+     JOIN building b ON b.id=r.building_id
+     WHERE r.id=$1 AND b.manager_user_id=$2`,
+    [req.params.id, req.auth!.userId]
+  );
+  if (!room.rows[0]) throw new AppError(404, 'Room not found', 'ROOM_NOT_FOUND');
+
+  const contracts = await query('SELECT id FROM contract WHERE room_id=$1 LIMIT 1', [req.params.id]);
+  if (contracts.rows[0]) {
+    throw new AppError(409, 'Cannot delete room with existing contracts', 'ROOM_HAS_CONTRACTS');
+  }
+
+  await query(
+    `DELETE FROM room
+     WHERE id=$1
+       AND building_id IN (SELECT id FROM building WHERE manager_user_id=$2)`,
+    [req.params.id, req.auth!.userId]
+  );
+  res.status(204).send();
 }));
 
 export default router;

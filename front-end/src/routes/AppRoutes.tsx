@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { AppLayout } from '../layout/AppLayout'
 import { BuildingsPage } from '../pages/buildings/BuildingsPage'
 import { DashboardPage } from '../pages/dashboard/DashboardPage'
-import { mockBuildings } from '../pages/buildings/mockData'
 import { RoomDetailPage } from '../pages/rooms/RoomDetailPage'
 import { PlaceholderPage } from '../pages/shared/PlaceholderPage'
 import { TenantsPage } from '../pages/tenants/TenantsPage'
@@ -98,7 +97,7 @@ export function AppRoutes() {
       }} />
     }
     if (protectedPath === '/buildings') return <BuildingsPage />
-    if (protectedPath.startsWith('/rooms/')) return <RoomDetailPage roomId={protectedPath.split('/')[2]} buildings={mockBuildings} />
+    if (protectedPath.startsWith('/rooms/')) return <RoomDetailPage roomId={protectedPath.split('/')[2]} />
     if (protectedPath === '/tenants') return <TenantsPage />
     if (protectedPath === '/payments') return <PaymentsPage />
     if (protectedPath === '/my-room') return <TenantRoomPage />

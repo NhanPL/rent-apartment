@@ -1,5 +1,5 @@
 import { ExclamationCircleOutlined } from '@ant-design/icons'
-import { Button, Drawer, Form, Grid, Input, Modal, Select, Space } from 'antd'
+import { Button, Drawer, Form, Grid, Input, Modal, Space } from 'antd'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { BuildingEntity, BuildingFormValues } from './types'
 
@@ -21,8 +21,6 @@ const defaultValues: BuildingFormValues = {
   name: '',
   address: '',
   note: '',
-  status: 'active',
-  manager: '',
 }
 
 export function UpsertDrawer({ open, mode, item, loading, existingCodes, onClose, onSubmit }: UpsertDrawerProps) {
@@ -41,8 +39,6 @@ export function UpsertDrawer({ open, mode, item, loading, existingCodes, onClose
         name: item.name,
         address: item.address,
         note: item.note ?? '',
-        status: item.status,
-        manager: item.manager,
       }
     }
     return defaultValues
@@ -129,15 +125,6 @@ export function UpsertDrawer({ open, mode, item, loading, existingCodes, onClose
           </Form.Item>
           <Form.Item label="Address" name="address" rules={[{ required: true, message: 'Address is required' }]}>
             <Input size={isMobile ? 'large' : 'middle'} placeholder="12 Nguyen Van Cu" />
-          </Form.Item>
-          <Form.Item label="Manager" name="manager" rules={[{ required: true, message: 'Manager is required' }]}>
-            <Input size={isMobile ? 'large' : 'middle'} placeholder="Manager name" />
-          </Form.Item>
-          <Form.Item label="Status" name="status" rules={[{ required: true }]}>
-            <Select
-              size={isMobile ? 'large' : 'middle'}
-              options={[{ label: 'Active', value: 'active' }, { label: 'Inactive', value: 'inactive' }]}
-            />
           </Form.Item>
           <Form.Item label="Note" name="note">
             <Input.TextArea rows={4} />

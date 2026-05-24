@@ -1,215 +1,168 @@
-import type { BuildingEntity } from './types'
-import type { MonthlyBill, MonthlyBillUpsertPayload, Room, RoomUpsertPayload, TenantSummary } from './roomTypes'
+import { API_ROUTES } from '../../../services/apiRoutes'
+import { apiRequest } from '../../../services/apiClient'
+import type { TenantListResponse } from '../../../services/tenantsService'
+import type { Invoice, InvoiceItem } from '../../payments/types'
+import type { MonthlyBill, Room, RoomUpsertPayload, TenantSummary } from './roomTypes'
 
-const wait = (ms = 220) => new Promise((resolve) => window.setTimeout(resolve, ms))
-
-let roomsStore: Room[] = [
-  {
-    id: 'r-101',
-    building_id: '1',
-    code: 'A-101',
-    floor: 1,
-    area_m2: 28,
-    status: 'ACTIVE',
-    base_rent: 420,
-    deposit_default: 840,
-    max_occupants: 2,
-    note: 'Near window',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'r-102',
-    building_id: '1',
-    code: 'A-102',
-    floor: 1,
-    area_m2: 30,
-    status: 'MAINTENANCE',
-    base_rent: 450,
-    deposit_default: 900,
-    max_occupants: 2,
-    note: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-  {
-    id: 'r-201',
-    building_id: '2',
-    code: 'B-201',
-    floor: 2,
-    area_m2: 32,
-    status: 'ACTIVE',
-    base_rent: 510,
-    deposit_default: 1020,
-    max_occupants: 3,
-    note: 'City view',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  },
-]
-
-const roomTenantsStore: Record<string, TenantSummary[]> = {
-  'r-101': [
-    {
-      id: 't-1',
-      full_name: 'Nguyen Van A',
-      email: 'nguyenvana@gmail.com',
-      phone: '0901000101',
-      status: 'ACTIVE',
-      contract_start_date: '2024-02-01',
-    },
-  ],
-  'r-102': [],
-  'r-201': [
-    {
-      id: 't-2',
-      full_name: 'Tran Thi B',
-      email: 'tranthib@gmail.com',
-      phone: '0902000202',
-      status: 'ACTIVE',
-      contract_start_date: '2024-05-01',
-    },
-    {
-      id: 't-3',
-      full_name: 'Le Van C',
-      email: null,
-      phone: '0903000303',
-      status: 'ACTIVE',
-      contract_start_date: '2024-05-01',
-    },
-  ],
+interface BuildingRow {
+  id: string
+  manager_user_id: string
+  code: string
+  name: string
+  address: string
+  note: string | null
+  units?: number
+  has_active_rooms?: boolean
+  created_at: string
+  updated_at: string
 }
 
-function computeBill(payload: MonthlyBillUpsertPayload) {
-  const electric_usage = Math.max(0, payload.electricity_curr - payload.electricity_prev)
-  const water_usage = Math.max(0, payload.water_curr - payload.water_prev)
-  const electric_amount = electric_usage * payload.electric_unit_price
-  const water_amount = water_usage * payload.water_unit_price
-  const subtotal = payload.rent_amount + electric_amount + water_amount + payload.other_fees
-  const total_bill_amount = Math.max(0, subtotal - payload.discount)
+export interface BuildingEntity {
+  id: string
+  code: string
+  name: string
+  address: string
+  note: string
+  status: 'active' | 'inactive'
+  units: number
+  manager: string
+  createdAt: string
+}
+
+export interface BuildingFormValues {
+  code: string
+  name: string
+  address: string
+  note: string
+}
+
+const toNumber = (value: unknown): number => Number(value ?? 0)
+
+const mapBuilding = (row: BuildingRow): BuildingEntity => ({
+  id: row.id,
+  code: row.code,
+  name: row.name,
+  address: row.address,
+  note: row.note ?? '',
+  status: row.has_active_rooms ? 'active' : 'inactive',
+  units: Number(row.units ?? 0),
+  manager: 'Current manager',
+  createdAt: row.created_at,
+})
+
+interface InvoiceDetail extends Invoice {
+  items: Array<InvoiceItem & { meta?: { prev?: number | string | null; curr?: number | string | null } | null }>
+}
+
+const getInvoiceItem = (invoice: InvoiceDetail, code: string) => invoice.items.find((item) => item.code === code)
+
+const mapInvoiceToMonthlyBill = (invoice: InvoiceDetail): MonthlyBill => {
+  const rent = getInvoiceItem(invoice, 'ROOM_RENT')
+  const electricity = getInvoiceItem(invoice, 'ELECTRICITY')
+  const water = getInvoiceItem(invoice, 'WATER')
+  const knownItemTotal = invoice.items.reduce((sum, item) => sum + toNumber(item.amount), 0)
 
   return {
-    electric_usage,
-    water_usage,
-    electric_amount,
-    water_amount,
-    total_bill_amount,
+    id: invoice.id,
+    room_id: invoice.room_id,
+    contract_id: invoice.contract_id,
+    month: invoice.month,
+    electricity_prev: toNumber(electricity?.meta?.prev),
+    electricity_curr: toNumber(electricity?.meta?.curr),
+    water_prev: toNumber(water?.meta?.prev),
+    water_curr: toNumber(water?.meta?.curr),
+    electric_unit_price: toNumber(electricity?.unit_price),
+    water_unit_price: toNumber(water?.unit_price),
+    rent_amount: toNumber(rent?.amount),
+    other_fees: Math.max(0, toNumber(invoice.subtotal) - knownItemTotal),
+    discount: toNumber(invoice.discount),
+    electric_usage: toNumber(electricity?.quantity),
+    water_usage: toNumber(water?.quantity),
+    electric_amount: toNumber(electricity?.amount),
+    water_amount: toNumber(water?.amount),
+    total_bill_amount: toNumber(invoice.total),
+    invoice_status: invoice.status,
+    issued_at: invoice.issued_at,
+    due_date: invoice.due_date,
+    note: invoice.note,
   }
 }
 
-let monthlyBillsStore: MonthlyBill[] = [
-  {
-    id: 'b-1',
-    room_id: 'r-101',
-    contract_id: 'c-1',
-    month: '2025-01-01',
-    electricity_prev: 1200,
-    electricity_curr: 1250,
-    water_prev: 350,
-    water_curr: 362,
-    electric_unit_price: 0.8,
-    water_unit_price: 0.5,
-    rent_amount: 420,
-    other_fees: 15,
-    discount: 0,
-    electric_usage: 50,
-    water_usage: 12,
-    electric_amount: 40,
-    water_amount: 6,
-    total_bill_amount: 481,
-    invoice_status: 'PAID',
-    issued_at: '2025-01-02',
-    due_date: '2025-01-10',
-    note: null,
-  },
-]
+export async function listBuildings(): Promise<BuildingEntity[]> {
+  const rows = await apiRequest<BuildingRow[]>(API_ROUTES.buildings.list)
+  return rows.map(mapBuilding)
+}
+
+export async function getBuilding(id: string): Promise<BuildingEntity> {
+  const row = await apiRequest<BuildingRow>(API_ROUTES.buildings.detail(id))
+  return mapBuilding(row)
+}
+
+export function createBuilding(payload: BuildingFormValues): Promise<BuildingRow> {
+  return apiRequest<BuildingRow>(API_ROUTES.buildings.list, { method: 'POST', body: payload })
+}
+
+export function updateBuilding(id: string, payload: BuildingFormValues): Promise<BuildingRow> {
+  return apiRequest<BuildingRow>(API_ROUTES.buildings.detail(id), { method: 'PUT', body: payload })
+}
+
+export function deleteBuilding(id: string): Promise<void> {
+  return apiRequest<void>(API_ROUTES.buildings.detail(id), { method: 'DELETE' })
+}
 
 export async function listRoomsByBuildingId(params: {
   building_id: string
   search?: string
   status?: Room['status'] | 'ALL'
 }): Promise<Room[]> {
-  await wait()
+  const query = new URLSearchParams({ building_id: params.building_id })
+  const rooms = await apiRequest<Room[]>(`${API_ROUTES.rooms.list}?${query.toString()}`)
   const normalized = params.search?.trim().toLowerCase() ?? ''
-  return roomsStore
-    .filter((room) => room.building_id === params.building_id)
+
+  return rooms
     .filter((room) => !normalized || room.code.toLowerCase().includes(normalized))
     .filter((room) => params.status === 'ALL' || !params.status || room.status === params.status)
 }
 
-export async function createRoom(payload: RoomUpsertPayload): Promise<Room> {
-  await wait()
-  const room: Room = {
-    ...payload,
-    id: `r-${Date.now()}`,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }
-  roomsStore = [room, ...roomsStore]
-  roomTenantsStore[room.id] = []
-  return room
+export function createRoom(payload: RoomUpsertPayload): Promise<Room> {
+  return apiRequest<Room>(API_ROUTES.rooms.list, { method: 'POST', body: payload })
 }
 
-export async function updateRoom(roomId: string, payload: RoomUpsertPayload): Promise<Room> {
-  await wait()
-  const nextRoom: Room = {
-    ...payload,
-    id: roomId,
-    created_at: roomsStore.find((room) => room.id === roomId)?.created_at ?? new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }
-  roomsStore = roomsStore.map((room) => (room.id === roomId ? nextRoom : room))
-  return nextRoom
+export function updateRoom(roomId: string, payload: RoomUpsertPayload): Promise<Room> {
+  return apiRequest<Room>(API_ROUTES.rooms.detail(roomId), { method: 'PUT', body: payload })
 }
 
-export async function deleteRoom(roomId: string): Promise<void> {
-  await wait()
-  roomsStore = roomsStore.filter((room) => room.id !== roomId)
-  monthlyBillsStore = monthlyBillsStore.filter((bill) => bill.room_id !== roomId)
-  delete roomTenantsStore[roomId]
+export function deleteRoom(roomId: string): Promise<void> {
+  return apiRequest<void>(API_ROUTES.rooms.detail(roomId), { method: 'DELETE' })
 }
 
-export async function getRoomDetail(roomId: string, buildings: BuildingEntity[]): Promise<(Room & { building_name: string }) | null> {
-  await wait()
-  const room = roomsStore.find((item) => item.id === roomId)
-  if (!room) return null
-  const building = buildings.find((item) => item.id === room.building_id)
-  return { ...room, building_name: building?.name ?? 'Unknown Building' }
+export function getRoomDetail(roomId: string): Promise<Room & { building_name: string }> {
+  return apiRequest<Room & { building_name: string }>(API_ROUTES.rooms.detail(roomId))
 }
 
 export async function listTenantsByRoomId(room_id: string): Promise<TenantSummary[]> {
-  await wait(180)
-  return roomTenantsStore[room_id] ?? []
+  const query = new URLSearchParams({ room_id, status: 'ACTIVE', pageSize: '100' })
+  const response = await apiRequest<TenantListResponse>(`${API_ROUTES.tenants.list}?${query.toString()}`)
+
+  return response.items.map((tenant) => ({
+    id: tenant.id,
+    full_name: tenant.full_name,
+    email: tenant.email,
+    phone: tenant.phone,
+    status: tenant.status === 'DELETED' ? 'MOVED_OUT' : tenant.status,
+    contract_start_date: tenant.current_room?.start_date ?? null,
+  }))
 }
 
 export async function listMonthlyBillsByRoomId(room_id: string): Promise<MonthlyBill[]> {
-  await wait(180)
-  return monthlyBillsStore
-    .filter((bill) => bill.room_id === room_id)
+  const invoices = await apiRequest<Invoice[]>(API_ROUTES.invoices.list)
+  const roomInvoices = invoices
+    .filter((invoice) => invoice.room_id === room_id)
     .sort((a, b) => b.month.localeCompare(a.month))
-}
 
-export async function createMonthlyBill(payload: MonthlyBillUpsertPayload): Promise<MonthlyBill> {
-  await wait()
-  const computed = computeBill(payload)
-  const bill: MonthlyBill = {
-    ...payload,
-    ...computed,
-    id: `bill-${Date.now()}`,
-  }
-  monthlyBillsStore = [bill, ...monthlyBillsStore.filter((item) => !(item.room_id === payload.room_id && item.month === payload.month))]
-  return bill
-}
+  const details = await Promise.all(
+    roomInvoices.map((invoice) => apiRequest<InvoiceDetail>(API_ROUTES.invoices.detail(invoice.id))),
+  )
 
-export async function updateMonthlyBill(billId: string, payload: MonthlyBillUpsertPayload): Promise<MonthlyBill> {
-  await wait()
-  const computed = computeBill(payload)
-  const bill: MonthlyBill = { ...payload, ...computed, id: billId }
-  monthlyBillsStore = monthlyBillsStore.map((item) => (item.id === billId ? bill : item))
-  return bill
-}
-
-export async function deleteMonthlyBill(billId: string): Promise<void> {
-  await wait()
-  monthlyBillsStore = monthlyBillsStore.filter((item) => item.id !== billId)
+  return details.map(mapInvoiceToMonthlyBill)
 }

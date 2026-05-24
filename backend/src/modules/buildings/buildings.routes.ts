@@ -16,12 +16,27 @@ const buildingBodySchema = z.object({
 });
 
 router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  const { rows } = await query('SELECT * FROM building WHERE manager_user_id=$1 ORDER BY created_at DESC', [req.auth!.userId]);
+  const { rows } = await query(
+    `SELECT b.*, COUNT(r.id)::int AS units, COALESCE(BOOL_OR(r.status = 'ACTIVE'), false) AS has_active_rooms
+     FROM building b
+     LEFT JOIN room r ON r.building_id=b.id
+     WHERE b.manager_user_id=$1
+     GROUP BY b.id
+     ORDER BY b.created_at DESC`,
+    [req.auth!.userId]
+  );
   res.json(rows);
 }));
 
 router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  const { rows } = await query('SELECT * FROM building WHERE id = $1 AND manager_user_id=$2', [req.params.id, req.auth!.userId]);
+  const { rows } = await query(
+    `SELECT b.*, COUNT(r.id)::int AS units, COALESCE(BOOL_OR(r.status = 'ACTIVE'), false) AS has_active_rooms
+     FROM building b
+     LEFT JOIN room r ON r.building_id=b.id
+     WHERE b.id = $1 AND b.manager_user_id=$2
+     GROUP BY b.id`,
+    [req.params.id, req.auth!.userId]
+  );
   if (!rows[0]) throw new AppError(404, 'Building not found', 'BUILDING_NOT_FOUND');
   res.json(rows[0]);
 }));
@@ -44,6 +59,26 @@ router.put('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   );
   if (!rows[0]) throw new AppError(404, 'Building not found', 'BUILDING_NOT_FOUND');
   res.json(rows[0]);
+}));
+
+router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  const building = await query('SELECT id FROM building WHERE id=$1 AND manager_user_id=$2', [req.params.id, req.auth!.userId]);
+  if (!building.rows[0]) throw new AppError(404, 'Building not found', 'BUILDING_NOT_FOUND');
+
+  const contracts = await query(
+    `SELECT c.id
+     FROM contract c
+     JOIN room r ON r.id=c.room_id
+     WHERE r.building_id=$1
+     LIMIT 1`,
+    [req.params.id]
+  );
+  if (contracts.rows[0]) {
+    throw new AppError(409, 'Cannot delete building with existing contracts', 'BUILDING_HAS_CONTRACTS');
+  }
+
+  await query('DELETE FROM building WHERE id=$1 AND manager_user_id=$2', [req.params.id, req.auth!.userId]);
+  res.status(204).send();
 }));
 
 export default router;
