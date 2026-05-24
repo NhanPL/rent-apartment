@@ -1,7 +1,7 @@
 import { PoolClient, QueryResult } from 'pg';
 import { pool } from './pool';
 
-export const query = <T = unknown>(text: string, params?: unknown[]): Promise<QueryResult<T>> =>
+export const query = <T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<QueryResult<T>> =>
   pool.query<T>(text, params);
 
 export const withTransaction = async <T>(fn: (client: PoolClient) => Promise<T>): Promise<T> => {

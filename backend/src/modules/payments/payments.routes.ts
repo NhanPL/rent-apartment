@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireRole } from '../../shared/middleware/auth';
+import { asyncHandler } from '../../shared/middleware/async-handler';
 import {
   createPaymentRequest,
   getPaymentRequestDetail,
@@ -10,28 +11,28 @@ import {
 
 const router = Router();
 
-router.get('/requests', async (_req, res) => {
+router.get('/requests', asyncHandler(async (_req, res) => {
   res.json(await listPaymentRequests());
-});
+}));
 
-router.get('/requests/:id', async (req, res) => {
+router.get('/requests/:id', asyncHandler(async (req, res) => {
   res.json(await getPaymentRequestDetail(req.params.id));
-});
+}));
 
-router.post('/requests', requireRole('MANAGER'), async (req, res) => {
+router.post('/requests', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   res.status(201).json(await createPaymentRequest(req.body.invoice_id, req.auth!.userId, req.body));
-});
+}));
 
-router.post('/requests/:id/proofs', requireRole('TENANT'), async (req, res) => {
+router.post('/requests/:id/proofs', requireRole('TENANT'), asyncHandler(async (req, res) => {
   res.status(201).json(await submitPaymentProof(req.params.id, req.body, req.auth!.userId));
-});
+}));
 
-router.post('/proofs/:id/approve', requireRole('MANAGER'), async (req, res) => {
+router.post('/proofs/:id/approve', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   res.json(await reviewPaymentProof(req.params.id, true, req.auth!.userId));
-});
+}));
 
-router.post('/proofs/:id/reject', requireRole('MANAGER'), async (req, res) => {
+router.post('/proofs/:id/reject', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   res.json(await reviewPaymentProof(req.params.id, false, req.auth!.userId, req.body.reason));
-});
+}));
 
 export default router;

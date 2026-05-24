@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { query, withTransaction } from '../../db';
 import { requireRole } from '../../shared/middleware/auth';
+import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
 import {
   createTenant as createTenantService,
@@ -100,7 +101,7 @@ const parseIntParam = (value: unknown, fallback: number): number => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
-router.get('/', requireRole('MANAGER'), async (req, res) => {
+router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const page = parseIntParam(req.query.page, 1);
   const pageSize = Math.min(parseIntParam(req.query.pageSize, 10), 100);
   const offset = (page - 1) * pageSize;
@@ -184,9 +185,9 @@ router.get('/', requireRole('MANAGER'), async (req, res) => {
   }));
 
   res.json({ items, page, pageSize, total: countRs.rows[0]?.total ?? 0 });
-});
+}));
 
-router.get('/:id', requireRole('MANAGER'), async (req, res) => {
+router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const tenantRs = await query('SELECT * FROM tenant WHERE id=$1 AND status <> $2', [req.params.id, 'DELETED']);
   const tenant = tenantRs.rows[0];
   if (!tenant) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
@@ -217,9 +218,9 @@ router.get('/:id', requireRole('MANAGER'), async (req, res) => {
   ]);
 
   res.json({ ...tenant, current_room: roomRs.rows[0] ?? null, current_contract: contractRs.rows[0] ?? null });
-});
+}));
 
-router.post('/', requireRole('MANAGER'), async (req, res) => {
+router.post('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const result = await createTenantService(req.body as Record<string, unknown>);
   res.status(201).json({
     message: 'Tenant created successfully',
@@ -227,9 +228,9 @@ router.post('/', requireRole('MANAGER'), async (req, res) => {
     userId: result.userId,
     emailSent: result.emailSent
   });
-});
+}));
 
-router.patch('/:id', requireRole('MANAGER'), async (req, res) => {
+router.patch('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const b = req.body as Record<string, unknown>;
   const tenantPayload = (b.tenant ?? b) as Record<string, unknown>;
   const allowed = ['full_name', 'dob', 'gender', 'identity_number', 'identity_issued_date', 'identity_issued_place', 'email', 'phone', 'permanent_address', 'status', 'note'];
@@ -254,9 +255,9 @@ router.patch('/:id', requireRole('MANAGER'), async (req, res) => {
     return updated.rows[0];
   });
   res.json(result);
-});
+}));
 
-router.delete('/:id', requireRole('MANAGER'), async (req, res) => {
+router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   await withTransaction(async (client) => {
     const tenantRs = await client.query<TenantDeleteRow>(
       'SELECT id, user_id FROM tenant WHERE id=$1 AND status <> $2 FOR UPDATE',
@@ -305,9 +306,9 @@ router.delete('/:id', requireRole('MANAGER'), async (req, res) => {
   });
 
   res.status(204).send();
-});
+}));
 
-router.get('/:id/contracts', requireRole('MANAGER'), async (req, res) => {
+router.get('/:id/contracts', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const rs = await query(
     `SELECT c.*, r.code AS room_code, b.id AS building_id, b.name AS building_name, ct.is_primary, ct.joined_at, ct.left_at
      FROM contract_tenant ct
@@ -319,8 +320,8 @@ router.get('/:id/contracts', requireRole('MANAGER'), async (req, res) => {
     [req.params.id]
   );
   res.json(rs.rows);
-});
-router.get('/:id/invoices', requireRole('MANAGER'), async (req, res) => {
+}));
+router.get('/:id/invoices', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const rs = await query(
     `SELECT i.*, c.contract_code, r.code AS room_code, b.name AS building_name
      FROM contract_tenant ct
@@ -333,8 +334,8 @@ router.get('/:id/invoices', requireRole('MANAGER'), async (req, res) => {
     [req.params.id]
   );
   res.json(rs.rows);
-});
-router.get('/:id/payments', requireRole('MANAGER'), async (req, res) => {
+}));
+router.get('/:id/payments', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const rs = await query(
     `SELECT p.*, i.month, i.total AS invoice_total, i.status AS invoice_status, i.due_date, i.id AS invoice_id
      FROM contract_tenant ct
@@ -346,8 +347,8 @@ router.get('/:id/payments', requireRole('MANAGER'), async (req, res) => {
     [req.params.id]
   );
   res.json(rs.rows);
-});
-router.post('/:id/export-contract', requireRole('MANAGER'), async (req, res) => {
+}));
+router.post('/:id/export-contract', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const detailRs = await query(
     `SELECT t.full_name tenant_name,t.phone,t.email,t.identity_number,t.permanent_address,
             c.contract_code,c.start_date,c.end_date,c.rent_price,c.deposit_amount,c.billing_day,c.note contract_note,
@@ -364,6 +365,6 @@ router.post('/:id/export-contract', requireRole('MANAGER'), async (req, res) => 
   const row = detailRs.rows[0];
   if (!row) throw new AppError(400, 'Missing active contract/room/building data for export', 'EXPORT_DATA_MISSING');
   res.json(row);
-});
+}));
 
 export default router;
