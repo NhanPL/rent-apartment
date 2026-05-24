@@ -1,6 +1,8 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
+import { parseBody } from '../../shared/utils/validation';
 import {
   createPaymentRequest,
   getPaymentRequestDetail,
@@ -11,20 +13,48 @@ import {
 
 const router = Router();
 
-router.get('/requests', asyncHandler(async (_req, res) => {
-  res.json(await listPaymentRequests());
+const paymentRequestSchema = z.object({
+  invoice_id: z.string().uuid(),
+  amount: z.coerce.number().positive().nullable().optional(),
+  currency: z.string().trim().min(1).optional(),
+  qr_image_url: z.string().trim().nullable().optional(),
+  bank_code: z.string().trim().nullable().optional(),
+  bank_account_no: z.string().trim().nullable().optional(),
+  bank_account_name: z.string().trim().nullable().optional(),
+  transfer_note: z.string().trim().nullable().optional(),
+  expires_at: z.string().trim().nullable().optional()
+});
+
+const paymentProofSchema = z.object({
+  file_name: z.string().trim().nullable().optional(),
+  file_url: z.string().trim().min(1),
+  mime_type: z.string().trim().nullable().optional(),
+  file_size: z.coerce.number().int().nonnegative().nullable().optional(),
+  transfer_amount: z.coerce.number().positive().nullable().optional(),
+  transfer_time: z.string().trim().nullable().optional(),
+  payer_note: z.string().trim().nullable().optional()
+});
+
+const paymentRejectSchema = z.object({
+  reason: z.string().trim().min(1).optional()
+});
+
+router.get('/requests', asyncHandler(async (req, res) => {
+  res.json(await listPaymentRequests(req.auth!));
 }));
 
 router.get('/requests/:id', asyncHandler(async (req, res) => {
-  res.json(await getPaymentRequestDetail(req.params.id));
+  res.json(await getPaymentRequestDetail(req.params.id, req.auth!));
 }));
 
 router.post('/requests', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  res.status(201).json(await createPaymentRequest(req.body.invoice_id, req.auth!.userId, req.body));
+  const body = parseBody(paymentRequestSchema, req.body);
+  res.status(201).json(await createPaymentRequest(body.invoice_id, req.auth!.userId, body));
 }));
 
 router.post('/requests/:id/proofs', requireRole('TENANT'), asyncHandler(async (req, res) => {
-  res.status(201).json(await submitPaymentProof(req.params.id, req.body, req.auth!.userId));
+  const body = parseBody(paymentProofSchema, req.body);
+  res.status(201).json(await submitPaymentProof(req.params.id, body, req.auth!.userId));
 }));
 
 router.post('/proofs/:id/approve', requireRole('MANAGER'), asyncHandler(async (req, res) => {
@@ -32,7 +62,8 @@ router.post('/proofs/:id/approve', requireRole('MANAGER'), asyncHandler(async (r
 }));
 
 router.post('/proofs/:id/reject', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  res.json(await reviewPaymentProof(req.params.id, false, req.auth!.userId, req.body.reason));
+  const { reason } = parseBody(paymentRejectSchema, req.body);
+  res.json(await reviewPaymentProof(req.params.id, false, req.auth!.userId, reason));
 }));
 
 export default router;

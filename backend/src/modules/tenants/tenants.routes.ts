@@ -1,8 +1,10 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { query, withTransaction } from '../../db';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
+import { parseBody } from '../../shared/utils/validation';
 import {
   createTenant as createTenantService,
   createTenantContract,
@@ -46,7 +48,51 @@ interface TenantDeleteRow {
   user_id: string | null;
 }
 
-const upsertTenantContract = async (client: Parameters<Parameters<typeof withTransaction>[0]>[0], tenantId: string, contractInput: Record<string, unknown> | null) => {
+const nullableString = z.string().trim().nullable().optional();
+
+const tenantContractSchema = z.object({
+  building_id: z.string().uuid().nullable().optional(),
+  room_id: z.string().uuid(),
+  status: z.enum(['DRAFT', 'ACTIVE', 'ENDED', 'CANCELLED']).optional(),
+  start_date: z.string().trim().min(1),
+  end_date: nullableString,
+  move_in_date: nullableString,
+  move_out_date: nullableString,
+  rent_price: z.coerce.number().nonnegative().nullable().optional(),
+  deposit_amount: z.coerce.number().nonnegative().nullable().optional(),
+  billing_day: z.coerce.number().int().min(1).max(28).nullable().optional(),
+  note: nullableString
+});
+
+const tenantCreatePayloadSchema = z.object({
+  full_name: z.string().trim().min(1),
+  dob: nullableString,
+  gender: nullableString,
+  identity_number: z.string().trim().min(1),
+  identity_issued_date: nullableString,
+  identity_issued_place: nullableString,
+  email: z.string().trim().email(),
+  phone: z.string().trim().min(1),
+  permanent_address: nullableString,
+  status: z.string().trim().min(1).optional(),
+  note: nullableString
+});
+
+const tenantUpdatePayloadSchema = tenantCreatePayloadSchema.partial().extend({
+  email: z.string().trim().email().nullable().optional()
+});
+
+const tenantCreateSchema = z.union([
+  tenantCreatePayloadSchema.extend({ contract: tenantContractSchema.nullable().optional() }),
+  z.object({ tenant: tenantCreatePayloadSchema, contract: tenantContractSchema.nullable().optional() })
+]);
+
+const tenantPatchSchema = z.union([
+  tenantUpdatePayloadSchema.extend({ contract: tenantContractSchema.nullable().optional() }),
+  z.object({ tenant: tenantUpdatePayloadSchema, contract: tenantContractSchema.nullable().optional() })
+]);
+
+const upsertTenantContract = async (client: Parameters<Parameters<typeof withTransaction>[0]>[0], tenantId: string, contractInput: Record<string, unknown> | null, managerId: string) => {
   if (!contractInput) return;
 
   const payload = normalizeTenantContractInput(contractInput);
@@ -63,12 +109,12 @@ const upsertTenantContract = async (client: Parameters<Parameters<typeof withTra
 
   const current = activeRs.rows[0];
   if (!current) {
-    await createTenantContract(client, tenantId, contractInput);
+    await createTenantContract(client, tenantId, contractInput, managerId);
     return;
   }
 
   if (current.room_id !== payload.room_id) {
-    await validateTenantContractRoom(client, payload);
+    await validateTenantContractRoom(client, payload, managerId);
     const leftAt = payload.start_date > current.joined_at ? payload.start_date : current.joined_at;
     await client.query(
       'UPDATE contract_tenant SET left_at=$1 WHERE contract_id=$2 AND tenant_id=$3 AND left_at IS NULL',
@@ -80,11 +126,11 @@ const upsertTenantContract = async (client: Parameters<Parameters<typeof withTra
        WHERE id=$2`,
       [leftAt, current.contract_id]
     );
-    await createTenantContract(client, tenantId, contractInput);
+    await createTenantContract(client, tenantId, contractInput, managerId);
     return;
   }
 
-  await validateTenantContractRoom(client, payload, current.contract_id);
+  await validateTenantContractRoom(client, payload, managerId, current.contract_id);
   await client.query(
     `UPDATE contract SET room_id=$1,status=$2,start_date=$3,end_date=$4,move_in_date=$5,move_out_date=$6,rent_price=$7,deposit_amount=$8,billing_day=$9,note=$10
      WHERE id=$11`,
@@ -111,8 +157,18 @@ router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const buildingId = String(req.query.building_id ?? '').trim();
   const roomId = String(req.query.room_id ?? '').trim();
 
-  const conditions: string[] = [`t.status <> 'DELETED'`];
-  const params: unknown[] = [];
+  const conditions: string[] = [
+    `t.status <> 'DELETED'`,
+    `(v.building_id IS NOT NULL OR NOT EXISTS (
+       SELECT 1
+       FROM contract_tenant ct_scope
+       JOIN contract c_scope ON c_scope.id=ct_scope.contract_id
+       WHERE ct_scope.tenant_id=t.id
+         AND ct_scope.left_at IS NULL
+         AND c_scope.status NOT IN ('ENDED','CANCELLED')
+     ))`
+  ];
+  const params: unknown[] = [req.auth!.userId];
 
   if (search) {
     params.push(`%${search}%`);
@@ -143,6 +199,7 @@ router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
        JOIN room r ON r.id=c.room_id
        JOIN building b ON b.id=r.building_id
        WHERE ct.tenant_id=t.id AND ct.left_at IS NULL AND c.status NOT IN ('ENDED','CANCELLED')
+        AND b.manager_user_id=$1
        ORDER BY (c.status='ACTIVE') DESC, c.start_date DESC, c.created_at DESC
        LIMIT 1
      ) v ON true`;
@@ -188,7 +245,34 @@ router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 }));
 
 router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  const tenantRs = await query('SELECT * FROM tenant WHERE id=$1 AND status <> $2', [req.params.id, 'DELETED']);
+  const tenantRs = await query(
+    `SELECT t.*
+     FROM tenant t
+     WHERE t.id=$1
+       AND t.status <> $2
+       AND (
+         NOT EXISTS (
+           SELECT 1
+           FROM contract_tenant ct_scope
+           JOIN contract c_scope ON c_scope.id=ct_scope.contract_id
+           WHERE ct_scope.tenant_id=t.id
+             AND ct_scope.left_at IS NULL
+             AND c_scope.status NOT IN ('ENDED','CANCELLED')
+         )
+         OR EXISTS (
+           SELECT 1
+           FROM contract_tenant ct_scope
+           JOIN contract c_scope ON c_scope.id=ct_scope.contract_id
+           JOIN room r_scope ON r_scope.id=c_scope.room_id
+           JOIN building b_scope ON b_scope.id=r_scope.building_id
+           WHERE ct_scope.tenant_id=t.id
+             AND ct_scope.left_at IS NULL
+             AND c_scope.status NOT IN ('ENDED','CANCELLED')
+             AND b_scope.manager_user_id=$3
+         )
+       )`,
+    [req.params.id, 'DELETED', req.auth!.userId]
+  );
   const tenant = tenantRs.rows[0];
   if (!tenant) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
 
@@ -202,18 +286,20 @@ router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
        JOIN contract c ON c.id=ct.contract_id AND c.status NOT IN ('ENDED','CANCELLED')
        JOIN room r ON r.id=c.room_id
        JOIN building b ON b.id=r.building_id
-       WHERE t.id=$1
+       WHERE t.id=$1 AND b.manager_user_id=$2
        ORDER BY (c.status='ACTIVE') DESC, c.start_date DESC, c.created_at DESC
        LIMIT 1`,
-      [req.params.id]
+      [req.params.id, req.auth!.userId]
     ),
     query(
       `SELECT c.* FROM contract c
        JOIN contract_tenant ct ON ct.contract_id=c.id
-       WHERE ct.tenant_id=$1 AND ct.left_at IS NULL AND c.status NOT IN ('ENDED','CANCELLED')
+       JOIN room r ON r.id=c.room_id
+       JOIN building b ON b.id=r.building_id
+       WHERE ct.tenant_id=$1 AND ct.left_at IS NULL AND c.status NOT IN ('ENDED','CANCELLED') AND b.manager_user_id=$2
        ORDER BY (c.status='ACTIVE') DESC, c.created_at DESC
        LIMIT 1`,
-      [req.params.id]
+      [req.params.id, req.auth!.userId]
     )
   ]);
 
@@ -221,7 +307,8 @@ router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 }));
 
 router.post('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  const result = await createTenantService(req.body as Record<string, unknown>);
+  const body = parseBody(tenantCreateSchema, req.body) as Record<string, unknown>;
+  const result = await createTenantService(body, req.auth!.userId);
   res.status(201).json({
     message: 'Tenant created successfully',
     tenantId: result.tenantId,
@@ -231,7 +318,7 @@ router.post('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 }));
 
 router.patch('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  const b = req.body as Record<string, unknown>;
+  const b = parseBody(tenantPatchSchema, req.body) as Record<string, unknown>;
   const tenantPayload = (b.tenant ?? b) as Record<string, unknown>;
   const allowed = ['full_name', 'dob', 'gender', 'identity_number', 'identity_issued_date', 'identity_issued_place', 'email', 'phone', 'permanent_address', 'status', 'note'];
   const entries = allowed.filter((field) => Object.prototype.hasOwnProperty.call(tenantPayload, field) && tenantPayload[field] !== undefined);
@@ -244,14 +331,44 @@ router.patch('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
     return `${field}=$${params.length}`;
   });
   params.push(req.params.id);
+  params.push(req.auth!.userId);
+  const idParam = params.length - 1;
+  const managerParam = params.length;
+  const scopedTenantWhere = `id=$${idParam}
+    AND status <> 'DELETED'
+    AND (
+      NOT EXISTS (
+        SELECT 1
+        FROM contract_tenant ct_scope
+        JOIN contract c_scope ON c_scope.id=ct_scope.contract_id
+        WHERE ct_scope.tenant_id=tenant.id
+          AND ct_scope.left_at IS NULL
+          AND c_scope.status NOT IN ('ENDED','CANCELLED')
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM contract_tenant ct_scope
+        JOIN contract c_scope ON c_scope.id=ct_scope.contract_id
+        JOIN room r_scope ON r_scope.id=c_scope.room_id
+        JOIN building b_scope ON b_scope.id=r_scope.building_id
+        WHERE ct_scope.tenant_id=tenant.id
+          AND ct_scope.left_at IS NULL
+          AND c_scope.status NOT IN ('ENDED','CANCELLED')
+          AND b_scope.manager_user_id=$${managerParam}
+      )
+    )`;
 
   const result = await withTransaction(async (client) => {
     const updated =
       entries.length > 0
-        ? await client.query(`UPDATE tenant SET ${sets.join(',')} WHERE id=$${params.length} RETURNING *`, params)
-        : await client.query('SELECT * FROM tenant WHERE id=$1', [req.params.id]);
+        ? await client.query(`UPDATE tenant SET ${sets.join(',')} WHERE ${scopedTenantWhere} RETURNING *`, params)
+        : await client.query(
+          `SELECT * FROM tenant
+           WHERE ${scopedTenantWhere}`,
+          params
+        );
     if (!updated.rows[0]) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
-    await upsertTenantContract(client, req.params.id, contractPayload);
+    await upsertTenantContract(client, req.params.id, contractPayload, req.auth!.userId);
     return updated.rows[0];
   });
   res.json(result);
@@ -260,8 +377,33 @@ router.patch('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   await withTransaction(async (client) => {
     const tenantRs = await client.query<TenantDeleteRow>(
-      'SELECT id, user_id FROM tenant WHERE id=$1 AND status <> $2 FOR UPDATE',
-      [req.params.id, 'DELETED']
+      `SELECT id, user_id
+       FROM tenant
+       WHERE id=$1
+         AND status <> $2
+         AND (
+           NOT EXISTS (
+             SELECT 1
+             FROM contract_tenant ct_scope
+             JOIN contract c_scope ON c_scope.id=ct_scope.contract_id
+             WHERE ct_scope.tenant_id=tenant.id
+               AND ct_scope.left_at IS NULL
+               AND c_scope.status NOT IN ('ENDED','CANCELLED')
+           )
+           OR EXISTS (
+             SELECT 1
+             FROM contract_tenant ct_scope
+             JOIN contract c_scope ON c_scope.id=ct_scope.contract_id
+             JOIN room r_scope ON r_scope.id=c_scope.room_id
+             JOIN building b_scope ON b_scope.id=r_scope.building_id
+             WHERE ct_scope.tenant_id=tenant.id
+               AND ct_scope.left_at IS NULL
+               AND c_scope.status NOT IN ('ENDED','CANCELLED')
+               AND b_scope.manager_user_id=$3
+           )
+         )
+       FOR UPDATE`,
+      [req.params.id, 'DELETED', req.auth!.userId]
     );
     const tenant = tenantRs.rows[0];
     if (!tenant) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
@@ -315,9 +457,9 @@ router.get('/:id/contracts', requireRole('MANAGER'), asyncHandler(async (req, re
      JOIN contract c ON c.id=ct.contract_id
      JOIN room r ON r.id=c.room_id
      JOIN building b ON b.id=r.building_id
-     WHERE ct.tenant_id=$1
+     WHERE ct.tenant_id=$1 AND b.manager_user_id=$2
      ORDER BY c.start_date DESC`,
-    [req.params.id]
+    [req.params.id, req.auth!.userId]
   );
   res.json(rs.rows);
 }));
@@ -329,9 +471,9 @@ router.get('/:id/invoices', requireRole('MANAGER'), asyncHandler(async (req, res
      JOIN invoice i ON i.contract_id=c.id
      JOIN room r ON r.id=i.room_id
      JOIN building b ON b.id=r.building_id
-     WHERE ct.tenant_id=$1
+     WHERE ct.tenant_id=$1 AND b.manager_user_id=$2
      ORDER BY i.month DESC, i.created_at DESC`,
-    [req.params.id]
+    [req.params.id, req.auth!.userId]
   );
   res.json(rs.rows);
 }));
@@ -342,9 +484,11 @@ router.get('/:id/payments', requireRole('MANAGER'), asyncHandler(async (req, res
      JOIN contract c ON c.id=ct.contract_id
      JOIN invoice i ON i.contract_id=c.id
      JOIN payment p ON p.invoice_id=i.id
-     WHERE ct.tenant_id=$1
+     JOIN room r ON r.id=i.room_id
+     JOIN building b ON b.id=r.building_id
+     WHERE ct.tenant_id=$1 AND b.manager_user_id=$2
      ORDER BY p.paid_at DESC NULLS LAST, p.created_at DESC`,
-    [req.params.id]
+    [req.params.id, req.auth!.userId]
   );
   res.json(rs.rows);
 }));
@@ -358,9 +502,9 @@ router.post('/:id/export-contract', requireRole('MANAGER'), asyncHandler(async (
      JOIN contract c ON c.id=ct.contract_id AND c.status='ACTIVE'
      JOIN room r ON r.id=c.room_id
      JOIN building b ON b.id=r.building_id
-     WHERE t.id=$1
+     WHERE t.id=$1 AND b.manager_user_id=$2
      LIMIT 1`,
-    [req.params.id]
+    [req.params.id, req.auth!.userId]
   );
   const row = detailRs.rows[0];
   if (!row) throw new AppError(400, 'Missing active contract/room/building data for export', 'EXPORT_DATA_MISSING');
