@@ -2,7 +2,6 @@ import {
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
-  ExclamationCircleOutlined,
   FileWordOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -18,6 +17,7 @@ import {
   Input,
   InputNumber,
   Modal,
+  Radio,
   Select,
   Skeleton,
   Space,
@@ -67,7 +67,6 @@ interface TenantFormValues {
   rental: {
     building_id?: string
     room_id?: string
-    contract_code?: string
     contract_status?: ContractStatus
     start_date?: string
     end_date?: string
@@ -102,6 +101,46 @@ const defaultFormValues: TenantFormValues = {
     contract_status: 'DRAFT',
     billing_day: 1,
   },
+}
+
+const toNumberOrUndefined = (value: unknown): number | undefined => {
+  if (value === null || value === undefined || value === '') {
+    return undefined
+  }
+
+  const numericValue = Number(value)
+  return Number.isFinite(numericValue) ? numericValue : undefined
+}
+
+const toNumberOrNull = (value: unknown): number | null => toNumberOrUndefined(value) ?? null
+
+const formatMoneyInput = (value: string | number | undefined) => {
+  if (value === undefined || value === '') {
+    return ''
+  }
+
+  return `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+
+const parseMoneyInput = (value: string | undefined) => {
+  const numericValue = Number(value?.replace(/,/g, '') || 0)
+  return Number.isFinite(numericValue) ? numericValue : 0
+}
+
+const validateMoneyValue = async (_: unknown, value: unknown) => {
+  if (value === undefined || value === null || value === '') {
+    return
+  }
+
+  const numericValue = Number(value)
+
+  if (!Number.isFinite(numericValue)) {
+    throw new Error('Giá trị phải là số hợp lệ')
+  }
+
+  if (numericValue < 0) {
+    throw new Error('Giá trị không được âm')
+  }
 }
 
 const tenantInfoFieldNames = new Set([
@@ -145,7 +184,6 @@ export function TenantsPage() {
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('create')
   const [drawerLoading, setDrawerLoading] = useState(false)
   const [saveLoading, setSaveLoading] = useState(false)
-  const [canSave, setCanSave] = useState(false)
   const [discardModalOpen, setDiscardModalOpen] = useState(false)
   const [editingTenantId, setEditingTenantId] = useState<string | null>(null)
   const [drawerInitialValues, setDrawerInitialValues] = useState<TenantFormValues>(defaultFormValues)
@@ -153,6 +191,8 @@ export function TenantsPage() {
 
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<TenantListItem | null>(null)
+  const [deletingTenantId, setDeletingTenantId] = useState<string | null>(null)
   const [exportingTenantId, setExportingTenantId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -196,14 +236,7 @@ export function TenantsPage() {
     void loadTenants()
   }, [loadTenants])
 
-  const hasFormErrors = useCallback(() => form.getFieldsError().some((field) => field.errors.length > 0), [form])
-
   const isDirty = useCallback(() => JSON.stringify(form.getFieldsValue(true)) !== initialSnapshotRef.current, [form])
-
-  const recalculateCanSave = useCallback(() => {
-    const touched = form.isFieldsTouched(true)
-    setCanSave(touched && !hasFormErrors() && isDirty())
-  }, [form, hasFormErrors, isDirty])
 
   useEffect(() => {
     if (!drawerOpen) {
@@ -218,7 +251,6 @@ export function TenantsPage() {
     form.resetFields()
     form.setFieldsValue(drawerInitialValues)
     initialSnapshotRef.current = JSON.stringify(drawerInitialValues)
-    setCanSave(false)
     setActiveFormTab('tenant')
     didInitFormRef.current = true
   }, [drawerOpen, drawerInitialValues, form])
@@ -272,14 +304,13 @@ export function TenantsPage() {
         rental: {
           building_id: data.current_room?.building_id,
           room_id: data.current_room?.room_id,
-          contract_code: data.current_contract?.contract_code ?? undefined,
           contract_status: data.current_contract?.status ?? 'DRAFT',
           start_date: data.current_contract?.start_date ?? undefined,
           end_date: data.current_contract?.end_date ?? undefined,
           move_in_date: data.current_contract?.move_in_date ?? undefined,
           move_out_date: data.current_contract?.move_out_date ?? undefined,
-          rent_price: data.current_contract?.rent_price,
-          deposit_amount: data.current_contract?.deposit_amount,
+          rent_price: toNumberOrUndefined(data.current_contract?.rent_price),
+          deposit_amount: toNumberOrUndefined(data.current_contract?.deposit_amount),
           billing_day: data.current_contract?.billing_day,
           contract_note: data.current_contract?.note ?? undefined,
         },
@@ -327,15 +358,15 @@ export function TenantsPage() {
       },
       contract: hasRental
         ? {
+            building_id: values.rental.building_id ?? null,
             room_id: values.rental.room_id ?? null,
-            contract_code: values.rental.contract_code ?? null,
             status: values.rental.contract_status ?? 'DRAFT',
             start_date: values.rental.start_date ?? null,
             end_date: values.rental.end_date ?? null,
             move_in_date: values.rental.move_in_date ?? null,
             move_out_date: values.rental.move_out_date ?? null,
-            rent_price: values.rental.rent_price ?? null,
-            deposit_amount: values.rental.deposit_amount ?? null,
+            rent_price: toNumberOrNull(values.rental.rent_price),
+            deposit_amount: toNumberOrNull(values.rental.deposit_amount),
             billing_day: values.rental.billing_day ?? null,
             note: values.rental.contract_note ?? null,
           }
@@ -343,24 +374,42 @@ export function TenantsPage() {
     }
   }, [])
 
-  const switchToErrorTab = useCallback(
+  const getFieldTab = useCallback(
     (fieldNamePath: (string | number)[]) => {
       const [root] = fieldNamePath
       if (root === 'rental') {
-        setActiveFormTab('rental')
-      } else if (typeof root === 'string' && tenantInfoFieldNames.has(root)) {
-        setActiveFormTab('tenant')
+        return 'rental'
       }
+      if (typeof root === 'string' && tenantInfoFieldNames.has(root)) {
+        return 'tenant'
+      }
+
+      return undefined
     },
     [],
   )
 
+  const showFirstValidationError = useCallback(
+    (fieldNamePath: (string | number)[]) => {
+      const fieldTab = getFieldTab(fieldNamePath)
+      if (fieldTab) {
+        setActiveFormTab(fieldTab)
+      }
+
+      window.setTimeout(() => {
+        form.scrollToField(fieldNamePath, { block: 'center' })
+      }, 0)
+    },
+    [form, getFieldTab],
+  )
+
   const submitForm = useCallback(async () => {
+    setSaveLoading(true)
+
     try {
       const values = await form.validateFields()
       const payload = mapToPayload(values)
 
-      setSaveLoading(true)
       if (drawerMode === 'create') {
         await createTenant(payload)
         message.success('Tenant created successfully')
@@ -375,34 +424,44 @@ export function TenantsPage() {
       const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
       const firstError = formError.errorFields?.[0]
       if (firstError?.name) {
-        switchToErrorTab(firstError.name)
-        form.scrollToField(firstError.name, { block: 'center' })
+        showFirstValidationError(firstError.name)
       } else {
         message.error('Failed to save tenant')
       }
     } finally {
       setSaveLoading(false)
     }
-  }, [drawerMode, editingTenantId, form, loadTenants, mapToPayload, switchToErrorTab])
+  }, [drawerMode, editingTenantId, form, loadTenants, mapToPayload, showFirstValidationError])
 
-  const handleDelete = useCallback(
-    (id: string) => {
-      Modal.confirm({
-        title: 'Delete tenant?',
-        icon: <ExclamationCircleOutlined />,
-        content: 'This action cannot be undone.',
-        okText: 'Delete',
-        okButtonProps: { danger: true },
-        cancelText: 'Cancel',
-        async onOk() {
-          await deleteTenant(id)
-          message.success('Tenant deleted successfully')
-          await loadTenants()
-        },
-      })
-    },
-    [loadTenants],
-  )
+  const handleDeleteClick = useCallback((tenant: TenantListItem) => {
+    setDeleteTarget(tenant)
+  }, [])
+
+  const confirmDeleteTenant = useCallback(async () => {
+    if (!deleteTarget || deletingTenantId) {
+      return
+    }
+
+    const tenantId = deleteTarget.id
+    setDeletingTenantId(tenantId)
+
+    try {
+      await deleteTenant(tenantId)
+      setItems((currentItems) => currentItems.filter((item) => item.id !== tenantId))
+      if (selectedTenant?.id === tenantId) {
+        setSelectedTenant(null)
+        setDetailOpen(false)
+      }
+      setDeleteTarget(null)
+      message.success('Xóa người thuê thành công')
+      await loadTenants()
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : 'Không thể xóa người thuê'
+      message.error(detail)
+    } finally {
+      setDeletingTenantId(null)
+    }
+  }, [deleteTarget, deletingTenantId, loadTenants, selectedTenant?.id])
 
   const handleView = useCallback(async (id: string) => {
     setDetailOpen(true)
@@ -493,12 +552,22 @@ export function TenantsPage() {
             >
               Export
             </Button>
-            <Button type="text" danger icon={<DeleteOutlined />} onClick={() => handleDelete(item.id)} />
+            <Button
+              type="text"
+              danger
+              icon={<DeleteOutlined />}
+              loading={deletingTenantId === item.id}
+              disabled={Boolean(deletingTenantId)}
+              onClick={(event) => {
+                event.stopPropagation()
+                handleDeleteClick(item)
+              }}
+            />
           </Space>
         ),
       },
     ],
-    [exportingTenantId, handleDelete, handleExportContract, handleView, openEdit],
+    [deletingTenantId, exportingTenantId, handleDeleteClick, handleExportContract, handleView, openEdit],
   )
 
   return (
@@ -593,69 +662,85 @@ export function TenantsPage() {
         {drawerLoading ? (
           <Skeleton active paragraph={{ rows: 8 }} />
         ) : (
-          <Form form={form} layout="vertical" onFieldsChange={recalculateCanSave}>
+          <Form form={form} layout="vertical">
             <Tabs
               activeKey={activeFormTab}
               onChange={(key) => setActiveFormTab(key as 'tenant' | 'rental')}
+              destroyOnHidden={false}
               items={[
                 {
                   key: 'tenant',
+                  forceRender: true,
                   label: 'Thông tin người thuê',
                   children: (
                     <div className={`tenant-tab-grid ${isDesktop ? 'desktop-two-cols' : ''}`}>
-                      <Form.Item name="full_name" label="full_name" rules={[{ required: true, message: 'full_name is required' }]}>
-                        <Input />
+                      <Form.Item
+                        name="full_name"
+                        label="Họ và tên"
+                        rules={[{ required: true, whitespace: true, message: 'Vui lòng nhập tên người thuê' }]}
+                      >
+                        <Input placeholder="Nhập họ và tên người thuê" />
                       </Form.Item>
                       <Form.Item
                         name="phone"
-                        label="phone"
+                        label="Số điện thoại"
                         rules={[
-                          { required: true, message: 'phone is required' },
-                          { pattern: /^[0-9+\-\s]{8,20}$/, message: 'Invalid phone format' },
+                          { required: true, message: 'Vui lòng nhập số điện thoại' },
+                          { pattern: /^[0-9+\-\s]{8,20}$/, message: 'Số điện thoại không hợp lệ' },
                         ]}
                       >
-                        <Input />
+                        <Input placeholder="Nhập số điện thoại" />
                       </Form.Item>
-                      <Form.Item name="email" label="email" rules={[{ type: 'email', message: 'Invalid email format' }]}>
-                        <Input />
+                      <Form.Item name="email" label="Email" rules={[{ type: 'email', message: 'Email không hợp lệ' }]}>
+                        <Input placeholder="Nhập email (không bắt buộc)" />
                       </Form.Item>
-                      <Form.Item name="gender" label="gender">
-                        <Input />
+                      <Form.Item name="gender" label="Giới tính">
+                        <Radio.Group
+                          options={[
+                            { label: 'Nam', value: 'MALE' },
+                            { label: 'Nữ', value: 'FEMALE' },
+                            { label: 'Khác', value: 'OTHER' },
+                          ]}
+                        />
                       </Form.Item>
-                      <Form.Item name="dob" label="dob">
+                      <Form.Item name="dob" label="Ngày sinh">
                         <Input type="date" />
                       </Form.Item>
                       <Form.Item
                         name="identity_number"
-                        label="identity_number"
-                        rules={[{ required: true, message: 'identity_number is required' }]}
+                        label="CCCD/CMND"
+                        rules={[
+                          { required: true, whitespace: true, message: 'Vui lòng nhập số CCCD/CMND' },
+                          { pattern: /^[A-Za-z0-9]{6,20}$/, message: 'Số CCCD/CMND không hợp lệ' },
+                        ]}
                       >
-                        <Input />
+                        <Input placeholder="Nhập số CCCD/CMND" />
                       </Form.Item>
-                      <Form.Item name="identity_issued_date" label="identity_issued_date">
+                      <Form.Item name="identity_issued_date" label="Ngày cấp">
                         <Input type="date" />
                       </Form.Item>
-                      <Form.Item name="identity_issued_place" label="identity_issued_place">
-                        <Input />
+                      <Form.Item name="identity_issued_place" label="Nơi cấp">
+                        <Input placeholder="Nhập nơi cấp CCCD/CMND" />
                       </Form.Item>
-                      <Form.Item name="status" label="status" rules={[{ required: true }]}> 
+                      <Form.Item name="status" label="Trạng thái" rules={[{ required: true, message: 'Vui lòng chọn trạng thái' }]}>
                         <Select options={statusOptions.map((item) => ({ label: item.label, value: item.value }))} />
                       </Form.Item>
-                      <Form.Item name="permanent_address" label="permanent_address" className="tenant-tab-full-row">
-                        <Input.TextArea rows={3} />
+                      <Form.Item name="permanent_address" label="Địa chỉ thường trú" className="tenant-tab-full-row">
+                        <Input.TextArea rows={3} placeholder="Nhập địa chỉ thường trú" />
                       </Form.Item>
-                      <Form.Item name="note" label="note" className="tenant-tab-full-row">
-                        <Input.TextArea rows={3} />
+                      <Form.Item name="note" label="Ghi chú" className="tenant-tab-full-row">
+                        <Input.TextArea rows={3} placeholder="Nhập ghi chú" />
                       </Form.Item>
                     </div>
                   ),
                 },
                 {
                   key: 'rental',
+                  forceRender: true,
                   label: 'Thuê phòng',
                   children: (
                     <div className={`tenant-tab-grid ${isDesktop ? 'desktop-two-cols' : ''}`}>
-                      <Form.Item name={['rental', 'building_id']} label="building_id">
+                      <Form.Item name={['rental', 'building_id']} label="Tòa nhà" rules={[{ required: true, message: 'Vui lòng chọn tòa nhà' }]}>
                         <Select
                           allowClear
                           options={buildingOptions.map((building) => ({ label: building.name, value: building.id }))}
@@ -666,54 +751,75 @@ export function TenantsPage() {
                       </Form.Item>
                       <Form.Item
                         name={['rental', 'room_id']}
-                        label="room_id"
-                        rules={
-                          form.getFieldValue(['rental', 'building_id'])
-                            ? [{ required: true, message: 'room_id is required when building is selected' }]
-                            : undefined
-                        }
+                        label="Phòng"
+                        dependencies={[['rental', 'building_id']]}
+                        rules={[{ required: true, message: 'Vui lòng chọn phòng' }]}
                       >
                         <Select
                           allowClear
-                          disabled={!form.getFieldValue(['rental', 'building_id'])}
+                          disabled={!selectedRentalBuildingId}
                           options={filteredRoomsForDrawer.map((room) => ({ label: room.code, value: room.id }))}
                         />
                       </Form.Item>
-                      <Form.Item name={['rental', 'contract_code']} label="contract_code">
-                        <Input />
-                      </Form.Item>
-                      <Form.Item name={['rental', 'contract_status']} label="status" initialValue="DRAFT">
+                      <Form.Item name={['rental', 'contract_status']} label="Trạng thái hợp đồng" initialValue="DRAFT">
                         <Select options={contractStatusOptions.map((item) => ({ label: item.label, value: item.value }))} />
                       </Form.Item>
-                      <Form.Item name={['rental', 'start_date']} label="start_date">
+                      <Form.Item
+                        name={['rental', 'start_date']}
+                        label="Ngày bắt đầu thuê"
+                        rules={[{ required: true, message: 'Vui lòng chọn ngày bắt đầu thuê' }]}
+                      >
                         <Input type="date" />
                       </Form.Item>
-                      <Form.Item name={['rental', 'end_date']} label="end_date">
+                      <Form.Item name={['rental', 'end_date']} label="Ngày kết thúc">
                         <Input type="date" />
                       </Form.Item>
-                      <Form.Item name={['rental', 'move_in_date']} label="move_in_date">
+                      <Form.Item name={['rental', 'move_in_date']} label="Ngày vào ở">
                         <Input type="date" />
                       </Form.Item>
-                      <Form.Item name={['rental', 'move_out_date']} label="move_out_date">
+                      <Form.Item name={['rental', 'move_out_date']} label="Ngày rời đi">
                         <Input type="date" />
                       </Form.Item>
-                      <Form.Item name={['rental', 'rent_price']} label="rent_price">
-                        <InputNumber min={0} precision={0} controls={false} style={{ width: '100%' }} />
+                      <Form.Item
+                        name={['rental', 'rent_price']}
+                        label="Tiền thuê"
+                        rules={[{ required: true, message: 'Vui lòng nhập tiền thuê' }, { validator: validateMoneyValue }]}
+                      >
+                        <InputNumber
+                          min={0}
+                          precision={0}
+                          controls={false}
+                          formatter={formatMoneyInput}
+                          parser={parseMoneyInput}
+                          style={{ width: '100%' }}
+                        />
                       </Form.Item>
-                      <Form.Item name={['rental', 'deposit_amount']} label="deposit_amount">
-                        <InputNumber min={0} precision={0} controls={false} style={{ width: '100%' }} />
+                      <Form.Item
+                        name={['rental', 'deposit_amount']}
+                        label="Tiền cọc"
+                        rules={[{ required: true, message: 'Vui lòng nhập tiền cọc' }, { validator: validateMoneyValue }]}
+                      >
+                        <InputNumber
+                          min={0}
+                          precision={0}
+                          controls={false}
+                          formatter={formatMoneyInput}
+                          parser={parseMoneyInput}
+                          style={{ width: '100%' }}
+                        />
                       </Form.Item>
                       <Form.Item
                         name={['rental', 'billing_day']}
-                        label="billing_day"
+                        label="Ngày chốt tiền hàng tháng"
                         rules={[
+                          { required: true, message: 'Vui lòng nhập ngày chốt tiền' },
                           {
                             validator: async (_, value: number | undefined) => {
                               if (value === undefined) {
                                 return
                               }
                               if (value < 1 || value > 28) {
-                                throw new Error('billing_day must be from 1 to 28')
+                                throw new Error('Ngày chốt tiền phải từ 1 đến 28')
                               }
                             },
                           },
@@ -721,8 +827,8 @@ export function TenantsPage() {
                       >
                         <InputNumber min={1} max={28} precision={0} controls={false} style={{ width: '100%' }} />
                       </Form.Item>
-                      <Form.Item name={['rental', 'contract_note']} label="note" className="tenant-tab-full-row">
-                        <Input.TextArea rows={3} />
+                      <Form.Item name={['rental', 'contract_note']} label="Ghi chú hợp đồng" className="tenant-tab-full-row">
+                        <Input.TextArea rows={3} placeholder="Nhập ghi chú hợp đồng" />
                       </Form.Item>
                     </div>
                   ),
@@ -739,7 +845,7 @@ export function TenantsPage() {
                   size={isMobile ? 'large' : 'middle'}
                   type="primary"
                   loading={saveLoading}
-                  disabled={!canSave}
+                  disabled={saveLoading}
                   onClick={() => void submitForm()}
                 >
                   Save
@@ -804,6 +910,23 @@ export function TenantsPage() {
           </Space>
         )}
       </Drawer>
+
+      <Modal
+        open={Boolean(deleteTarget)}
+        title="Xác nhận xóa người thuê"
+        onCancel={() => setDeleteTarget(null)}
+        onOk={() => void confirmDeleteTenant()}
+        okText="Xóa"
+        okButtonProps={{ danger: true, loading: Boolean(deletingTenantId) }}
+        cancelText="Hủy"
+        maskClosable={!deletingTenantId}
+        keyboard={!deletingTenantId}
+        confirmLoading={Boolean(deletingTenantId)}
+        zIndex={1200}
+        getContainer={() => document.body}
+      >
+        Bạn có chắc muốn xóa người thuê này không?
+      </Modal>
 
       <Modal
         open={discardModalOpen}
