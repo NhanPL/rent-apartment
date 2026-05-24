@@ -193,7 +193,7 @@ export async function getMyRoomContext(): Promise<TenantRoomContext | null> {
   }
 }
 
-export async function getMyRoommates(_contractId: string): Promise<RoommateSummary[]> {
+export async function getMyRoommates(): Promise<RoommateSummary[]> {
   const rows = await apiRequest<Array<{ id: string; full_name: string; gender: string | null; phone: string }>>(API_ROUTES.me.roommates)
   return rows.map((row) => ({
     tenant_id: row.id,
@@ -205,12 +205,12 @@ export async function getMyRoommates(_contractId: string): Promise<RoommateSumma
   }))
 }
 
-export async function getCurrentMonthBill(_contractId: string): Promise<InvoiceSummary | null> {
+export async function getCurrentMonthBill(): Promise<InvoiceSummary | null> {
   const row = await apiRequest<Record<string, unknown> | null>(API_ROUTES.me.currentBill)
   return row ? toInvoiceSummary(row) : null
 }
 
-export async function listMyRecentBills(_contractId: string): Promise<InvoiceSummary[]> {
+export async function listMyRecentBills(): Promise<InvoiceSummary[]> {
   const rows = await apiRequest<Array<Record<string, unknown>>>(API_ROUTES.me.paymentStatus)
   return rows.map(toInvoiceSummary)
 }

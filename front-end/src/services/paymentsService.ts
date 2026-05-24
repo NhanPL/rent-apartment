@@ -235,8 +235,14 @@ function seedInvoiceItemsFromReading() {
     const rates = buildingId ? resolveRate(buildingId, invoice.month) : null
     const reading = findReading(invoice.room_id, invoice.month)
     const rentAmount = contractsDb.find((contract) => contract.id === invoice.contract_id)?.rent_price ?? 0
-    const electricUsage = reading?.electricity_prev !== null && reading?.electricity_curr !== null ? Math.max(0, reading.electricity_curr - reading.electricity_prev) : 0
-    const waterUsage = reading?.water_prev !== null && reading?.water_curr !== null ? Math.max(0, reading.water_curr - reading.water_prev) : 0
+    const electricUsage =
+      reading?.electricity_prev !== null && reading?.electricity_prev !== undefined && reading.electricity_curr !== null
+        ? Math.max(0, reading.electricity_curr - reading.electricity_prev)
+        : 0
+    const waterUsage =
+      reading?.water_prev !== null && reading?.water_prev !== undefined && reading.water_curr !== null
+        ? Math.max(0, reading.water_curr - reading.water_prev)
+        : 0
     const electricAmount = electricUsage * (rates?.electricity_unit_price ?? 0)
     const waterAmount = waterUsage * (rates?.water_unit_price ?? 0)
 

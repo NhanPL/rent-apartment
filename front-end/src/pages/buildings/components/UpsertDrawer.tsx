@@ -53,9 +53,6 @@ export function UpsertDrawer({ open, mode, item, loading, existingCodes, onClose
       form.resetFields()
       form.setFieldsValue(initialValues)
       initialSnapshotRef.current = JSON.stringify(initialValues)
-      setCanSave(false)
-      setDiscardModalOpen(false)
-      setConfirmingClose(false)
     }
   }, [form, initialValues, open])
 

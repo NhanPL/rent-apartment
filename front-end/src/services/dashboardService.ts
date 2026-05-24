@@ -136,6 +136,10 @@ function monthKey(value: string) {
   return value.slice(0, 7)
 }
 
+function isUnpaidInvoice(invoice: InvoiceRow): invoice is InvoiceRow & { status: 'ISSUED' | 'OVERDUE' } {
+  return invoice.status === 'ISSUED' || invoice.status === 'OVERDUE'
+}
+
 export async function getDashboardData(): Promise<DashboardData> {
   await wait(360)
 
@@ -214,7 +218,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     })
 
   const recentUnpaidInvoices = invoices
-    .filter((invoice) => invoice.status === 'ISSUED' || invoice.status === 'OVERDUE')
+    .filter(isUnpaidInvoice)
     .sort((left, right) => new Date(right.month).getTime() - new Date(left.month).getTime())
     .slice(0, 5)
     .map((invoice) => {

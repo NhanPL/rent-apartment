@@ -40,11 +40,10 @@ import {
   updatePayment,
 } from '../../services/paymentsService'
 import {
-  InvoiceFormFields,
   invoiceFormDefaultValues,
-  useInvoiceDerivedValues,
   type InvoiceFormValues,
-} from './components/invoiceFormShared'
+} from './components/invoiceFormState'
+import { InvoiceFormFields } from './components/invoiceFormShared'
 import './components/invoiceFormShared.css'
 import type {
   Contract,
@@ -180,8 +179,6 @@ export function PaymentsPage() {
 
     return null
   }, [selectedContractId, items, tenants])
-
-  const { electricUsage, waterUsage } = useInvoiceDerivedValues(form)
 
   const openCreate = useCallback(() => {
     setDrawerMode('create')

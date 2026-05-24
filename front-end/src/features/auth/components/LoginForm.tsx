@@ -1,6 +1,6 @@
 import { Alert, Button, Card, Checkbox, Form, Input, Typography } from 'antd'
 import { useState } from 'react'
-import { useAuth } from '../AuthContext'
+import { useAuth } from '../useAuth'
 import type { LoginFormValues } from '../types/auth'
 import './LoginForm.css'
 

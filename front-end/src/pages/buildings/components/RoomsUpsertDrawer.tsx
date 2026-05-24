@@ -57,9 +57,6 @@ export function RoomsUpsertDrawer({ open, mode, room, building_id, loading, exis
       form.resetFields()
       form.setFieldsValue(initialValues)
       initialSnapshotRef.current = JSON.stringify(initialValues)
-      setCanSave(false)
-      setDiscardModalOpen(false)
-      setConfirmingClose(false)
     }
   }, [form, initialValues, open])
 

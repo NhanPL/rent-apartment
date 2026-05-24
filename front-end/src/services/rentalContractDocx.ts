@@ -266,6 +266,12 @@ function normalizeFileToken(value: string): string {
     .toLowerCase()
 }
 
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(bytes.byteLength)
+  new Uint8Array(buffer).set(bytes)
+  return buffer
+}
+
 export async function exportRentalContractDocx(data: RentalContractExportData): Promise<void> {
   const files: ZipEntry[] = [
     { path: '[Content_Types].xml', data: stringToBytes(contentTypesXml()) },
@@ -275,7 +281,7 @@ export async function exportRentalContractDocx(data: RentalContractExportData): 
 
   const zipBytes = buildStoredZip(files)
   const fileName = `rental-contract-${normalizeFileToken(data.tenant.full_name)}-${normalizeFileToken(data.room.code)}.docx`
-  const blob = new Blob([zipBytes], {
+  const blob = new Blob([toArrayBuffer(zipBytes)], {
     type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   })
 

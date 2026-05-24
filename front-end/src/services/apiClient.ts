@@ -19,8 +19,13 @@ interface ApiErrorPayload {
 }
 
 export class ApiError extends Error {
-  constructor(message: string, public code: string = 'REQUEST_FAILED', public status?: number) {
+  code: string
+  status?: number
+
+  constructor(message: string, code: string = 'REQUEST_FAILED', status?: number) {
     super(message)
+    this.code = code
+    this.status = status
   }
 }
 

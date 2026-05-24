@@ -103,9 +103,9 @@ export function TenantRoomPage() {
       const selectedMonth = form.getFieldValue('month') || dayjs().format('YYYY-MM')
 
       const [roommatesData, currentBillData, historyData] = await Promise.all([
-        getMyRoommates(roomContext.contract.id),
-        getCurrentMonthBill(roomContext.contract.id),
-        listMyRecentBills(roomContext.contract.id),
+        getMyRoommates(),
+        getCurrentMonthBill(),
+        listMyRecentBills(),
       ])
 
       setRoommates(roommatesData)
