@@ -25,6 +25,7 @@ export const API_ROUTES = {
   invoices: {
     list: '/invoices',
     detail: (id: string) => `/invoices/${id}`,
+    prefill: '/invoices/prefill',
     fromReading: (utilityReadingId: string) => `/invoices/from-reading/${utilityReadingId}`,
     adjustments: (id: string) => `/invoices/${id}/adjustments`,
   },
