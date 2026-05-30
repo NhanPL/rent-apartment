@@ -91,7 +91,7 @@ export interface Payment {
   paid_at: string | null
 }
 
-export interface PaymentListParams {
+export interface InvoiceListParams {
   search?: string
   month?: string
   invoice_status?: InvoiceStatus
@@ -101,7 +101,7 @@ export interface PaymentListParams {
   tenant_id?: string
 }
 
-export interface PaymentListItem extends Invoice {
+export interface InvoiceListItem extends Invoice {
   building_id: string
   building_name: string
   room_code: string
@@ -124,7 +124,7 @@ export interface PaymentListItem extends Invoice {
   payment_status: PaymentStatus | null
 }
 
-export interface PaymentUpsertPayload {
+export interface InvoiceUpsertPayload {
   contract_id: string
   room_id: string
   month: string
@@ -143,7 +143,7 @@ export interface PaymentUpsertPayload {
   water_unit_price: number
 }
 
-export interface PaymentSummary {
+export interface InvoiceSummary {
   totalInvoices: number
   paidInvoices: number
   unpaidInvoices: number

@@ -3,20 +3,19 @@ import { AppLayout } from '../layout/AppLayout'
 import { BuildingsPage } from '../pages/buildings/BuildingsPage'
 import { DashboardPage } from '../pages/dashboard/DashboardPage'
 import { RoomDetailPage } from '../pages/rooms/RoomDetailPage'
-import { PlaceholderPage } from '../pages/shared/PlaceholderPage'
 import { TenantsPage } from '../pages/tenants/TenantsPage'
-import { PaymentsPage } from '../pages/payments/PaymentsPage'
+import { InvoicesPage } from '../pages/invoices/InvoicesPage'
 import { TenantRoomPage } from '../pages/tenant-room/TenantRoomPage'
 import { routeItems, sidebarRouteItems } from './routeConfig'
 import { LoginPage } from '../features/auth/pages/LoginPage'
 import { useAuth } from '../features/auth/useAuth'
 import type { AppRole } from '../features/auth/types/auth'
 
-const adminPaths = new Set(['/dashboard', '/buildings', '/rooms', '/tenants', '/contracts', '/payments', '/reports'])
+const adminPaths = new Set(['/dashboard', '/buildings', '/tenants', '/invoices'])
 
 function getBasePath(pathname: string) {
   if (pathname.startsWith('/rooms/')) {
-    return '/rooms'
+    return '/buildings'
   }
   return pathname
 }
@@ -42,8 +41,8 @@ function canAccess(pathname: string, role: AppRole) {
 }
 
 function resolveProtectedPath(pathname: string, role: AppRole) {
-  const normalized = pathname === '/' ? homePathByRole(role) : pathname
-  const found = routeItems.find((item) => normalized === item.path || normalized.startsWith('/rooms/'))
+  const normalized = pathname === '/' ? homePathByRole(role) : pathname === '/payments' ? '/invoices' : pathname
+  const found = normalized.startsWith('/rooms/') || routeItems.some((item) => normalized === item.path)
 
   if (!found) {
     return homePathByRole(role)
@@ -99,9 +98,9 @@ export function AppRoutes() {
     if (protectedPath === '/buildings') return <BuildingsPage />
     if (protectedPath.startsWith('/rooms/')) return <RoomDetailPage roomId={protectedPath.split('/')[2]} />
     if (protectedPath === '/tenants') return <TenantsPage />
-    if (protectedPath === '/payments') return <PaymentsPage />
+    if (protectedPath === '/invoices') return <InvoicesPage />
     if (protectedPath === '/my-room') return <TenantRoomPage />
-    return <PlaceholderPage title={pageTitle} />
+    return null
   }
 
   const allowedSidebarItems = sidebarRouteItems.filter((item) => canAccess(item.path, user.role))

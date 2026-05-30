@@ -4,14 +4,14 @@ import { apiRequest } from './apiClient'
 import type {
   Building,
   Contract,
+  InvoiceListItem,
+  InvoiceListParams,
   InvoicePrefill,
-  PaymentListItem,
-  PaymentListParams,
-  PaymentSummary,
-  PaymentUpsertPayload,
+  InvoiceSummary,
+  InvoiceUpsertPayload,
   Room,
   Tenant,
-} from '../pages/payments/types'
+} from '../pages/invoices/types'
 
 interface TenantListResponse {
   items: Array<Tenant & { current_room?: { contract_id: string | null } | null }>
@@ -38,11 +38,11 @@ type NumericInvoiceFields =
   | 'other_fees'
   | 'paid_amount'
 
-type InvoiceApiRow = Omit<PaymentListItem, NumericInvoiceFields> & Record<NumericInvoiceFields, number | string | null>
+type InvoiceApiRow = Omit<InvoiceListItem, NumericInvoiceFields> & Record<NumericInvoiceFields, number | string | null>
 
 const toNumber = (value: unknown): number => Number(value ?? 0)
 
-const toPaymentListItem = (row: InvoiceApiRow): PaymentListItem => ({
+const toInvoiceListItem = (row: InvoiceApiRow): InvoiceListItem => ({
   ...row,
   subtotal: toNumber(row.subtotal),
   discount: toNumber(row.discount),
@@ -62,12 +62,12 @@ const toPaymentListItem = (row: InvoiceApiRow): PaymentListItem => ({
   paid_amount: toNumber(row.paid_amount),
 })
 
-const toPaymentPayload = (payload: PaymentUpsertPayload) => ({
+const toInvoicePayload = (payload: InvoiceUpsertPayload) => ({
   ...payload,
   month: dayjs(payload.month).startOf('month').format('YYYY-MM-DD'),
 })
 
-function matchesPaymentFilters(item: PaymentListItem, params: PaymentListParams) {
+function matchesInvoiceFilters(item: InvoiceListItem, params: InvoiceListParams) {
   const search = params.search?.trim().toLowerCase() ?? ''
   const matchesSearch =
     search.length === 0 ||
@@ -122,41 +122,41 @@ export async function listContracts(): Promise<Contract[]> {
   }))
 }
 
-export async function listPayments(params: PaymentListParams): Promise<PaymentListItem[]> {
+export async function listInvoices(params: InvoiceListParams): Promise<InvoiceListItem[]> {
   const rows = await apiRequest<InvoiceApiRow[]>(API_ROUTES.invoices.list)
   return rows
-    .map(toPaymentListItem)
-    .filter((item) => matchesPaymentFilters(item, params))
+    .map(toInvoiceListItem)
+    .filter((item) => matchesInvoiceFilters(item, params))
     .sort((left, right) => dayjs(right.month).valueOf() - dayjs(left.month).valueOf())
 }
 
-export async function getPayment(id: string): Promise<PaymentListItem> {
+export async function getInvoice(id: string): Promise<InvoiceListItem> {
   const row = await apiRequest<InvoiceApiRow>(API_ROUTES.invoices.detail(id))
-  return toPaymentListItem(row)
+  return toInvoiceListItem(row)
 }
 
-export async function createPayment(payload: PaymentUpsertPayload): Promise<PaymentListItem> {
+export async function createInvoice(payload: InvoiceUpsertPayload): Promise<InvoiceListItem> {
   const row = await apiRequest<InvoiceApiRow>(API_ROUTES.invoices.list, {
     method: 'POST',
-    body: toPaymentPayload(payload),
+    body: toInvoicePayload(payload),
   })
-  return toPaymentListItem(row)
+  return toInvoiceListItem(row)
 }
 
-export async function updatePayment(id: string, payload: PaymentUpsertPayload): Promise<PaymentListItem> {
+export async function updateInvoice(id: string, payload: InvoiceUpsertPayload): Promise<InvoiceListItem> {
   const row = await apiRequest<InvoiceApiRow>(API_ROUTES.invoices.detail(id), {
     method: 'PUT',
-    body: toPaymentPayload(payload),
+    body: toInvoicePayload(payload),
   })
-  return toPaymentListItem(row)
+  return toInvoiceListItem(row)
 }
 
-export function deletePayment(id: string): Promise<void> {
+export function deleteInvoice(id: string): Promise<void> {
   return apiRequest<void>(API_ROUTES.invoices.detail(id), { method: 'DELETE' })
 }
 
-export async function getPaymentsSummary(month: string): Promise<PaymentSummary> {
-  const rows = await listPayments({ month })
+export async function getInvoicesSummary(month: string): Promise<InvoiceSummary> {
+  const rows = await listInvoices({ month })
   return {
     totalInvoices: rows.length,
     paidInvoices: rows.filter((item) => item.status === 'PAID').length,

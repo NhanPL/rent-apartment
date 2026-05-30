@@ -40,7 +40,7 @@ export function LoginForm() {
       <div className="login-header">
         <Text className="login-eyebrow">Rent Apartment Management</Text>
         <Title level={2}>Welcome back</Title>
-        <Text type="secondary">Sign in to manage buildings, tenants, and payments.</Text>
+        <Text type="secondary">Sign in to manage buildings, tenants, and invoices.</Text>
       </div>
 
       {error ? <Alert type="error" message={error} showIcon className="login-error" /> : null}

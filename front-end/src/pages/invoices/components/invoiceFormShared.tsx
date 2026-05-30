@@ -1,7 +1,7 @@
 import { Form, Input, InputNumber, Select } from 'antd'
 import { useEffect, useMemo } from 'react'
 import type { FormInstance } from 'antd/es/form'
-import { getEffectiveUtilityRate, getInvoicePrefill } from '../../../services/paymentsService'
+import { getEffectiveUtilityRate, getInvoicePrefill } from '../../../services/invoicesService'
 import type { Building, Contract, InvoiceStatus, Room } from '../types'
 import { useInvoiceDerivedValues, type InvoiceFormValues } from './invoiceFormState'
 
