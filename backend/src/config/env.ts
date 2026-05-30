@@ -3,6 +3,9 @@ import { z } from 'zod';
 
 dotenv.config();
 
+const optionalString = z.string().optional().default('');
+const optionalEmail = z.union([z.string().email(), z.literal('')]).optional().default('');
+
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   DATABASE_URL: z.string().min(1),
@@ -20,13 +23,13 @@ const envSchema = z.object({
   DEFAULT_BANK_CODE: z.string().optional(),
   DEFAULT_BANK_ACCOUNT_NO: z.string().optional(),
   DEFAULT_BANK_ACCOUNT_NAME: z.string().optional(),
-  SMTP_HOST: z.string().min(1),
-  SMTP_PORT: z.coerce.number().int().positive(),
+  SMTP_HOST: optionalString,
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
   SMTP_SECURE: z.enum(['true', 'false']).default('false'),
-  SMTP_USER: z.string().min(1),
-  SMTP_PASS: z.string().min(1),
-  SMTP_FROM_NAME: z.string().min(1),
-  SMTP_FROM_EMAIL: z.string().email()
+  SMTP_USER: optionalString,
+  SMTP_PASS: optionalString,
+  SMTP_FROM_NAME: optionalString,
+  SMTP_FROM_EMAIL: optionalEmail
 });
 
 const parsed = envSchema.safeParse(process.env);

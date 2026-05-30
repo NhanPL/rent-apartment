@@ -6,6 +6,7 @@ import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
 import { parseBody } from '../../shared/utils/validation';
 import { assertRoomCanHostActiveContract, CURRENT_CONTRACT_STATUS, getContractRoomForManager } from './contracts.rules';
+import { assertTenantBelongsToManager } from '../tenants/tenants.repository';
 
 const router = Router();
 type DbRow = Record<string, any>;
@@ -363,40 +364,14 @@ router.post('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
       ]
     );
 
-    for (const tenant of tenants) {
-      await insertOrReactivateParticipant(client, created.rows[0].id, { ...tenant, joined_at: tenant.joined_at ?? body.start_date }, req.auth!.userId);
-    }
+    if (b.tenants) {
+      for (const t of b.tenants) {
+        await assertTenantBelongsToManager(client, t.tenant_id, req.auth!.userId);
 
-    await assertParticipantCapacity(client, created.rows[0].id, req.auth!.userId);
-    await assertPrimaryConsistency(client, created.rows[0].id);
-    if (status === CURRENT_CONTRACT_STATUS) {
-      await assertActiveParticipantsReady(client, created.rows[0].id, req.auth!.userId);
-    }
-
-    return created.rows[0];
-  });
-
-  res.status(201).json(data);
-}));
-
-router.patch('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  const body = parseBody(contractUpdateSchema, req.body);
-  const hasField = (field: string) => Object.prototype.hasOwnProperty.call(body, field);
-  const data = await withTransaction(async (client) => {
-    const contract = await getScopedContract(client, req.params.id, req.auth!.userId, true);
-    if (contract.status === 'ENDED' || contract.status === 'CANCELLED') {
-      throw new AppError(409, 'Closed contracts cannot be updated', 'CONTRACT_CLOSED');
-    }
-
-    if (body.room_id) {
-      if (contract.status === CURRENT_CONTRACT_STATUS) {
-        await assertRoomCanHostActiveContract(client, {
-          roomId: body.room_id,
-          managerId: req.auth!.userId,
-          excludeContractId: req.params.id
-        });
-      } else {
-        await getContractRoomForManager(client, { roomId: body.room_id, managerId: req.auth!.userId });
+        await client.query(
+          `INSERT INTO contract_tenant(contract_id,tenant_id,is_primary,joined_at,left_at) VALUES($1,$2,$3,$4,$5)`,
+          [c.rows[0].id, t.tenant_id, t.is_primary ?? false, t.joined_at ?? b.start_date, t.left_at ?? null]
+        );
       }
     }
 

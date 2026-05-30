@@ -8,7 +8,7 @@ import { generateRandomPassword } from '../../shared/utils/password';
 import { assertRoomCanHostActiveContract, CURRENT_CONTRACT_STATUS, getContractRoomForManager } from '../contracts/contracts.rules';
 import { createTenantRecord, createTenantUserAccount, findTenantByIdentityNumber, TenantInsertPayload } from './tenants.repository';
 
-export interface CreateTenantInput extends TenantInsertPayload {}
+export type CreateTenantInput = Omit<TenantInsertPayload, 'manager_user_id'>;
 
 export interface CreateTenantResult {
   tenantId: string;
@@ -169,7 +169,7 @@ export const createTenantContract = async (
   return contractRs.rows[0];
 };
 
-export const createTenant = async (raw: Record<string, unknown>, managerId?: string): Promise<CreateTenantResult> => {
+export const createTenant = async (raw: Record<string, unknown>, managerId: string): Promise<CreateTenantResult> => {
   const tenantPayload = validateCreateInput((raw.tenant as Record<string, unknown> | undefined) ?? raw);
   const contractPayload = (raw.contract as Record<string, unknown> | null | undefined) ?? null;
 
@@ -182,7 +182,7 @@ export const createTenant = async (raw: Record<string, unknown>, managerId?: str
       throw new AppError(400, 'Tenant already exists', 'TENANT_ALREADY_EXISTS');
     }
 
-    const tenant = await createTenantRecord(client, tenantPayload);
+    const tenant = await createTenantRecord(client, { ...tenantPayload, manager_user_id: managerId });
     const tenantEmail = tenantPayload.email;
     if (!tenantEmail) {
       throw new AppError(400, 'email is required', 'VALIDATION_ERROR');
