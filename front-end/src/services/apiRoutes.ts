@@ -44,6 +44,10 @@ export const API_ROUTES = {
     approve: (id: string) => `/utility-readings/${id}/approve`,
     reject: (id: string) => `/utility-readings/${id}/reject`,
   },
+  utilityRates: {
+    list: '/utility-rates',
+    detail: (id: string) => `/utility-rates/${id}`,
+  },
   me: {
     room: '/me/room',
     roommates: '/me/roommates',

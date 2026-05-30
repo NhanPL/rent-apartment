@@ -6,6 +6,8 @@ export type ContractStatus = 'DRAFT' | 'ACTIVE' | 'ENDED' | 'CANCELLED'
 export type RoomStatus = 'ACTIVE' | 'MAINTENANCE' | 'INACTIVE'
 export type InvoiceStatus = 'DRAFT' | 'ISSUED' | 'PAID' | 'VOID' | 'OVERDUE'
 export type PaymentStatus = 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED' | 'CANCELLED'
+export type UtilityReadingStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'INVOICED'
+export type UtilityEvidenceType = 'ELECTRIC' | 'WATER' | 'OTHER'
 
 export interface Tenant {
   id: string
@@ -52,8 +54,14 @@ export interface UtilityReading {
   electricity_curr: number | null
   water_prev: number | null
   water_curr: number | null
+  status: UtilityReadingStatus
   reported_by_user_id: string | null
   reported_at: string | null
+  submitted_at: string | null
+  approved_at: string | null
+  rejected_at: string | null
+  rejection_reason: string | null
+  evidence_count: number
   note: string | null
 }
 
@@ -104,6 +112,15 @@ export interface UtilityReadingSubmitPayload {
   month: string
   electricity_curr: number
   water_curr: number
+  note: string | null
+}
+
+export interface UtilityEvidenceSubmitPayload {
+  evidence_type: UtilityEvidenceType
+  file_name: string | null
+  file_url: string
+  mime_type: string | null
+  file_size: number | null
   note: string | null
 }
 
@@ -216,7 +233,7 @@ export async function listMyRecentBills(): Promise<InvoiceSummary[]> {
 }
 
 export async function getCurrentAndPreviousUtilityReadings(roomId: string, month: string): Promise<UtilityReadingSnapshot> {
-  const rows = await apiRequest<UtilityReading[]>(API_ROUTES.me.utilityReadings)
+  const rows = await apiRequest<UtilityReading[]>(API_ROUTES.utilityReadings.list)
   const ordered = [...rows].sort((left, right) => dayjs(right.month).valueOf() - dayjs(left.month).valueOf())
   const current = ordered.find((row) => row.room_id === roomId && row.month === month) ?? null
   const previous = ordered.find((row) => row.room_id === roomId && dayjs(row.month).isBefore(dayjs(month))) ?? null
@@ -247,5 +264,12 @@ export async function upsertMyUtilityReading(roomId: string, payload: UtilityRea
       water_curr: payload.water_curr,
       note: payload.note,
     },
+  })
+}
+
+export async function attachMyUtilityReadingEvidence(readingId: string, payload: UtilityEvidenceSubmitPayload) {
+  return apiRequest(API_ROUTES.utilityReadings.evidence(readingId), {
+    method: 'POST',
+    body: payload,
   })
 }
