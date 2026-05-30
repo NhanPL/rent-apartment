@@ -28,17 +28,17 @@ import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  createPayment,
-  deletePayment,
-  getPayment,
-  getPaymentsSummary,
+  createInvoice,
+  deleteInvoice,
+  getInvoice,
+  getInvoicesSummary,
   listBuildings,
   listContracts,
-  listPayments,
+  listInvoices,
   listRooms,
   listTenants,
-  updatePayment,
-} from '../../services/paymentsService'
+  updateInvoice,
+} from '../../services/invoicesService'
 import {
   getInvoiceFormDefaultValues,
   invoiceFormDefaultValues,
@@ -48,11 +48,11 @@ import { InvoiceFormFields } from './components/invoiceFormShared'
 import './components/invoiceFormShared.css'
 import type {
   Contract,
+  InvoiceListItem,
   InvoiceStatus,
-  PaymentListItem,
   PaymentStatus,
 } from './types'
-import './PaymentsPage.css'
+import './InvoicesPage.css'
 
 const invoiceStatusOptions: { label: string; value: InvoiceStatus; color: string }[] = [
   { label: 'Draft', value: 'DRAFT', color: 'default' },
@@ -72,14 +72,14 @@ const paymentStatusOptions: { label: string; value: PaymentStatus; color: string
 
 const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
 
-export function PaymentsPage() {
+export function InvoicesPage() {
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
   const [form] = Form.useForm<InvoiceFormValues>()
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [items, setItems] = useState<PaymentListItem[]>([])
+  const [items, setItems] = useState<InvoiceListItem[]>([])
   const [summary, setSummary] = useState({ totalInvoices: 0, paidInvoices: 0, unpaidInvoices: 0, totalRevenue: 0 })
 
   const [searchInput, setSearchInput] = useState('')
@@ -102,7 +102,7 @@ export function PaymentsPage() {
   const [saveLoading, setSaveLoading] = useState(false)
 
   const [detailOpen, setDetailOpen] = useState(false)
-  const [detailItem, setDetailItem] = useState<PaymentListItem | null>(null)
+  const [detailItem, setDetailItem] = useState<InvoiceListItem | null>(null)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearch(searchInput), 300)
@@ -129,7 +129,7 @@ export function PaymentsPage() {
 
     try {
       const [paymentRows, summaryRows] = await Promise.all([
-        listPayments({
+        listInvoices({
           search,
           month: monthFilter,
           invoice_status: invoiceStatusFilter,
@@ -138,13 +138,13 @@ export function PaymentsPage() {
           room_id: roomFilter,
           tenant_id: tenantFilter,
         }),
-        getPaymentsSummary(monthFilter),
+        getInvoicesSummary(monthFilter),
       ])
 
       setItems(paymentRows)
       setSummary(summaryRows)
     } catch {
-      setError('Unable to load payments. Please retry.')
+      setError('Unable to load invoices. Please retry.')
     } finally {
       setLoading(false)
     }
@@ -195,7 +195,7 @@ export function PaymentsPage() {
   }, [form])
 
   const openEdit = useCallback(async (id: string) => {
-    const row = await getPayment(id)
+    const row = await getInvoice(id)
     setDrawerMode('edit')
     setEditingId(id)
     form.resetFields()
@@ -222,7 +222,7 @@ export function PaymentsPage() {
   }, [form])
 
   const openDetail = useCallback(async (id: string) => {
-    const row = await getPayment(id)
+    const row = await getInvoice(id)
     setDetailItem(row)
     setDetailOpen(true)
   }, [])
@@ -255,10 +255,10 @@ export function PaymentsPage() {
       }
 
       if (drawerMode === 'create') {
-        await createPayment(payload)
+        await createInvoice(payload)
         message.success('Invoice created successfully.')
       } else if (editingId) {
-        await updatePayment(editingId, payload)
+        await updateInvoice(editingId, payload)
         message.success('Invoice updated successfully.')
       }
 
@@ -278,14 +278,14 @@ export function PaymentsPage() {
       okText: 'Delete',
       okButtonProps: { danger: true },
       onOk: async () => {
-        await deletePayment(id)
+        await deleteInvoice(id)
         message.success('Invoice deleted.')
         void loadData()
       },
     })
   }, [loadData])
 
-  const columns: ColumnsType<PaymentListItem> = [
+  const columns: ColumnsType<InvoiceListItem> = [
     { title: 'Month', dataIndex: 'month', width: 110, render: (value: string) => dayjs(value).format('MM/YYYY') },
     { title: 'Building', dataIndex: 'building_name', width: 170 },
     { title: 'Room', dataIndex: 'room_code', width: 100 },
@@ -330,17 +330,17 @@ export function PaymentsPage() {
   ]
 
   return (
-    <Space direction="vertical" size={16} className="payments-page">
-      <div className="payments-toolbar">
+    <Space direction="vertical" size={16} className="invoices-page">
+      <div className="invoices-toolbar">
         <div>
-          <Typography.Title level={3} style={{ margin: 0 }}>Payments</Typography.Title>
+          <Typography.Title level={3} style={{ margin: 0 }}>Invoices</Typography.Title>
           <Typography.Text type="secondary">Manage monthly invoices from contracts, utility readings, and payment status.</Typography.Text>
         </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Add Invoice</Button>
       </div>
 
       <Card>
-        <div className="payments-filters">
+        <div className="invoices-filters">
           <Input placeholder="Search building, room, tenant" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} allowClear />
           <Input type="month" value={monthFilter} onChange={(event) => setMonthFilter(event.target.value)} />
           <Select allowClear placeholder="Invoice status" value={invoiceStatusFilter} onChange={setInvoiceStatusFilter} options={invoiceStatusOptions.map((item) => ({ label: item.label, value: item.value }))} />
@@ -361,7 +361,7 @@ export function PaymentsPage() {
         </div>
       </Card>
 
-      <div className="payments-summary-grid">
+      <div className="invoices-summary-grid">
         <Card><Statistic title="Total invoices" value={summary.totalInvoices} /></Card>
         <Card><Statistic title="Paid invoices" value={summary.paidInvoices} /></Card>
         <Card><Statistic title="Unpaid invoices" value={summary.unpaidInvoices} /></Card>
@@ -397,7 +397,7 @@ export function PaymentsPage() {
             currencyFormatter={(value) => currency.format(value)}
             autoFillFromLatest={drawerMode === 'create'}
           />
-          <Space className="payments-drawer-actions">
+          <Space className="invoice-drawer-actions">
             <Button onClick={() => setDrawerOpen(false)}>Cancel</Button>
             <Button type="primary" loading={saveLoading} onClick={() => void onSave()}>Save</Button>
           </Space>

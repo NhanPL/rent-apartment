@@ -75,10 +75,9 @@ export function DashboardRecentActivity({
           <Col>
             <Space wrap>
               <Button onClick={() => onNavigate('/buildings')}>Add Building</Button>
-              <Button onClick={() => onNavigate('/rooms')}>Add Room</Button>
+              <Button onClick={() => onNavigate('/buildings')}>Manage Rooms</Button>
               <Button onClick={() => onNavigate('/tenants')}>Add Tenant</Button>
-              <Button onClick={() => onNavigate('/payments')}>View Bills</Button>
-              <Button onClick={() => onNavigate('/reports')}>View Reports</Button>
+              <Button onClick={() => onNavigate('/invoices')}>View Invoices</Button>
             </Space>
           </Col>
         </Row>

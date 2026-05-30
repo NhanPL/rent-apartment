@@ -1,13 +1,13 @@
 import { Button, Drawer, Form, Grid, Space } from 'antd'
 import { useEffect, useMemo } from 'react'
-import { InvoiceFormFields } from '../../payments/components/invoiceFormShared'
+import { InvoiceFormFields } from '../../invoices/components/invoiceFormShared'
 import {
   getInvoiceFormDefaultValues,
   invoiceFormDefaultValues,
   type InvoiceFormValues,
-} from '../../payments/components/invoiceFormState'
-import '../../payments/components/invoiceFormShared.css'
-import type { Contract, InvoiceStatus, Room } from '../../payments/types'
+} from '../../invoices/components/invoiceFormState'
+import '../../invoices/components/invoiceFormShared.css'
+import type { Contract, InvoiceStatus, Room } from '../../invoices/types'
 import type { MonthlyBill, MonthlyBillUpsertPayload } from '../../buildings/components/roomTypes'
 
 interface BillUpsertDrawerProps {
@@ -137,7 +137,7 @@ export function BillUpsertDrawer({
           currencyFormatter={(value) => currency.format(value)}
           roomLocked
         />
-        <Space className="payments-drawer-actions">
+        <Space className="invoice-drawer-actions">
           <Button onClick={onClose}>Cancel</Button>
           <Button type="primary" loading={loading} onClick={() => void handleSubmit()}>
             {mode === 'create' ? 'Create bill' : 'Save changes'}

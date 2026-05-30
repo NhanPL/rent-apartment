@@ -1,7 +1,7 @@
 import { API_ROUTES } from '../../../services/apiRoutes'
 import { apiRequest } from '../../../services/apiClient'
 import type { TenantListResponse } from '../../../services/tenantsService'
-import type { Invoice, InvoiceItem } from '../../payments/types'
+import type { Invoice, InvoiceItem } from '../../invoices/types'
 import type { MonthlyBill, Room, RoomUpsertPayload, TenantSummary } from './roomTypes'
 
 interface BuildingRow {
