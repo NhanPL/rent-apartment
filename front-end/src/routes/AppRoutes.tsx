@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AppLayout } from '../layout/AppLayout'
 import { BuildingsPage } from '../pages/buildings/BuildingsPage'
+import { ContractsPage } from '../pages/contracts/ContractsPage'
 import { DashboardPage } from '../pages/dashboard/DashboardPage'
 import { RoomDetailPage } from '../pages/rooms/RoomDetailPage'
 import { TenantsPage } from '../pages/tenants/TenantsPage'
@@ -11,7 +12,7 @@ import { LoginPage } from '../features/auth/pages/LoginPage'
 import { useAuth } from '../features/auth/useAuth'
 import type { AppRole } from '../features/auth/types/auth'
 
-const adminPaths = new Set(['/dashboard', '/buildings', '/tenants', '/invoices'])
+const adminPaths = new Set(['/dashboard', '/buildings', '/contracts', '/tenants', '/invoices'])
 
 function getBasePath(pathname: string) {
   if (pathname.startsWith('/rooms/')) {
@@ -96,6 +97,7 @@ export function AppRoutes() {
       }} />
     }
     if (protectedPath === '/buildings') return <BuildingsPage />
+    if (protectedPath === '/contracts') return <ContractsPage />
     if (protectedPath.startsWith('/rooms/')) return <RoomDetailPage roomId={protectedPath.split('/')[2]} />
     if (protectedPath === '/tenants') return <TenantsPage />
     if (protectedPath === '/invoices') return <InvoicesPage />
