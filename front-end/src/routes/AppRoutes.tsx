@@ -7,12 +7,13 @@ import { RoomDetailPage } from '../pages/rooms/RoomDetailPage'
 import { TenantsPage } from '../pages/tenants/TenantsPage'
 import { InvoicesPage } from '../pages/invoices/InvoicesPage'
 import { TenantRoomPage } from '../pages/tenant-room/TenantRoomPage'
+import { UtilitiesPage } from '../pages/utilities/UtilitiesPage'
 import { routeItems, sidebarRouteItems } from './routeConfig'
 import { LoginPage } from '../features/auth/pages/LoginPage'
 import { useAuth } from '../features/auth/useAuth'
 import type { AppRole } from '../features/auth/types/auth'
 
-const adminPaths = new Set(['/dashboard', '/buildings', '/contracts', '/tenants', '/invoices'])
+const adminPaths = new Set(['/dashboard', '/buildings', '/contracts', '/utilities', '/tenants', '/invoices'])
 
 function getBasePath(pathname: string) {
   if (pathname.startsWith('/rooms/')) {
@@ -98,6 +99,7 @@ export function AppRoutes() {
     }
     if (protectedPath === '/buildings') return <BuildingsPage />
     if (protectedPath === '/contracts') return <ContractsPage />
+    if (protectedPath === '/utilities') return <UtilitiesPage />
     if (protectedPath.startsWith('/rooms/')) return <RoomDetailPage roomId={protectedPath.split('/')[2]} />
     if (protectedPath === '/tenants') return <TenantsPage />
     if (protectedPath === '/invoices') return <InvoicesPage />

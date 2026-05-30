@@ -1,8 +1,9 @@
 import { TeamOutlined } from '@ant-design/icons'
-import { Alert, Button, Card, Col, Descriptions, Empty, Form, Grid, Input, InputNumber, List, Row, Skeleton, Space, Statistic, Table, Tag, Typography, message } from 'antd'
+import { Alert, Button, Card, Col, Descriptions, Empty, Form, Grid, Input, InputNumber, List, Row, Select, Skeleton, Space, Statistic, Table, Tag, Typography, message } from 'antd'
 import dayjs from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
 import {
+  attachMyUtilityReadingEvidence,
   getCurrentAndPreviousUtilityReadings,
   getCurrentMonthBill,
   getMyRoomContext,
@@ -11,7 +12,9 @@ import {
   upsertMyUtilityReading,
   type InvoiceSummary,
   type RoommateSummary,
+  type UtilityEvidenceType,
   type UtilityReadingSnapshot,
+  type UtilityReadingStatus,
 } from '../../services/tenantRoomService'
 
 interface UtilityFormValues {
@@ -21,6 +24,15 @@ interface UtilityFormValues {
   water_prev: number | null
   water_curr: number | null
   note: string
+}
+
+interface EvidenceFormValues {
+  evidence_type: UtilityEvidenceType
+  file_name?: string
+  file_url: string
+  mime_type?: string
+  file_size?: number
+  note?: string
 }
 
 const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
@@ -41,12 +53,21 @@ const paymentStatusColor: Record<NonNullable<InvoiceSummary['payment_status']>, 
   CANCELLED: 'default',
 }
 
+const utilityReadingStatusColor: Record<UtilityReadingStatus, string> = {
+  DRAFT: 'default',
+  SUBMITTED: 'gold',
+  APPROVED: 'green',
+  REJECTED: 'red',
+  INVOICED: 'blue',
+}
+
 export function TenantRoomPage() {
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
 
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [evidenceSubmitting, setEvidenceSubmitting] = useState(false)
   const [context, setContext] = useState<Awaited<ReturnType<typeof getMyRoomContext>>>(null)
   const [roommates, setRoommates] = useState<RoommateSummary[]>([])
   const [currentBill, setCurrentBill] = useState<InvoiceSummary | null>(null)
@@ -54,6 +75,7 @@ export function TenantRoomPage() {
   const [utilitySnapshot, setUtilitySnapshot] = useState<UtilityReadingSnapshot | null>(null)
 
   const [form] = Form.useForm<UtilityFormValues>()
+  const [evidenceForm] = Form.useForm<EvidenceFormValues>()
   const monthValue = Form.useWatch('month', form)
   const electricityPrev = Form.useWatch('electricity_prev', form)
   const electricityCurr = Form.useWatch('electricity_curr', form)
@@ -73,6 +95,9 @@ export function TenantRoomPage() {
     }
     return Math.max(0, waterCurr - waterPrev)
   }, [waterCurr, waterPrev])
+
+  const currentReading = utilitySnapshot?.current_reading ?? null
+  const readingLocked = currentReading?.status === 'APPROVED' || currentReading?.status === 'INVOICED'
 
   const hydrateFormByMonth = async (roomId: string, month: string) => {
     const snapshot = await getCurrentAndPreviousUtilityReadings(roomId, `${month}-01`)
@@ -137,6 +162,11 @@ export function TenantRoomPage() {
       return
     }
 
+    if (readingLocked) {
+      message.warning('Reading for this month is already approved or invoiced.')
+      return
+    }
+
     if (values.electricity_curr === null || values.electricity_curr === undefined || values.water_curr === null || values.water_curr === undefined) {
       message.error('Vui lòng nhập đầy đủ chỉ số điện và nước hiện tại')
       return
@@ -157,6 +187,33 @@ export function TenantRoomPage() {
       message.error(error instanceof Error ? error.message : 'Không thể lưu chỉ số điện nước')
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleEvidenceSubmit = async (values: EvidenceFormValues) => {
+    if (!context || !currentReading) {
+      message.warning('Please submit the monthly reading before adding evidence.')
+      return
+    }
+
+    setEvidenceSubmitting(true)
+    try {
+      await attachMyUtilityReadingEvidence(currentReading.id, {
+        evidence_type: values.evidence_type,
+        file_name: values.file_name?.trim() || null,
+        file_url: values.file_url.trim(),
+        mime_type: values.mime_type?.trim() || null,
+        file_size: values.file_size ?? null,
+        note: values.note?.trim() || null,
+      })
+      evidenceForm.resetFields()
+      evidenceForm.setFieldValue('evidence_type', 'ELECTRIC')
+      await hydrateFormByMonth(context.room.id, form.getFieldValue('month'))
+      message.success('Evidence metadata uploaded')
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Unable to upload evidence metadata')
+    } finally {
+      setEvidenceSubmitting(false)
     }
   }
 
@@ -243,6 +300,21 @@ export function TenantRoomPage() {
       </Card>
 
       <Card title="Chỉ số điện / nước hiện tại">
+        {currentReading ? (
+          <Alert
+            showIcon
+            type={currentReading.status === 'REJECTED' ? 'error' : readingLocked ? 'success' : 'info'}
+            style={{ marginBottom: 16 }}
+            message={
+              <Space wrap>
+                <span>Status:</span>
+                <Tag color={utilityReadingStatusColor[currentReading.status]}>{currentReading.status}</Tag>
+                <span>Evidence: {currentReading.evidence_count}</span>
+              </Space>
+            }
+            description={currentReading.rejection_reason ?? undefined}
+          />
+        ) : null}
         {!utilitySnapshot ? (
           <Alert showIcon type="info" message="Chưa có dữ liệu chỉ số điện nước." />
         ) : (
@@ -361,6 +433,15 @@ export function TenantRoomPage() {
             <Input.TextArea rows={3} maxLength={500} showCount placeholder="Ghi chú (không bắt buộc)" />
           </Form.Item>
 
+          {readingLocked ? (
+            <Alert
+              type="warning"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message="Reading for this month is already approved or invoiced, so it can no longer be changed."
+            />
+          ) : null}
+
           {utilitySnapshot?.current_reading?.reported_at ? (
             <Alert
               type="success"
@@ -377,10 +458,74 @@ export function TenantRoomPage() {
             />
           )}
 
-          <Button htmlType="submit" type="primary" loading={submitting} block={isMobile}>
+          <Button htmlType="submit" type="primary" loading={submitting} disabled={readingLocked} block={isMobile}>
             Lưu chỉ số tháng
           </Button>
         </Form>
+      </Card>
+
+      <Card title="Utility evidence">
+        {!currentReading ? (
+          <Alert showIcon type="info" message="Submit the monthly reading before attaching evidence." />
+        ) : (
+          <Form<EvidenceFormValues>
+            form={evidenceForm}
+            layout="vertical"
+            onFinish={handleEvidenceSubmit}
+            initialValues={{ evidence_type: 'ELECTRIC' }}
+          >
+            <Row gutter={[16, 8]}>
+              <Col xs={24} md={8}>
+                <Form.Item name="evidence_type" label="Evidence type" rules={[{ required: true, message: 'Please select evidence type' }]}>
+                  <Select
+                    options={[
+                      { label: 'Electric', value: 'ELECTRIC' },
+                      { label: 'Water', value: 'WATER' },
+                      { label: 'Other', value: 'OTHER' },
+                    ]}
+                  />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={16}>
+                <Form.Item name="file_url" label="File URL" rules={[{ required: true, whitespace: true, message: 'Please enter file URL' }]}>
+                  <Input placeholder="https://..." disabled={currentReading.status === 'INVOICED'} />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={8}>
+                <Form.Item name="file_name" label="File name">
+                  <Input disabled={currentReading.status === 'INVOICED'} />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={8}>
+                <Form.Item name="mime_type" label="MIME type">
+                  <Input placeholder="image/jpeg" disabled={currentReading.status === 'INVOICED'} />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={8}>
+                <Form.Item name="file_size" label="File size">
+                  <InputNumber min={0} precision={0} style={{ width: '100%' }} disabled={currentReading.status === 'INVOICED'} />
+                </Form.Item>
+              </Col>
+            </Row>
+            <Form.Item name="note" label="Evidence note">
+              <Input.TextArea rows={2} disabled={currentReading.status === 'INVOICED'} />
+            </Form.Item>
+            <Space wrap>
+              <Tag color={utilityReadingStatusColor[currentReading.status]}>{currentReading.status}</Tag>
+              <Typography.Text type="secondary">{currentReading.evidence_count} evidence file(s) submitted</Typography.Text>
+            </Space>
+            <Button
+              htmlType="submit"
+              type="primary"
+              loading={evidenceSubmitting}
+              disabled={currentReading.status === 'INVOICED'}
+              block={isMobile}
+              style={{ marginTop: 16 }}
+            >
+              Add evidence metadata
+            </Button>
+          </Form>
+        )}
       </Card>
 
       <Card title="Lịch sử hóa đơn gần đây">

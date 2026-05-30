@@ -23,7 +23,7 @@ const utilityReadingCreateSchema = z.object({
 });
 
 const utilityEvidenceSchema = z.object({
-  evidence_type: z.string().trim().min(1),
+  evidence_type: z.enum(['ELECTRIC', 'WATER', 'OTHER']),
   file_name: z.string().trim().nullable().optional(),
   file_url: z.string().trim().min(1),
   mime_type: z.string().trim().nullable().optional(),
@@ -35,9 +35,21 @@ const utilityRejectSchema = z.object({
   reason: z.string().trim().min(1)
 });
 
+const utilityReadingStatusSchema = z.enum(['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'INVOICED']);
+
 router.get('/', asyncHandler(async (req, res) => {
-  const roomId = (req.query.roomId ?? req.query.room_id) as string | undefined;
-  res.json(await listUtilityReadings(req.auth!, roomId));
+  const status = String(req.query.status ?? '').trim();
+  if (status && !utilityReadingStatusSchema.safeParse(status).success) {
+    res.status(400).json({ message: 'Invalid utility reading status', code: 'VALIDATION_ERROR' });
+    return;
+  }
+
+  res.json(await listUtilityReadings(req.auth!, {
+    buildingId: String(req.query.building_id ?? req.query.buildingId ?? '').trim() || undefined,
+    roomId: String(req.query.room_id ?? req.query.roomId ?? '').trim() || undefined,
+    month: String(req.query.month ?? '').trim() || undefined,
+    status: status || undefined
+  }));
 }));
 
 router.get('/:id', asyncHandler(async (req, res) => {
