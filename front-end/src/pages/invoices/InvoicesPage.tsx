@@ -1,4 +1,5 @@
 import {
+  BankOutlined,
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
@@ -11,11 +12,13 @@ import {
   Button,
   Card,
   Descriptions,
+  Divider,
   Drawer,
   Empty,
   Form,
   Grid,
   Input,
+  InputNumber,
   Modal,
   Select,
   Skeleton,
@@ -45,6 +48,15 @@ import {
   updateInvoice,
   voidInvoice,
 } from '../../services/invoicesService'
+import {
+  cancelPaymentRequest,
+  createPaymentRequest,
+  expirePaymentRequest,
+  getPaymentRequestByInvoice,
+  type PaymentProof,
+  type PaymentRequest,
+  type PaymentRequestStatus,
+} from '../../services/paymentsService'
 import {
   getInvoiceFormDefaultValues,
   invoiceFormDefaultValues,
@@ -78,13 +90,34 @@ const paymentStatusOptions: { label: string; value: PaymentStatus; color: string
   { label: 'Cancelled', value: 'CANCELLED', color: 'default' },
 ]
 
+const paymentRequestStatusColor: Record<PaymentRequestStatus, string> = {
+  DRAFT: 'default',
+  WAITING_TRANSFER: 'blue',
+  TRANSFER_SUBMITTED: 'gold',
+  VERIFIED: 'green',
+  REJECTED: 'red',
+  CANCELLED: 'default',
+  EXPIRED: 'orange',
+}
+
 const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
+
+interface PaymentRequestFormValues {
+  amount: number
+  bank_code?: string
+  bank_account_no?: string
+  bank_account_name?: string
+  transfer_note?: string
+  qr_image_url?: string
+  expires_at?: string
+}
 
 export function InvoicesPage() {
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
   const [form] = Form.useForm<InvoiceFormValues>()
   const [generateForm] = Form.useForm<{ scope: InvoiceGenerateScope; month: string; building_id?: string; room_id?: string }>()
+  const [paymentRequestForm] = Form.useForm<PaymentRequestFormValues>()
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -112,11 +145,15 @@ export function InvoicesPage() {
 
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailItem, setDetailItem] = useState<InvoiceDetail | null>(null)
+  const [detailPaymentRequest, setDetailPaymentRequest] = useState<PaymentRequest | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [generateOpen, setGenerateOpen] = useState(false)
   const [generateLoading, setGenerateLoading] = useState(false)
   const [generateResult, setGenerateResult] = useState<{ generated: number; skipped: number; total: number } | null>(null)
   const [statusActionLoading, setStatusActionLoading] = useState<string | null>(null)
+  const [paymentRequestOpen, setPaymentRequestOpen] = useState(false)
+  const [paymentRequestLoading, setPaymentRequestLoading] = useState(false)
+  const [paymentActionLoading, setPaymentActionLoading] = useState<string | null>(null)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearch(searchInput), 300)
@@ -242,8 +279,12 @@ export function InvoicesPage() {
     setDetailOpen(true)
     setDetailLoading(true)
     try {
-      const row = await getInvoice(id)
+      const [row, paymentRequest] = await Promise.all([
+        getInvoice(id),
+        getPaymentRequestByInvoice(id),
+      ])
       setDetailItem(row)
+      setDetailPaymentRequest(paymentRequest)
     } catch {
       message.error('Unable to load invoice detail.')
       setDetailOpen(false)
@@ -261,6 +302,7 @@ export function InvoicesPage() {
 
   const closeDetail = useCallback(() => {
     setDetailOpen(false)
+    setDetailPaymentRequest(null)
     const params = new URLSearchParams(window.location.search)
     if (params.has('invoiceId')) {
       params.delete('invoiceId')
@@ -375,6 +417,79 @@ export function InvoicesPage() {
       setStatusActionLoading(null)
     }
   }, [detailItem, loadData])
+
+  const paymentRemainingAmount = useMemo(() => {
+    if (!detailItem) return 0
+    return Math.max(0, detailItem.total - detailItem.paid_amount)
+  }, [detailItem])
+
+  const paymentRequestIsClosed = !detailPaymentRequest || ['CANCELLED', 'EXPIRED'].includes(detailPaymentRequest.status)
+
+  const openPaymentRequestModal = useCallback(() => {
+    if (!detailItem) return
+    paymentRequestForm.resetFields()
+    paymentRequestForm.setFieldsValue({
+      amount: paymentRemainingAmount,
+      transfer_note: `INV-${detailItem.id.slice(0, 8)}`,
+      expires_at: dayjs().add(7, 'day').format('YYYY-MM-DDTHH:mm'),
+    })
+    setPaymentRequestOpen(true)
+  }, [detailItem, paymentRemainingAmount, paymentRequestForm])
+
+  const refreshDetailPaymentRequest = useCallback(async () => {
+    if (!detailItem) return
+    const [invoice, paymentRequest] = await Promise.all([
+      getInvoice(detailItem.id),
+      getPaymentRequestByInvoice(detailItem.id),
+    ])
+    setDetailItem(invoice)
+    setDetailPaymentRequest(paymentRequest)
+    await loadData()
+  }, [detailItem, loadData])
+
+  const onCreatePaymentRequest = useCallback(async () => {
+    if (!detailItem) return
+    const values = await paymentRequestForm.validateFields()
+    setPaymentRequestLoading(true)
+    try {
+      const request = await createPaymentRequest({
+        invoice_id: detailItem.id,
+        amount: values.amount,
+        currency: 'VND',
+        bank_code: values.bank_code?.trim() || null,
+        bank_account_no: values.bank_account_no?.trim() || null,
+        bank_account_name: values.bank_account_name?.trim() || null,
+        transfer_note: values.transfer_note?.trim() || null,
+        qr_image_url: values.qr_image_url?.trim() || null,
+        expires_at: values.expires_at ? dayjs(values.expires_at).toISOString() : null,
+      })
+      setDetailPaymentRequest(request)
+      setPaymentRequestOpen(false)
+      message.success('Payment request created.')
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Unable to create payment request.')
+    } finally {
+      setPaymentRequestLoading(false)
+    }
+  }, [detailItem, paymentRequestForm])
+
+  const runPaymentRequestAction = useCallback(async (action: 'cancel' | 'expire') => {
+    if (!detailPaymentRequest) return
+    setPaymentActionLoading(action)
+    try {
+      if (action === 'cancel') {
+        await cancelPaymentRequest(detailPaymentRequest.id)
+      } else {
+        await expirePaymentRequest(detailPaymentRequest.id)
+      }
+      await refreshDetailPaymentRequest()
+      message.success('Payment request updated.')
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Unable to update payment request.')
+    } finally {
+      setPaymentActionLoading(null)
+    }
+  }, [detailPaymentRequest, refreshDetailPaymentRequest])
 
   const columns: ColumnsType<InvoiceListItem> = [
     { title: 'Month', dataIndex: 'month', width: 110, render: (value: string) => dayjs(value).format('MM/YYYY') },
@@ -553,9 +668,103 @@ export function InvoicesPage() {
                 />
               </Card>
             ) : null}
+            <Card
+              size="small"
+              title="Bank transfer payment"
+              extra={
+                paymentRequestIsClosed && detailItem.status !== 'PAID' && detailItem.status !== 'VOID' ? (
+                  <Button size="small" type="primary" icon={<BankOutlined />} onClick={openPaymentRequestModal}>
+                    Create payment request
+                  </Button>
+                ) : null
+              }
+            >
+              {!detailPaymentRequest ? (
+                <Alert showIcon type="info" message="No payment request has been sent for this invoice." />
+              ) : (
+                <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                  <Descriptions column={isMobile ? 1 : 2} size="small" bordered>
+                    <Descriptions.Item label="Request status">
+                      <Tag color={paymentRequestStatusColor[detailPaymentRequest.status]}>{detailPaymentRequest.status}</Tag>
+                    </Descriptions.Item>
+                    <Descriptions.Item label="Request amount">{currency.format(detailPaymentRequest.amount)}</Descriptions.Item>
+                    <Descriptions.Item label="Paid amount">{currency.format(detailPaymentRequest.paid_amount ?? 0)}</Descriptions.Item>
+                    <Descriptions.Item label="Remaining">{currency.format(detailPaymentRequest.remaining_amount ?? paymentRemainingAmount)}</Descriptions.Item>
+                    <Descriptions.Item label="Bank">{detailPaymentRequest.bank_code ?? '-'}</Descriptions.Item>
+                    <Descriptions.Item label="Account no.">{detailPaymentRequest.bank_account_no ?? '-'}</Descriptions.Item>
+                    <Descriptions.Item label="Account name">{detailPaymentRequest.bank_account_name ?? '-'}</Descriptions.Item>
+                    <Descriptions.Item label="Transfer note">{detailPaymentRequest.transfer_note ?? '-'}</Descriptions.Item>
+                    <Descriptions.Item label="Expires at">{detailPaymentRequest.expires_at ? dayjs(detailPaymentRequest.expires_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
+                    <Descriptions.Item label="Sent at">{detailPaymentRequest.sent_at ? dayjs(detailPaymentRequest.sent_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
+                  </Descriptions>
+                  {!['VERIFIED', 'CANCELLED', 'EXPIRED'].includes(detailPaymentRequest.status) ? (
+                    <Space>
+                      <Button danger loading={paymentActionLoading === 'cancel'} onClick={() => void runPaymentRequestAction('cancel')}>Cancel request</Button>
+                      <Button loading={paymentActionLoading === 'expire'} onClick={() => void runPaymentRequestAction('expire')}>Expire request</Button>
+                    </Space>
+                  ) : null}
+                  <Divider style={{ margin: '4px 0' }} />
+                  <Typography.Text strong>Payment history</Typography.Text>
+                  <Table<PaymentProof>
+                    rowKey="id"
+                    size="small"
+                    pagination={false}
+                    dataSource={detailPaymentRequest.proofs ?? []}
+                    locale={{ emptyText: <Empty description="No proof submitted" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+                    columns={[
+                      { title: 'Submitted', dataIndex: 'submitted_at', render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm') },
+                      { title: 'Amount', dataIndex: 'transfer_amount', align: 'right', render: (value: number) => currency.format(value) },
+                      { title: 'Status', dataIndex: 'status', render: (value: string) => <Tag>{value}</Tag> },
+                      {
+                        title: 'Proof',
+                        dataIndex: 'file_url',
+                        render: (value: string, row) => (
+                          <a href={value} target="_blank" rel="noreferrer">{row.file_name || 'Open file'}</a>
+                        ),
+                      },
+                      { title: 'Reason', dataIndex: 'rejection_reason', render: (value: string | null) => value ?? '-' },
+                    ]}
+                  />
+                </Space>
+              )}
+            </Card>
           </Space>
         )}
       </Drawer>
+
+      <Modal
+        open={paymentRequestOpen}
+        title="Create payment request"
+        okText="Create request"
+        confirmLoading={paymentRequestLoading}
+        onOk={() => void onCreatePaymentRequest()}
+        onCancel={() => setPaymentRequestOpen(false)}
+        destroyOnClose
+      >
+        <Form form={paymentRequestForm} layout="vertical">
+          <Form.Item name="amount" label="Amount" rules={[{ required: true, type: 'number', min: 1, message: 'Please enter amount' }]}>
+            <InputNumber min={1} max={paymentRemainingAmount || undefined} precision={0} style={{ width: '100%' }} formatter={(value) => `${value ?? ''}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')} parser={(value) => Number(value?.replace(/\D/g, '') || 0)} />
+          </Form.Item>
+          <Form.Item name="bank_code" label="Bank code">
+            <Input placeholder="VCB, ACB, TCB..." />
+          </Form.Item>
+          <Form.Item name="bank_account_no" label="Bank account number">
+            <Input />
+          </Form.Item>
+          <Form.Item name="bank_account_name" label="Bank account name">
+            <Input />
+          </Form.Item>
+          <Form.Item name="transfer_note" label="Transfer note">
+            <Input />
+          </Form.Item>
+          <Form.Item name="qr_image_url" label="QR image URL">
+            <Input placeholder="https://..." />
+          </Form.Item>
+          <Form.Item name="expires_at" label="Expires at">
+            <Input type="datetime-local" />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <Modal
         open={generateOpen}

@@ -6,9 +6,11 @@ import {
   attachMyUtilityReadingEvidence,
   getCurrentAndPreviousUtilityReadings,
   getCurrentMonthBill,
+  getMyPaymentRequest,
   getMyRoomContext,
   getMyRoommates,
   listMyRecentBills,
+  submitMyPaymentProof,
   upsertMyUtilityReading,
   type InvoiceSummary,
   type RoommateSummary,
@@ -16,6 +18,7 @@ import {
   type UtilityReadingSnapshot,
   type UtilityReadingStatus,
 } from '../../services/tenantRoomService'
+import type { PaymentRequest, PaymentRequestStatus } from '../../services/paymentsService'
 
 interface UtilityFormValues {
   month: string
@@ -33,6 +36,16 @@ interface EvidenceFormValues {
   mime_type?: string
   file_size?: number
   note?: string
+}
+
+interface PaymentProofFormValues {
+  file_name?: string
+  file_url: string
+  mime_type?: string
+  file_size?: number
+  transfer_amount?: number
+  transfer_time?: string
+  payer_note?: string
 }
 
 const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
@@ -53,6 +66,16 @@ const paymentStatusColor: Record<NonNullable<InvoiceSummary['payment_status']>, 
   CANCELLED: 'default',
 }
 
+const paymentRequestStatusColor: Record<PaymentRequestStatus, string> = {
+  DRAFT: 'default',
+  WAITING_TRANSFER: 'blue',
+  TRANSFER_SUBMITTED: 'gold',
+  VERIFIED: 'green',
+  REJECTED: 'red',
+  CANCELLED: 'default',
+  EXPIRED: 'orange',
+}
+
 const utilityReadingStatusColor: Record<UtilityReadingStatus, string> = {
   DRAFT: 'default',
   SUBMITTED: 'gold',
@@ -71,11 +94,14 @@ export function TenantRoomPage() {
   const [context, setContext] = useState<Awaited<ReturnType<typeof getMyRoomContext>>>(null)
   const [roommates, setRoommates] = useState<RoommateSummary[]>([])
   const [currentBill, setCurrentBill] = useState<InvoiceSummary | null>(null)
+  const [currentPaymentRequest, setCurrentPaymentRequest] = useState<PaymentRequest | null>(null)
   const [billHistory, setBillHistory] = useState<InvoiceSummary[]>([])
   const [utilitySnapshot, setUtilitySnapshot] = useState<UtilityReadingSnapshot | null>(null)
+  const [paymentProofSubmitting, setPaymentProofSubmitting] = useState(false)
 
   const [form] = Form.useForm<UtilityFormValues>()
   const [evidenceForm] = Form.useForm<EvidenceFormValues>()
+  const [paymentProofForm] = Form.useForm<PaymentProofFormValues>()
   const monthValue = Form.useWatch('month', form)
   const electricityPrev = Form.useWatch('electricity_prev', form)
   const electricityCurr = Form.useWatch('electricity_curr', form)
@@ -120,6 +146,7 @@ export function TenantRoomPage() {
       if (!roomContext) {
         setRoommates([])
         setCurrentBill(null)
+        setCurrentPaymentRequest(null)
         setBillHistory([])
         setUtilitySnapshot(null)
         return
@@ -135,6 +162,7 @@ export function TenantRoomPage() {
 
       setRoommates(roommatesData)
       setCurrentBill(currentBillData)
+      setCurrentPaymentRequest(currentBillData?.payment_request_id ? await getMyPaymentRequest(currentBillData.payment_request_id) : null)
       setBillHistory(historyData)
       await hydrateFormByMonth(roomContext.room.id, selectedMonth)
     } finally {
@@ -217,6 +245,32 @@ export function TenantRoomPage() {
     }
   }
 
+  const handlePaymentProofSubmit = async (values: PaymentProofFormValues) => {
+    if (!currentPaymentRequest) {
+      return
+    }
+
+    setPaymentProofSubmitting(true)
+    try {
+      await submitMyPaymentProof(currentPaymentRequest.id, {
+        file_name: values.file_name?.trim() || null,
+        file_url: values.file_url.trim(),
+        mime_type: values.mime_type?.trim() || null,
+        file_size: values.file_size ?? null,
+        transfer_amount: values.transfer_amount ?? null,
+        transfer_time: values.transfer_time ? dayjs(values.transfer_time).toISOString() : null,
+        payer_note: values.payer_note?.trim() || null,
+      })
+      paymentProofForm.resetFields()
+      await refresh()
+      message.success('Payment proof submitted for manager review.')
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Unable to submit payment proof.')
+    } finally {
+      setPaymentProofSubmitting(false)
+    }
+  }
+
   if (loading) {
     return <Skeleton active paragraph={{ rows: 14 }} />
   }
@@ -271,8 +325,72 @@ export function TenantRoomPage() {
                 <Space wrap>
                   <Typography.Text type="secondary">Hạn thanh toán: {currentBill.due_date ? dayjs(currentBill.due_date).format('DD/MM/YYYY') : '-'}</Typography.Text>
                   {currentBill.payment_status ? <Tag color={paymentStatusColor[currentBill.payment_status]}>Payment: {currentBill.payment_status}</Tag> : null}
+                  {currentBill.payment_request_status ? <Tag color={paymentRequestStatusColor[currentBill.payment_request_status]}>Request: {currentBill.payment_request_status}</Tag> : null}
                 </Space>
                 <Typography.Text type="secondary">Ngày thanh toán: {currentBill.paid_at ? dayjs(currentBill.paid_at).format('DD/MM/YYYY') : '-'}</Typography.Text>
+                {!currentPaymentRequest ? (
+                  <Alert showIcon type="info" message="Chưa có yêu cầu chuyển khoản cho hóa đơn này." />
+                ) : (
+                  <Card size="small" title="Thanh toán chuyển khoản">
+                    <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                      <Descriptions bordered size="small" column={1}>
+                        <Descriptions.Item label="Số tiền cần chuyển">{currency.format(currentPaymentRequest.remaining_amount ?? currentPaymentRequest.amount)}</Descriptions.Item>
+                        <Descriptions.Item label="Ngân hàng">{currentPaymentRequest.bank_code ?? '-'}</Descriptions.Item>
+                        <Descriptions.Item label="Số tài khoản">{currentPaymentRequest.bank_account_no ?? '-'}</Descriptions.Item>
+                        <Descriptions.Item label="Chủ tài khoản">{currentPaymentRequest.bank_account_name ?? '-'}</Descriptions.Item>
+                        <Descriptions.Item label="Nội dung chuyển khoản">{currentPaymentRequest.transfer_note ?? '-'}</Descriptions.Item>
+                        <Descriptions.Item label="Hạn yêu cầu">{currentPaymentRequest.expires_at ? dayjs(currentPaymentRequest.expires_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
+                      </Descriptions>
+                      {currentPaymentRequest.qr_image_url ? (
+                        <img src={currentPaymentRequest.qr_image_url} alt="Payment QR" style={{ maxWidth: 220, width: '100%', borderRadius: 8 }} />
+                      ) : currentPaymentRequest.qr_content ? (
+                        <Input.TextArea value={currentPaymentRequest.qr_content} autoSize readOnly />
+                      ) : null}
+                      {(currentPaymentRequest.status === 'WAITING_TRANSFER' || currentPaymentRequest.status === 'REJECTED') && currentBill.status !== 'PAID' ? (
+                        <Form<PaymentProofFormValues> form={paymentProofForm} layout="vertical" onFinish={handlePaymentProofSubmit}>
+                          <Row gutter={[12, 0]}>
+                            <Col xs={24} md={12}>
+                              <Form.Item name="transfer_amount" label="Số tiền đã chuyển">
+                                <InputNumber min={1} max={currentPaymentRequest.remaining_amount || undefined} precision={0} style={{ width: '100%' }} />
+                              </Form.Item>
+                            </Col>
+                            <Col xs={24} md={12}>
+                              <Form.Item name="transfer_time" label="Thời gian chuyển">
+                                <Input type="datetime-local" />
+                              </Form.Item>
+                            </Col>
+                            <Col xs={24}>
+                              <Form.Item name="file_url" label="Link ảnh/biên lai" rules={[{ required: true, whitespace: true, message: 'Vui lòng nhập link biên lai' }]}>
+                                <Input placeholder="https://..." />
+                              </Form.Item>
+                            </Col>
+                            <Col xs={24} md={8}>
+                              <Form.Item name="file_name" label="Tên file">
+                                <Input />
+                              </Form.Item>
+                            </Col>
+                            <Col xs={24} md={8}>
+                              <Form.Item name="mime_type" label="MIME type">
+                                <Input placeholder="image/jpeg" />
+                              </Form.Item>
+                            </Col>
+                            <Col xs={24} md={8}>
+                              <Form.Item name="file_size" label="Dung lượng file">
+                                <InputNumber min={0} precision={0} style={{ width: '100%' }} />
+                              </Form.Item>
+                            </Col>
+                          </Row>
+                          <Form.Item name="payer_note" label="Ghi chú">
+                            <Input.TextArea rows={2} />
+                          </Form.Item>
+                          <Button htmlType="submit" type="primary" loading={paymentProofSubmitting} block={isMobile}>Gửi biên lai</Button>
+                        </Form>
+                      ) : (
+                        <Alert showIcon type={currentPaymentRequest.status === 'TRANSFER_SUBMITTED' ? 'warning' : 'success'} message={currentPaymentRequest.status === 'TRANSFER_SUBMITTED' ? 'Biên lai đang chờ quản lý duyệt.' : 'Yêu cầu thanh toán đang không nhận biên lai mới.'} />
+                      )}
+                    </Space>
+                  </Card>
+                )}
               </Space>
             )}
           </Card>
