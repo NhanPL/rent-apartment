@@ -492,6 +492,11 @@ export function TenantsPage() {
     }
   }, [])
 
+  const navigateToContract = useCallback((contractId: string) => {
+    window.history.pushState(null, '', `/contracts?contractId=${encodeURIComponent(contractId)}`)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }, [])
+
   const columns: ColumnsType<TenantListItem> = useMemo(
     () => [
       { title: 'Tenant name', dataIndex: 'full_name', key: 'full_name', width: 180 },
@@ -898,7 +903,20 @@ export function TenantsPage() {
                     {selectedTenant.current_room.building_name}
                   </Descriptions.Item>
                   <Descriptions.Item label="room_code">{selectedTenant.current_room.room_code}</Descriptions.Item>
-                  <Descriptions.Item label="contract_id">{selectedTenant.current_room.contract_id}</Descriptions.Item>
+                  <Descriptions.Item label="contract_id">
+                    <Button
+                      type="link"
+                      style={{ padding: 0, height: 'auto' }}
+                      onClick={() => {
+                        const contractId = selectedTenant.current_room?.contract_id
+                        if (contractId) {
+                          navigateToContract(contractId)
+                        }
+                      }}
+                    >
+                      {selectedTenant.current_room.contract_id}
+                    </Button>
+                  </Descriptions.Item>
                   <Descriptions.Item label="start_date">
                     {dayjs(selectedTenant.current_room.start_date).format('DD/MM/YYYY')}
                   </Descriptions.Item>

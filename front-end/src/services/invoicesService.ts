@@ -20,6 +20,13 @@ interface TenantListResponse {
   total: number
 }
 
+interface ContractListResponse {
+  items: Array<Contract & { rent_price: number | string; billing_day: number | string }>
+  page: number
+  pageSize: number
+  total: number
+}
+
 type NumericInvoiceFields =
   | 'subtotal'
   | 'discount'
@@ -112,7 +119,16 @@ export async function listTenants(): Promise<Tenant[]> {
 }
 
 export async function listContracts(): Promise<Contract[]> {
-  const rows = await apiRequest<Array<Contract & { rent_price: number | string; billing_day: number | string }>>(API_ROUTES.contracts.list)
+  const firstResponse = await apiRequest<ContractListResponse | ContractListResponse['items']>(`${API_ROUTES.contracts.list}?page=1&pageSize=100`)
+  const rows = Array.isArray(firstResponse) ? firstResponse : [...firstResponse.items]
+
+  if (!Array.isArray(firstResponse)) {
+    for (let page = 2; (page - 1) * firstResponse.pageSize < firstResponse.total; page += 1) {
+      const response = await apiRequest<ContractListResponse>(`${API_ROUTES.contracts.list}?page=${page}&pageSize=100`)
+      rows.push(...response.items)
+    }
+  }
+
   return rows.map((contract) => ({
     ...contract,
     rent_price: toNumber(contract.rent_price),
