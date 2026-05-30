@@ -658,9 +658,12 @@ CREATE TABLE IF NOT EXISTS payment_request (
   created_at           timestamptz NOT NULL DEFAULT now(),
   updated_at           timestamptz NOT NULL DEFAULT now(),
 
-  CONSTRAINT uq_payment_request_invoice UNIQUE (invoice_id),
   CONSTRAINT ck_payment_request_amount CHECK (amount > 0)
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_request_invoice_active
+ON payment_request(invoice_id)
+WHERE status NOT IN ('CANCELLED', 'EXPIRED');
 
 CREATE INDEX IF NOT EXISTS idx_payment_request_status
 ON payment_request(status);
@@ -720,7 +723,7 @@ FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TABLE IF NOT EXISTS payment (
   id                  uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   invoice_id          uuid NOT NULL REFERENCES invoice(id) ON DELETE RESTRICT,
-  payment_request_id  uuid UNIQUE REFERENCES payment_request(id) ON DELETE SET NULL,
+  payment_request_id  uuid REFERENCES payment_request(id) ON DELETE SET NULL,
   payment_proof_id    uuid UNIQUE REFERENCES payment_proof(id) ON DELETE SET NULL,
 
   method              payment_method NOT NULL DEFAULT 'CASH',

@@ -38,6 +38,9 @@ export const API_ROUTES = {
   payments: {
     requests: '/payments/requests',
     requestDetail: (id: string) => `/payments/requests/${id}`,
+    invoiceRequest: (invoiceId: string) => `/payments/invoices/${invoiceId}/request`,
+    cancelRequest: (id: string) => `/payments/requests/${id}/cancel`,
+    expireRequest: (id: string) => `/payments/requests/${id}/expire`,
     submitProof: (id: string) => `/payments/requests/${id}/proofs`,
     approveProof: (id: string) => `/payments/proofs/${id}/approve`,
     rejectProof: (id: string) => `/payments/proofs/${id}/reject`,

@@ -1,6 +1,7 @@
 import dayjs from 'dayjs'
 import { apiRequest } from './apiClient'
 import { API_ROUTES } from './apiRoutes'
+import { getPaymentRequest, submitPaymentProof, type PaymentProofPayload, type PaymentRequest, type PaymentRequestStatus } from './paymentsService'
 
 export type ContractStatus = 'DRAFT' | 'ACTIVE' | 'ENDED' | 'CANCELLED'
 export type RoomStatus = 'ACTIVE' | 'MAINTENANCE' | 'INACTIVE'
@@ -86,6 +87,8 @@ export interface InvoiceSummary {
   month: string
   status: InvoiceStatus
   payment_status: PaymentStatus | null
+  payment_request_id: string | null
+  payment_request_status: PaymentRequestStatus | null
   due_date: string | null
   issued_at: string | null
   paid_at: string | null
@@ -150,7 +153,8 @@ function toInvoiceSummary(row: Record<string, unknown>): InvoiceSummary {
     issued_at: string | null
     total: number
     subtotal?: number
-    payment_request_status?: PaymentStatus | null
+    payment_request_id?: string | null
+    payment_request_status?: PaymentRequestStatus | null
     payment_status?: PaymentStatus | null
     paid_at?: string | null
     rent_amount?: number | string | null
@@ -163,7 +167,9 @@ function toInvoiceSummary(row: Record<string, unknown>): InvoiceSummary {
     id: invoice.id,
     month: invoice.month,
     status: invoice.status,
-    payment_status: invoice.payment_status ?? invoice.payment_request_status ?? null,
+    payment_status: invoice.payment_status ?? null,
+    payment_request_id: invoice.payment_request_id ?? null,
+    payment_request_status: invoice.payment_request_status ?? null,
     due_date: invoice.due_date ?? null,
     issued_at: invoice.issued_at ?? null,
     paid_at: invoice.paid_at ?? null,
@@ -278,4 +284,12 @@ export async function attachMyUtilityReadingEvidence(readingId: string, payload:
     method: 'POST',
     body: payload,
   })
+}
+
+export function getMyPaymentRequest(paymentRequestId: string): Promise<PaymentRequest> {
+  return getPaymentRequest(paymentRequestId)
+}
+
+export function submitMyPaymentProof(paymentRequestId: string, payload: PaymentProofPayload) {
+  return submitPaymentProof(paymentRequestId, payload)
 }

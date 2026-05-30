@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { BankOutlined, FileTextOutlined, DashboardOutlined, ProfileOutlined, ThunderboltOutlined, UserSwitchOutlined, UserOutlined } from '@ant-design/icons'
+import { BankOutlined, CreditCardOutlined, FileTextOutlined, DashboardOutlined, ProfileOutlined, ThunderboltOutlined, UserSwitchOutlined, UserOutlined } from '@ant-design/icons'
 
 export interface RouteDefinition {
   key: string
@@ -18,6 +18,7 @@ export const routeItems: RouteDefinition[] = [
   { key: 'utilities', path: '/utilities', label: 'Utilities' },
   { key: 'tenants', path: '/tenants', label: 'Tenants' },
   { key: 'invoices', path: '/invoices', label: 'Invoices' },
+  { key: 'payments', path: '/payments', label: 'Payments' },
   { key: 'my-room', path: '/my-room', label: 'My Room' },
 ]
 
@@ -28,5 +29,6 @@ export const sidebarRouteItems: SidebarRouteItem[] = [
   { key: 'utilities', path: '/utilities', label: 'Utilities', icon: <ThunderboltOutlined /> },
   { key: 'tenants', path: '/tenants', label: 'Tenants', icon: <UserOutlined /> },
   { key: 'invoices', path: '/invoices', label: 'Invoices', icon: <FileTextOutlined /> },
+  { key: 'payments', path: '/payments', label: 'Payments', icon: <CreditCardOutlined /> },
   { key: 'my-room', path: '/my-room', label: 'My Room', icon: <UserSwitchOutlined /> },
 ]

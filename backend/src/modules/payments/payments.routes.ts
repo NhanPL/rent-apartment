@@ -5,10 +5,12 @@ import { asyncHandler } from '../../shared/middleware/async-handler';
 import { parseBody } from '../../shared/utils/validation';
 import {
   createPaymentRequest,
+  getPaymentRequestForInvoice,
   getPaymentRequestDetail,
   listPaymentRequests,
   reviewPaymentProof,
-  submitPaymentProof
+  submitPaymentProof,
+  updatePaymentRequestStatus
 } from './payments.service';
 
 const router = Router();
@@ -47,9 +49,21 @@ router.get('/requests/:id', asyncHandler(async (req, res) => {
   res.json(await getPaymentRequestDetail(req.params.id, req.auth!));
 }));
 
+router.get('/invoices/:invoiceId/request', asyncHandler(async (req, res) => {
+  res.json(await getPaymentRequestForInvoice(req.params.invoiceId, req.auth!));
+}));
+
 router.post('/requests', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const body = parseBody(paymentRequestSchema, req.body);
   res.status(201).json(await createPaymentRequest(body.invoice_id, req.auth!.userId, body));
+}));
+
+router.post('/requests/:id/cancel', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  res.json(await updatePaymentRequestStatus(req.params.id, req.auth!.userId, 'CANCELLED'));
+}));
+
+router.post('/requests/:id/expire', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  res.json(await updatePaymentRequestStatus(req.params.id, req.auth!.userId, 'EXPIRED'));
 }));
 
 router.post('/requests/:id/proofs', requireRole('TENANT'), asyncHandler(async (req, res) => {

@@ -8,12 +8,13 @@ import { TenantsPage } from '../pages/tenants/TenantsPage'
 import { InvoicesPage } from '../pages/invoices/InvoicesPage'
 import { TenantRoomPage } from '../pages/tenant-room/TenantRoomPage'
 import { UtilitiesPage } from '../pages/utilities/UtilitiesPage'
+import { PaymentsPage } from '../pages/payments/PaymentsPage'
 import { routeItems, sidebarRouteItems } from './routeConfig'
 import { LoginPage } from '../features/auth/pages/LoginPage'
 import { useAuth } from '../features/auth/useAuth'
 import type { AppRole } from '../features/auth/types/auth'
 
-const adminPaths = new Set(['/dashboard', '/buildings', '/contracts', '/utilities', '/tenants', '/invoices'])
+const adminPaths = new Set(['/dashboard', '/buildings', '/contracts', '/utilities', '/tenants', '/invoices', '/payments'])
 
 function getBasePath(pathname: string) {
   if (pathname.startsWith('/rooms/')) {
@@ -43,7 +44,7 @@ function canAccess(pathname: string, role: AppRole) {
 }
 
 function resolveProtectedPath(pathname: string, role: AppRole) {
-  const normalized = pathname === '/' ? homePathByRole(role) : pathname === '/payments' ? '/invoices' : pathname
+  const normalized = pathname === '/' ? homePathByRole(role) : pathname
   const found = normalized.startsWith('/rooms/') || routeItems.some((item) => normalized === item.path)
 
   if (!found) {
@@ -103,6 +104,7 @@ export function AppRoutes() {
     if (protectedPath.startsWith('/rooms/')) return <RoomDetailPage roomId={protectedPath.split('/')[2]} />
     if (protectedPath === '/tenants') return <TenantsPage />
     if (protectedPath === '/invoices') return <InvoicesPage />
+    if (protectedPath === '/payments') return <PaymentsPage />
     if (protectedPath === '/my-room') return <TenantRoomPage />
     return null
   }
