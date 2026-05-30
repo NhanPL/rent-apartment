@@ -6,6 +6,7 @@ import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
 import { parseBody } from '../../shared/utils/validation';
 import { assertRoomCanHostActiveContract, CURRENT_CONTRACT_STATUS, getContractRoomForManager } from './contracts.rules';
+import { assertTenantBelongsToManager } from '../tenants/tenants.repository';
 
 const router = Router();
 type DbRow = Record<string, any>;
@@ -104,35 +105,7 @@ router.post('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 
     if (b.tenants) {
       for (const t of b.tenants) {
-        const tenant = await client.query(
-          `SELECT tenant.id
-           FROM tenant
-           WHERE tenant.id=$1
-             AND tenant.status <> $2
-             AND (
-               NOT EXISTS (
-                 SELECT 1
-                 FROM contract_tenant ct_scope
-                 JOIN contract c_scope ON c_scope.id=ct_scope.contract_id
-                 WHERE ct_scope.tenant_id=tenant.id
-                   AND ct_scope.left_at IS NULL
-                   AND c_scope.status='ACTIVE'
-               )
-               OR EXISTS (
-                 SELECT 1
-                 FROM contract_tenant ct_scope
-                 JOIN contract c_scope ON c_scope.id=ct_scope.contract_id
-                 JOIN room r_scope ON r_scope.id=c_scope.room_id
-                 JOIN building b_scope ON b_scope.id=r_scope.building_id
-                 WHERE ct_scope.tenant_id=tenant.id
-                   AND ct_scope.left_at IS NULL
-                   AND c_scope.status='ACTIVE'
-                   AND b_scope.manager_user_id=$3
-               )
-             )`,
-          [t.tenant_id, 'DELETED', req.auth!.userId]
-        );
-        if (!tenant.rows[0]) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
+        await assertTenantBelongsToManager(client, t.tenant_id, req.auth!.userId);
 
         await client.query(
           `INSERT INTO contract_tenant(contract_id,tenant_id,is_primary,joined_at,left_at) VALUES($1,$2,$3,$4,$5)`,

@@ -1,6 +1,8 @@
 import { PoolClient } from 'pg';
+import { AppError } from '../../shared/errors/app-error';
 
 export interface TenantInsertPayload {
+  manager_user_id: string;
   full_name: string;
   dob: string | null;
   gender: string | null;
@@ -19,12 +21,36 @@ export const findTenantByIdentityNumber = async (client: PoolClient, identityNum
   return rs.rows[0] ?? null;
 };
 
+export const assertTenantBelongsToManager = async (
+  client: Pick<PoolClient, 'query'>,
+  tenantId: string,
+  managerId: string
+): Promise<{ id: string }> => {
+  const rs = await client.query<{ id: string }>(
+    `SELECT id
+     FROM tenant
+     WHERE id=$1
+       AND manager_user_id=$2
+       AND status <> 'DELETED'
+     LIMIT 1`,
+    [tenantId, managerId]
+  );
+
+  const tenant = rs.rows[0];
+  if (!tenant) {
+    throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
+  }
+
+  return tenant;
+};
+
 export const createTenantRecord = async (client: PoolClient, payload: TenantInsertPayload): Promise<{ id: string; full_name: string; email: string | null }> => {
   const rs = await client.query<{ id: string; full_name: string; email: string | null }>(
-    `INSERT INTO tenant(full_name,dob,gender,identity_number,identity_issued_date,identity_issued_place,email,phone,permanent_address,status,note)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+    `INSERT INTO tenant(manager_user_id,full_name,dob,gender,identity_number,identity_issued_date,identity_issued_place,email,phone,permanent_address,status,note)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
      RETURNING id, full_name, email`,
     [
+      payload.manager_user_id,
       payload.full_name,
       payload.dob,
       payload.gender,
