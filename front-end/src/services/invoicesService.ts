@@ -4,6 +4,10 @@ import { apiRequest } from './apiClient'
 import type {
   Building,
   Contract,
+  InvoiceDetail,
+  InvoiceGeneratePayload,
+  InvoiceGenerationResult,
+  InvoiceItem,
   InvoiceListItem,
   InvoiceListParams,
   InvoicePrefill,
@@ -46,6 +50,15 @@ type NumericInvoiceFields =
   | 'paid_amount'
 
 type InvoiceApiRow = Omit<InvoiceListItem, NumericInvoiceFields> & Record<NumericInvoiceFields, number | string | null>
+type InvoiceItemApiRow = Omit<InvoiceItem, 'quantity' | 'unit_price' | 'amount'> & {
+  quantity: number | string | null
+  unit_price: number | string | null
+  amount: number | string | null
+}
+type InvoiceDetailApiRow = InvoiceApiRow & {
+  items?: InvoiceItemApiRow[]
+  adjustments?: InvoiceDetail['adjustments']
+}
 
 const toNumber = (value: unknown): number => Number(value ?? 0)
 
@@ -67,6 +80,19 @@ const toInvoiceListItem = (row: InvoiceApiRow): InvoiceListItem => ({
   water_amount: toNumber(row.water_amount),
   other_fees: toNumber(row.other_fees),
   paid_amount: toNumber(row.paid_amount),
+})
+
+const toInvoiceItem = (row: InvoiceItemApiRow): InvoiceItem => ({
+  ...row,
+  quantity: toNumber(row.quantity),
+  unit_price: toNumber(row.unit_price),
+  amount: toNumber(row.amount),
+})
+
+const toInvoiceDetail = (row: InvoiceDetailApiRow): InvoiceDetail => ({
+  ...toInvoiceListItem(row),
+  items: row.items?.map(toInvoiceItem) ?? [],
+  adjustments: row.adjustments ?? [],
 })
 
 const toInvoicePayload = (payload: InvoiceUpsertPayload) => ({
@@ -146,9 +172,9 @@ export async function listInvoices(params: InvoiceListParams): Promise<InvoiceLi
     .sort((left, right) => dayjs(right.month).valueOf() - dayjs(left.month).valueOf())
 }
 
-export async function getInvoice(id: string): Promise<InvoiceListItem> {
-  const row = await apiRequest<InvoiceApiRow>(API_ROUTES.invoices.detail(id))
-  return toInvoiceListItem(row)
+export async function getInvoice(id: string): Promise<InvoiceDetail> {
+  const row = await apiRequest<InvoiceDetailApiRow>(API_ROUTES.invoices.detail(id))
+  return toInvoiceDetail(row)
 }
 
 export async function createInvoice(payload: InvoiceUpsertPayload): Promise<InvoiceListItem> {
@@ -169,6 +195,47 @@ export async function updateInvoice(id: string, payload: InvoiceUpsertPayload): 
 
 export function deleteInvoice(id: string): Promise<void> {
   return apiRequest<void>(API_ROUTES.invoices.detail(id), { method: 'DELETE' })
+}
+
+export async function generateInvoices(payload: InvoiceGeneratePayload): Promise<InvoiceGenerationResult> {
+  const route =
+    payload.scope === 'room'
+      ? API_ROUTES.invoices.generateRoom
+      : payload.scope === 'building'
+        ? API_ROUTES.invoices.generateBuilding
+        : API_ROUTES.invoices.generateAll
+
+  const body = {
+    month: dayjs(payload.month).startOf('month').format('YYYY-MM-DD'),
+    ...(payload.scope === 'room' ? { room_id: payload.room_id } : {}),
+    ...(payload.scope === 'building' ? { building_id: payload.building_id } : {}),
+  }
+  const response = await apiRequest<{
+    month: string
+    generated: InvoiceApiRow[]
+    skipped: InvoiceGenerationResult['skipped']
+    total: number
+  }>(route, { method: 'POST', body })
+
+  return {
+    ...response,
+    generated: response.generated.map(toInvoiceListItem),
+  }
+}
+
+export async function issueInvoice(id: string): Promise<InvoiceDetail> {
+  const row = await apiRequest<InvoiceDetailApiRow>(API_ROUTES.invoices.issue(id), { method: 'POST' })
+  return toInvoiceDetail(row)
+}
+
+export async function voidInvoice(id: string): Promise<InvoiceDetail> {
+  const row = await apiRequest<InvoiceDetailApiRow>(API_ROUTES.invoices.void(id), { method: 'POST' })
+  return toInvoiceDetail(row)
+}
+
+export async function markInvoiceOverdue(id: string): Promise<InvoiceDetail> {
+  const row = await apiRequest<InvoiceDetailApiRow>(API_ROUTES.invoices.markOverdue(id), { method: 'POST' })
+  return toInvoiceDetail(row)
 }
 
 export async function getInvoicesSummary(month: string): Promise<InvoiceSummary> {

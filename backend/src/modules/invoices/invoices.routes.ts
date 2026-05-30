@@ -7,9 +7,11 @@ import {
   createInvoiceFromReading,
   createManualInvoice,
   deleteManualInvoice,
+  generateInvoicesForScope,
   getInvoiceDetail,
   getInvoicePrefill,
   listInvoices,
+  updateInvoiceStatus,
   updateManualInvoice
 } from './invoices.service';
 import { parseBody } from '../../shared/utils/validation';
@@ -42,6 +44,12 @@ const invoiceAdjustmentSchema = z.object({
   reason: z.string().trim().min(1)
 });
 
+const invoiceGenerateSchema = z.object({
+  month: z.string().trim().min(1),
+  room_id: z.string().uuid().optional(),
+  building_id: z.string().uuid().optional()
+});
+
 router.get('/', asyncHandler(async (req, res) => {
   res.json(await listInvoices(req.auth!));
 }));
@@ -71,6 +79,33 @@ router.put('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 
 router.post('/from-reading/:utilityReadingId', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   res.status(201).json(await createInvoiceFromReading(req.params.utilityReadingId, req.auth!.userId));
+}));
+
+router.post('/generate/room', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  const body = parseBody(invoiceGenerateSchema.required({ room_id: true }).omit({ building_id: true }), req.body);
+  res.status(201).json(await generateInvoicesForScope(body, req.auth!.userId));
+}));
+
+router.post('/generate/building', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  const body = parseBody(invoiceGenerateSchema.required({ building_id: true }).omit({ room_id: true }), req.body);
+  res.status(201).json(await generateInvoicesForScope(body, req.auth!.userId));
+}));
+
+router.post('/generate/all', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  const body = parseBody(invoiceGenerateSchema.pick({ month: true }), req.body);
+  res.status(201).json(await generateInvoicesForScope(body, req.auth!.userId));
+}));
+
+router.post('/:id/issue', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  res.json(await updateInvoiceStatus(req.params.id, req.auth!.userId, 'issue'));
+}));
+
+router.post('/:id/void', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  res.json(await updateInvoiceStatus(req.params.id, req.auth!.userId, 'void'));
+}));
+
+router.post('/:id/mark-overdue', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  res.json(await updateInvoiceStatus(req.params.id, req.auth!.userId, 'mark-overdue'));
 }));
 
 router.post('/:id/adjustments', requireRole('MANAGER'), asyncHandler(async (req, res) => {

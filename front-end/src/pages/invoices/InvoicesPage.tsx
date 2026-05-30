@@ -4,8 +4,10 @@ import {
   EyeOutlined,
   PlusOutlined,
   ReloadOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons'
 import {
+  Alert,
   Button,
   Card,
   Descriptions,
@@ -32,12 +34,16 @@ import {
   deleteInvoice,
   getInvoice,
   getInvoicesSummary,
+  generateInvoices,
+  issueInvoice,
   listBuildings,
   listContracts,
   listInvoices,
   listRooms,
   listTenants,
+  markInvoiceOverdue,
   updateInvoice,
+  voidInvoice,
 } from '../../services/invoicesService'
 import {
   getInvoiceFormDefaultValues,
@@ -48,6 +54,8 @@ import { InvoiceFormFields } from './components/invoiceFormShared'
 import './components/invoiceFormShared.css'
 import type {
   Contract,
+  InvoiceDetail,
+  InvoiceGenerateScope,
   InvoiceListItem,
   InvoiceStatus,
   PaymentStatus,
@@ -76,6 +84,7 @@ export function InvoicesPage() {
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
   const [form] = Form.useForm<InvoiceFormValues>()
+  const [generateForm] = Form.useForm<{ scope: InvoiceGenerateScope; month: string; building_id?: string; room_id?: string }>()
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -102,7 +111,12 @@ export function InvoicesPage() {
   const [saveLoading, setSaveLoading] = useState(false)
 
   const [detailOpen, setDetailOpen] = useState(false)
-  const [detailItem, setDetailItem] = useState<InvoiceListItem | null>(null)
+  const [detailItem, setDetailItem] = useState<InvoiceDetail | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [generateOpen, setGenerateOpen] = useState(false)
+  const [generateLoading, setGenerateLoading] = useState(false)
+  const [generateResult, setGenerateResult] = useState<{ generated: number; skipped: number; total: number } | null>(null)
+  const [statusActionLoading, setStatusActionLoading] = useState<string | null>(null)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearch(searchInput), 300)
@@ -221,10 +235,38 @@ export function InvoicesPage() {
     setDrawerOpen(true)
   }, [form])
 
-  const openDetail = useCallback(async (id: string) => {
-    const row = await getInvoice(id)
-    setDetailItem(row)
+  const openDetail = useCallback(async (id: string, syncUrl = true) => {
+    if (syncUrl) {
+      window.history.pushState(null, '', `/invoices?invoiceId=${encodeURIComponent(id)}`)
+    }
     setDetailOpen(true)
+    setDetailLoading(true)
+    try {
+      const row = await getInvoice(id)
+      setDetailItem(row)
+    } catch {
+      message.error('Unable to load invoice detail.')
+      setDetailOpen(false)
+    } finally {
+      setDetailLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    const invoiceId = new URLSearchParams(window.location.search).get('invoiceId')
+    if (invoiceId) {
+      void openDetail(invoiceId, false)
+    }
+  }, [openDetail])
+
+  const closeDetail = useCallback(() => {
+    setDetailOpen(false)
+    const params = new URLSearchParams(window.location.search)
+    if (params.has('invoiceId')) {
+      params.delete('invoiceId')
+      const queryString = params.toString()
+      window.history.pushState(null, '', `/invoices${queryString ? `?${queryString}` : ''}`)
+    }
   }, [])
 
   const onSave = useCallback(async () => {
@@ -285,6 +327,55 @@ export function InvoicesPage() {
     })
   }, [loadData])
 
+  const openGenerate = useCallback(() => {
+    setGenerateResult(null)
+    generateForm.resetFields()
+    generateForm.setFieldsValue({ scope: 'all', month: dayjs().format('YYYY-MM') })
+    setGenerateOpen(true)
+  }, [generateForm])
+
+  const selectedGenerateScope = Form.useWatch('scope', generateForm)
+  const selectedGenerateBuilding = Form.useWatch('building_id', generateForm)
+  const generateRoomOptions = useMemo(() => {
+    if (!selectedGenerateBuilding) return rooms
+    return rooms.filter((room) => room.building_id === selectedGenerateBuilding)
+  }, [rooms, selectedGenerateBuilding])
+
+  const onGenerate = useCallback(async () => {
+    setGenerateLoading(true)
+    try {
+      const values = await generateForm.validateFields()
+      const result = await generateInvoices(values)
+      setGenerateResult({ generated: result.generated.length, skipped: result.skipped.length, total: result.total })
+      message.success(`Generated ${result.generated.length} invoice(s).`)
+      await loadData()
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Unable to generate invoices.')
+    } finally {
+      setGenerateLoading(false)
+    }
+  }, [generateForm, loadData])
+
+  const runStatusAction = useCallback(async (action: 'issue' | 'void' | 'overdue') => {
+    if (!detailItem) return
+    setStatusActionLoading(action)
+    try {
+      const updated =
+        action === 'issue'
+          ? await issueInvoice(detailItem.id)
+          : action === 'void'
+            ? await voidInvoice(detailItem.id)
+            : await markInvoiceOverdue(detailItem.id)
+      setDetailItem(updated)
+      await loadData()
+      message.success('Invoice status updated.')
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Unable to update invoice status.')
+    } finally {
+      setStatusActionLoading(null)
+    }
+  }, [detailItem, loadData])
+
   const columns: ColumnsType<InvoiceListItem> = [
     { title: 'Month', dataIndex: 'month', width: 110, render: (value: string) => dayjs(value).format('MM/YYYY') },
     { title: 'Building', dataIndex: 'building_name', width: 170 },
@@ -336,7 +427,10 @@ export function InvoicesPage() {
           <Typography.Title level={3} style={{ margin: 0 }}>Invoices</Typography.Title>
           <Typography.Text type="secondary">Manage monthly invoices from contracts, utility readings, and payment status.</Typography.Text>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Add Invoice</Button>
+        <Space wrap>
+          <Button icon={<ThunderboltOutlined />} onClick={openGenerate}>Generate Monthly</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Create Manual Invoice</Button>
+        </Space>
       </div>
 
       <Card>
@@ -404,26 +498,115 @@ export function InvoicesPage() {
         </Form>
       </Drawer>
 
-      <Drawer title="Invoice detail" placement="right" open={detailOpen} width={isMobile ? '100%' : 460} onClose={() => setDetailOpen(false)}>
-        {detailItem ? (
-          <Descriptions column={1} size="small" bordered>
-            <Descriptions.Item label="Month">{dayjs(detailItem.month).format('MM/YYYY')}</Descriptions.Item>
-            <Descriptions.Item label="Building">{detailItem.building_name}</Descriptions.Item>
-            <Descriptions.Item label="Room">{detailItem.room_code}</Descriptions.Item>
-            <Descriptions.Item label="Tenant">{detailItem.tenant_name}</Descriptions.Item>
-            <Descriptions.Item label="Invoice status"><Tag color={invoiceStatusOptions.find((item) => item.value === detailItem.status)?.color}>{detailItem.status}</Tag></Descriptions.Item>
-            <Descriptions.Item label="Payment status">{detailItem.payment_status ?? 'NO_PAYMENT'}</Descriptions.Item>
-            <Descriptions.Item label="Electric reading (prev/curr)">{`${detailItem.electricity_prev ?? 0} / ${detailItem.electricity_curr ?? 0}`}</Descriptions.Item>
-            <Descriptions.Item label="Water reading (prev/curr)">{`${detailItem.water_prev ?? 0} / ${detailItem.water_curr ?? 0}`}</Descriptions.Item>
-            <Descriptions.Item label="Electric usage">{detailItem.electric_usage}</Descriptions.Item>
-            <Descriptions.Item label="Water usage">{detailItem.water_usage}</Descriptions.Item>
-            <Descriptions.Item label="Electric amount">{currency.format(detailItem.electric_amount)}</Descriptions.Item>
-            <Descriptions.Item label="Water amount">{currency.format(detailItem.water_amount)}</Descriptions.Item>
-            <Descriptions.Item label="Other fees">{currency.format(detailItem.other_fees)}</Descriptions.Item>
-            <Descriptions.Item label="Total">{currency.format(detailItem.total)}</Descriptions.Item>
-          </Descriptions>
-        ) : null}
+      <Drawer title="Invoice detail" placement="right" open={detailOpen} width={isMobile ? '100%' : 720} onClose={closeDetail}>
+        {detailLoading || !detailItem ? (
+          <Skeleton active paragraph={{ rows: 8 }} />
+        ) : (
+          <Space direction="vertical" size={16} style={{ width: '100%' }}>
+            <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
+              <Space direction="vertical" size={2}>
+                <Typography.Text strong>{detailItem.building_name} / Room {detailItem.room_code}</Typography.Text>
+                <Typography.Text type="secondary">{dayjs(detailItem.month).format('MM/YYYY')}</Typography.Text>
+              </Space>
+              <Space wrap>
+                <Button loading={statusActionLoading === 'issue'} disabled={detailItem.status === 'PAID' || detailItem.status === 'VOID'} onClick={() => void runStatusAction('issue')}>Issue</Button>
+                <Button loading={statusActionLoading === 'overdue'} disabled={detailItem.status !== 'ISSUED'} onClick={() => void runStatusAction('overdue')}>Mark overdue</Button>
+                <Button danger loading={statusActionLoading === 'void'} disabled={detailItem.status === 'PAID' || detailItem.status === 'VOID'} onClick={() => void runStatusAction('void')}>Void</Button>
+              </Space>
+            </Space>
+            <Descriptions column={isMobile ? 1 : 2} size="small" bordered>
+              <Descriptions.Item label="Tenant">{detailItem.tenant_name}</Descriptions.Item>
+              <Descriptions.Item label="Invoice status"><Tag color={invoiceStatusOptions.find((item) => item.value === detailItem.status)?.color}>{detailItem.status}</Tag></Descriptions.Item>
+              <Descriptions.Item label="Payment status">{detailItem.payment_status ?? 'NO_PAYMENT'}</Descriptions.Item>
+              <Descriptions.Item label="Due date">{detailItem.due_date ? dayjs(detailItem.due_date).format('DD/MM/YYYY') : '-'}</Descriptions.Item>
+              <Descriptions.Item label="Subtotal">{currency.format(detailItem.subtotal)}</Descriptions.Item>
+              <Descriptions.Item label="Discount">{currency.format(detailItem.discount)}</Descriptions.Item>
+              <Descriptions.Item label="Paid">{currency.format(detailItem.paid_amount)}</Descriptions.Item>
+              <Descriptions.Item label="Total">{currency.format(detailItem.total)}</Descriptions.Item>
+              <Descriptions.Item label="Note" span={isMobile ? 1 : 2}>{detailItem.note ?? '-'}</Descriptions.Item>
+            </Descriptions>
+            <Table
+              rowKey="id"
+              size="small"
+              pagination={false}
+              dataSource={detailItem.items}
+              columns={[
+                { title: 'Item', dataIndex: 'name' },
+                { title: 'Qty', dataIndex: 'quantity', align: 'right' },
+                { title: 'Unit price', dataIndex: 'unit_price', align: 'right', render: (value: number) => currency.format(value) },
+                { title: 'Amount', dataIndex: 'amount', align: 'right', render: (value: number) => currency.format(value) },
+                { title: 'Source', render: (_, item) => String(item.meta?.source ?? '-') },
+              ]}
+            />
+            {detailItem.adjustments.length > 0 ? (
+              <Card size="small" title="Adjustments">
+                <Table
+                  rowKey="id"
+                  size="small"
+                  pagination={false}
+                  dataSource={detailItem.adjustments}
+                  columns={[
+                    { title: 'Type', dataIndex: 'adjustment_type' },
+                    { title: 'Amount', dataIndex: 'amount', align: 'right', render: (value: number) => currency.format(value) },
+                    { title: 'Reason', dataIndex: 'reason' },
+                  ]}
+                />
+              </Card>
+            ) : null}
+          </Space>
+        )}
       </Drawer>
+
+      <Modal
+        open={generateOpen}
+        title="Generate monthly invoices"
+        okText="Generate"
+        confirmLoading={generateLoading}
+        onOk={() => void onGenerate()}
+        onCancel={() => setGenerateOpen(false)}
+        destroyOnClose
+      >
+        <Form form={generateForm} layout="vertical" initialValues={{ scope: 'all', month: dayjs().format('YYYY-MM') }}>
+          <Form.Item name="scope" label="Scope" rules={[{ required: true }]}>
+            <Select
+              options={[
+                { label: 'All active contracts', value: 'all' },
+                { label: 'Building', value: 'building' },
+                { label: 'Room', value: 'room' },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item name="month" label="Month" rules={[{ required: true, message: 'Please select month' }]}>
+            <Input type="month" />
+          </Form.Item>
+          {selectedGenerateScope === 'building' || selectedGenerateScope === 'room' ? (
+            <Form.Item name="building_id" label="Building" rules={[{ required: true, message: 'Please select building' }]}>
+              <Select
+                options={buildings.map((item) => ({ label: item.name, value: item.id }))}
+                onChange={() => generateForm.setFieldValue('room_id', undefined)}
+              />
+            </Form.Item>
+          ) : null}
+          {selectedGenerateScope === 'room' ? (
+            <Form.Item name="room_id" label="Room" rules={[{ required: true, message: 'Please select room' }]}>
+              <Select options={generateRoomOptions.map((item) => ({ label: item.code, value: item.id }))} />
+            </Form.Item>
+          ) : null}
+          <Alert
+            showIcon
+            type="info"
+            message="Generation requires an approved utility reading and an effective utility rate for each contract/month."
+          />
+          {generateResult ? (
+            <Alert
+              showIcon
+              type={generateResult.skipped > 0 ? 'warning' : 'success'}
+              style={{ marginTop: 12 }}
+              message={`Generated ${generateResult.generated}/${generateResult.total}; skipped ${generateResult.skipped}.`}
+            />
+          ) : null}
+        </Form>
+      </Modal>
     </Space>
   )
 }

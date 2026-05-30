@@ -60,7 +60,7 @@ const mapInvoiceToMonthlyBill = (invoice: InvoiceDetail): MonthlyBill => {
   const rent = getInvoiceItem(invoice, 'ROOM_RENT')
   const electricity = getInvoiceItem(invoice, 'ELECTRICITY')
   const water = getInvoiceItem(invoice, 'WATER')
-  const knownItemTotal = invoice.items.reduce((sum, item) => sum + toNumber(item.amount), 0)
+  const other = getInvoiceItem(invoice, 'OTHER')
 
   return {
     id: invoice.id,
@@ -74,7 +74,7 @@ const mapInvoiceToMonthlyBill = (invoice: InvoiceDetail): MonthlyBill => {
     electric_unit_price: toNumber(electricity?.unit_price),
     water_unit_price: toNumber(water?.unit_price),
     rent_amount: toNumber(rent?.amount),
-    other_fees: Math.max(0, toNumber(invoice.subtotal) - knownItemTotal),
+    other_fees: toNumber(other?.amount),
     discount: toNumber(invoice.discount),
     electric_usage: toNumber(electricity?.quantity),
     water_usage: toNumber(water?.quantity),
