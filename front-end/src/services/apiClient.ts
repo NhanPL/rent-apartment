@@ -1,7 +1,8 @@
 import { clearAuthStorage, getAccessToken, getRefreshToken, setTokens } from '../features/auth/authStorage'
 import { API_ROUTES } from './apiRoutes'
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? 'http://localhost:5000/api'
+const apiBaseUrlFromEnv = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim()
+const API_BASE_URL = apiBaseUrlFromEnv ? apiBaseUrlFromEnv.replace(/\/$/, '') : 'http://localhost:4000/api'
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
