@@ -27,6 +27,12 @@ export const API_ROUTES = {
     detail: (id: string) => `/invoices/${id}`,
     prefill: '/invoices/prefill',
     fromReading: (utilityReadingId: string) => `/invoices/from-reading/${utilityReadingId}`,
+    generateRoom: '/invoices/generate/room',
+    generateBuilding: '/invoices/generate/building',
+    generateAll: '/invoices/generate/all',
+    issue: (id: string) => `/invoices/${id}/issue`,
+    void: (id: string) => `/invoices/${id}/void`,
+    markOverdue: (id: string) => `/invoices/${id}/mark-overdue`,
     adjustments: (id: string) => `/invoices/${id}/adjustments`,
   },
   payments: {

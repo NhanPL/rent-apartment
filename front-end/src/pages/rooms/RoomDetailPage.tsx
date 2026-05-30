@@ -1,4 +1,4 @@
-import { ArrowLeftOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, DeleteOutlined, EditOutlined, EyeOutlined } from '@ant-design/icons'
 import { Button, Card, Descriptions, Empty, Grid, Modal, Skeleton, Space, Table, Tag, Typography, message } from 'antd'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
@@ -72,6 +72,11 @@ export function RoomDetailPage({ roomId }: RoomDetailPageProps) {
 
   const query = useMemo(() => new URLSearchParams(window.location.search), [])
   const buildingId = query.get('buildingId')
+
+  const openInvoiceDetail = useCallback((invoiceId: string) => {
+    window.history.pushState(null, '', `/invoices?invoiceId=${encodeURIComponent(invoiceId)}`)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }, [])
 
   if (loading) {
     return <Skeleton active paragraph={{ rows: 12 }} />
@@ -166,6 +171,14 @@ export function RoomDetailPage({ roomId }: RoomDetailPageProps) {
                 title: 'Status',
                 dataIndex: 'invoice_status',
                 render: (value: MonthlyBill['invoice_status']) => <Tag color={billStatusColor[value]}>{value}</Tag>,
+              },
+              {
+                title: 'Actions',
+                fixed: 'right',
+                width: 90,
+                render: (_, record) => (
+                  <Button size="small" icon={<EyeOutlined />} onClick={() => openInvoiceDetail(record.id)} />
+                ),
               },
             ]}
           />

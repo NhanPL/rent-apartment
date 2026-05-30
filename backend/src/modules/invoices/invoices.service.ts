@@ -26,6 +26,12 @@ export interface InvoiceUpsertPayload {
   water_unit_price: number;
 }
 
+export interface InvoiceGeneratePayload {
+  month: string;
+  room_id?: string;
+  building_id?: string;
+}
+
 const calc = (q: number, p: number) => Number((q * p).toFixed(2));
 const toNumber = (value: unknown): number => Number(value ?? 0);
 const invoiceItemsSubtotal = (payload: InvoiceUpsertPayload) => {
@@ -180,18 +186,11 @@ const upsertUtilityReadingForInvoice = async (client: TxClient, payload: Invoice
   return created.rows[0];
 };
 
-const replaceInvoiceItems = async (client: TxClient, invoiceId: string, payload: InvoiceUpsertPayload, amounts: ReturnType<typeof invoiceItemsSubtotal>) => {
-  await client.query('DELETE FROM invoice_item WHERE invoice_id=$1', [invoiceId]);
-
-  const electricUsage = Math.max(0, payload.electricity_curr - payload.electricity_prev);
-  const waterUsage = Math.max(0, payload.water_curr - payload.water_prev);
-  const items = [
-    ['ROOM_RENT', 'Room rent', 1, payload.rent_amount, payload.rent_amount, { source: 'manual' }],
-    ['ELECTRICITY', 'Electricity', electricUsage, payload.electric_unit_price, amounts.electricAmount, { prev: payload.electricity_prev, curr: payload.electricity_curr }],
-    ['WATER', 'Water', waterUsage, payload.water_unit_price, amounts.waterAmount, { prev: payload.water_prev, curr: payload.water_curr }],
-    ['OTHER', 'Other fees', 1, payload.other_fees, payload.other_fees, { source: 'manual' }]
-  ];
-
+const insertInvoiceItems = async (
+  client: TxClient,
+  invoiceId: string,
+  items: Array<[string, string, number, number, number, Record<string, unknown>]>
+) => {
   for (const item of items) {
     await client.query(
       `INSERT INTO invoice_item(invoice_id,code,name,quantity,unit_price,amount,meta)
@@ -199,6 +198,162 @@ const replaceInvoiceItems = async (client: TxClient, invoiceId: string, payload:
       [invoiceId, item[0], item[1], item[2], item[3], item[4], item[5]]
     );
   }
+};
+
+const replaceInvoiceItems = async (client: TxClient, invoiceId: string, payload: InvoiceUpsertPayload, amounts: ReturnType<typeof invoiceItemsSubtotal>) => {
+  await client.query('DELETE FROM invoice_item WHERE invoice_id=$1', [invoiceId]);
+
+  const electricUsage = Math.max(0, payload.electricity_curr - payload.electricity_prev);
+  const waterUsage = Math.max(0, payload.water_curr - payload.water_prev);
+  const items: Array<[string, string, number, number, number, Record<string, unknown>]> = [
+    ['ROOM_RENT', 'Room rent', 1, payload.rent_amount, payload.rent_amount, { source: 'manual' }],
+    ['ELECTRICITY', 'Electricity', electricUsage, payload.electric_unit_price, amounts.electricAmount, { source: 'manual', prev: payload.electricity_prev, curr: payload.electricity_curr }],
+    ['WATER', 'Water', waterUsage, payload.water_unit_price, amounts.waterAmount, { source: 'manual', prev: payload.water_prev, curr: payload.water_curr }],
+    ['OTHER', 'Other fees', 1, payload.other_fees, payload.other_fees, { source: 'manual' }]
+  ];
+
+  await insertInvoiceItems(client, invoiceId, items);
+};
+
+const getDueDate = (month: string, billingDay: number) => {
+  const dueDate = new Date(`${month}T00:00:00.000Z`);
+  dueDate.setUTCDate(Math.min(Math.max(Number(billingDay || 1), 1), 28));
+  return dueDate.toISOString().slice(0, 10);
+};
+
+const generateInvoiceForContract = async (client: TxClient, contract: DbRow, month: string, managerId: string) => {
+  const duplicate = await client.query('SELECT id FROM invoice WHERE contract_id=$1 AND month=$2 LIMIT 1', [contract.id, month]);
+  if (duplicate.rows[0]) {
+    return { skipped: true, contract_id: contract.id, room_id: contract.room_id, reason: 'INVOICE_ALREADY_EXISTS' };
+  }
+
+  const readingRs = await client.query<DbRow>(
+    `SELECT *
+     FROM utility_reading
+     WHERE room_id=$1 AND month=$2 AND status='APPROVED'
+     ORDER BY approved_at DESC NULLS LAST, created_at DESC
+     LIMIT 1`,
+    [contract.room_id, month]
+  );
+  const reading = readingRs.rows[0];
+  if (!reading) {
+    return { skipped: true, contract_id: contract.id, room_id: contract.room_id, reason: 'APPROVED_READING_REQUIRED' };
+  }
+
+  const rateRs = await client.query<DbRow>(
+    `SELECT *
+     FROM utility_rate
+     WHERE building_id=$1 AND effective_from <= $2
+     ORDER BY effective_from DESC
+     LIMIT 1`,
+    [contract.building_id, month]
+  );
+  const rate = rateRs.rows[0];
+  if (!rate) {
+    return { skipped: true, contract_id: contract.id, room_id: contract.room_id, reason: 'UTILITY_RATE_REQUIRED' };
+  }
+
+  const electricUsage = Math.max(0, toNumber(reading.electricity_curr) - toNumber(reading.electricity_prev));
+  const waterUsage = Math.max(0, toNumber(reading.water_curr) - toNumber(reading.water_prev));
+  const rent = toNumber(contract.rent_price);
+  const electricAmount = calc(electricUsage, toNumber(rate.electricity_unit_price));
+  const waterAmount = calc(waterUsage, toNumber(rate.water_unit_price));
+  const subtotal = rent + electricAmount + waterAmount;
+
+  const created = await client.query<DbRow>(
+    `INSERT INTO invoice(contract_id, room_id, utility_reading_id, month, status, issued_at, due_date, note, subtotal, discount, total, approved_by_user_id, approved_at)
+     VALUES($1,$2,$3,$4,'ISSUED',now(),$5,$6,$7,0,$7,$8,now())
+     RETURNING *`,
+    [
+      contract.id,
+      contract.room_id,
+      reading.id,
+      month,
+      getDueDate(month, Number(contract.billing_day ?? 1)),
+      'Generated monthly invoice',
+      subtotal,
+      managerId
+    ]
+  );
+  const invoice = created.rows[0];
+
+  await insertInvoiceItems(client, invoice.id, [
+    ['ROOM_RENT', 'Room rent', 1, rent, rent, { source: 'generated:contract.rent_price', contract_id: contract.id }],
+    ['ELECTRICITY', 'Electricity', electricUsage, toNumber(rate.electricity_unit_price), electricAmount, { source: 'generated:utility_reading', reading_id: reading.id, rate_id: rate.id, prev: reading.electricity_prev, curr: reading.electricity_curr }],
+    ['WATER', 'Water', waterUsage, toNumber(rate.water_unit_price), waterAmount, { source: 'generated:utility_reading', reading_id: reading.id, rate_id: rate.id, prev: reading.water_prev, curr: reading.water_curr }]
+  ]);
+
+  await client.query(
+    `UPDATE utility_reading
+     SET status='INVOICED', verified_by_user_id=COALESCE(verified_by_user_id, $2), verified_at=COALESCE(verified_at, now())
+     WHERE id=$1`,
+    [reading.id, managerId]
+  );
+
+  return { skipped: false, invoice };
+};
+
+const getContractsForGeneration = async (client: TxClient, managerId: string, filters: { roomId?: string; buildingId?: string }) => {
+  const params: unknown[] = [managerId];
+  const conditions = [`c.status='ACTIVE'`, `b.manager_user_id=$1`];
+  if (filters.roomId) {
+    params.push(filters.roomId);
+    conditions.push(`c.room_id=$${params.length}`);
+  }
+  if (filters.buildingId) {
+    params.push(filters.buildingId);
+    conditions.push(`b.id=$${params.length}`);
+  }
+
+  const { rows } = await client.query<DbRow>(
+    `SELECT c.*, r.building_id, r.code AS room_code, b.name AS building_name
+     FROM contract c
+     JOIN room r ON r.id=c.room_id
+     JOIN building b ON b.id=r.building_id
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY b.name, r.code`,
+    params
+  );
+  return rows;
+};
+
+export const generateInvoicesForScope = async (payload: InvoiceGeneratePayload, managerId: string) => {
+  const month = firstDayOfMonth(payload.month);
+  return withTransaction(async (client) => {
+    const contracts = await getContractsForGeneration(client, managerId, { roomId: payload.room_id, buildingId: payload.building_id });
+    if (payload.room_id && contracts.length === 0) throw new AppError(404, 'Active contract not found for room', 'CONTRACT_NOT_FOUND');
+    if (payload.building_id && contracts.length === 0) throw new AppError(404, 'No active contracts found for building', 'CONTRACT_NOT_FOUND');
+    if (!payload.room_id && !payload.building_id && contracts.length === 0) throw new AppError(404, 'No active contracts found', 'CONTRACT_NOT_FOUND');
+
+    const generated: DbRow[] = [];
+    const skipped: DbRow[] = [];
+    for (const contract of contracts) {
+      const result = await generateInvoiceForContract(client, contract, month, managerId);
+      if (result.skipped) skipped.push(result);
+      else if (result.invoice) generated.push(result.invoice);
+    }
+
+    return { month, generated, skipped, total: contracts.length };
+  });
+};
+
+export const updateInvoiceStatus = async (invoiceId: string, managerId: string, action: 'issue' | 'void' | 'mark-overdue') => {
+  const updatedId = await withTransaction(async (client) => {
+    const invoice = await getScopedInvoiceForManager(client, invoiceId, managerId);
+    if (action === 'issue') {
+      if (invoice.status === 'VOID' || invoice.status === 'PAID') throw new AppError(409, 'Closed invoice cannot be issued', 'INVOICE_CLOSED');
+      await client.query(`UPDATE invoice SET status='ISSUED', issued_at=COALESCE(issued_at, now()) WHERE id=$1`, [invoiceId]);
+    } else if (action === 'void') {
+      if (invoice.status === 'PAID') throw new AppError(409, 'Paid invoice cannot be voided', 'INVOICE_PAID');
+      await client.query(`UPDATE invoice SET status='VOID' WHERE id=$1`, [invoiceId]);
+    } else {
+      if (invoice.status !== 'ISSUED') throw new AppError(409, 'Only issued invoices can be marked overdue', 'INVOICE_NOT_ISSUED');
+      await client.query(`UPDATE invoice SET status='OVERDUE' WHERE id=$1`, [invoiceId]);
+    }
+    return invoiceId;
+  });
+
+  return getInvoiceDetail(updatedId, { userId: managerId, role: 'MANAGER' });
 };
 
 export const createInvoiceFromReading = async (utilityReadingId: string, managerId: string) =>
@@ -246,19 +401,11 @@ export const createInvoiceFromReading = async (utilityReadingId: string, manager
     );
     const invoice = invRs.rows[0];
 
-    const items = [
-      ['ROOM_RENT', 'Room rent', 1, rent, rent, { source: 'contract.rent_price' }],
-      ['ELECTRICITY', 'Electricity', elecUsage, Number(rate.electricity_unit_price), elecAmount, { prev: reading.electricity_prev, curr: reading.electricity_curr }],
-      ['WATER', 'Water', waterUsage, Number(rate.water_unit_price), waterAmount, { prev: reading.water_prev, curr: reading.water_curr }]
-    ];
-
-    for (const item of items) {
-      await client.query(
-        `INSERT INTO invoice_item(invoice_id,code,name,quantity,unit_price,amount,meta)
-         VALUES($1,$2,$3,$4,$5,$6,$7)`,
-        [invoice.id, item[0], item[1], item[2], item[3], item[4], item[5]]
-      );
-    }
+    await insertInvoiceItems(client, invoice.id, [
+      ['ROOM_RENT', 'Room rent', 1, rent, rent, { source: 'generated:contract.rent_price', contract_id: contract.id }],
+      ['ELECTRICITY', 'Electricity', elecUsage, Number(rate.electricity_unit_price), elecAmount, { source: 'generated:utility_reading', reading_id: reading.id, rate_id: rate.id, prev: reading.electricity_prev, curr: reading.electricity_curr }],
+      ['WATER', 'Water', waterUsage, Number(rate.water_unit_price), waterAmount, { source: 'generated:utility_reading', reading_id: reading.id, rate_id: rate.id, prev: reading.water_prev, curr: reading.water_curr }]
+    ]);
 
     await client.query(`UPDATE utility_reading SET status='INVOICED' WHERE id=$1`, [reading.id]);
 

@@ -151,21 +151,27 @@ function toInvoiceSummary(row: Record<string, unknown>): InvoiceSummary {
     total: number
     subtotal?: number
     payment_request_status?: PaymentStatus | null
+    payment_status?: PaymentStatus | null
+    paid_at?: string | null
+    rent_amount?: number | string | null
+    electric_amount?: number | string | null
+    water_amount?: number | string | null
+    other_amount?: number | string | null
   }
 
   return {
     id: invoice.id,
     month: invoice.month,
     status: invoice.status,
-    payment_status: invoice.payment_request_status ?? null,
+    payment_status: invoice.payment_status ?? invoice.payment_request_status ?? null,
     due_date: invoice.due_date ?? null,
     issued_at: invoice.issued_at ?? null,
-    paid_at: null,
-    rent_amount: 0,
-    electric_amount: 0,
-    water_amount: 0,
-    other_amount: 0,
-    total: invoice.total ?? invoice.subtotal ?? 0,
+    paid_at: invoice.paid_at ?? null,
+    rent_amount: Number(invoice.rent_amount ?? 0),
+    electric_amount: Number(invoice.electric_amount ?? 0),
+    water_amount: Number(invoice.water_amount ?? 0),
+    other_amount: Number(invoice.other_amount ?? 0),
+    total: Number(invoice.total ?? invoice.subtotal ?? 0),
   }
 }
 

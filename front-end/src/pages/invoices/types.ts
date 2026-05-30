@@ -80,6 +80,17 @@ export interface InvoiceItem {
   quantity: number
   unit_price: number
   amount: number
+  meta?: Record<string, unknown> | null
+}
+
+export interface InvoiceAdjustment {
+  id: string
+  invoice_id: string
+  adjustment_type: string
+  amount: number
+  reason: string
+  created_by_user_id: string | null
+  created_at: string
 }
 
 export interface Payment {
@@ -124,6 +135,11 @@ export interface InvoiceListItem extends Invoice {
   payment_status: PaymentStatus | null
 }
 
+export interface InvoiceDetail extends InvoiceListItem {
+  items: InvoiceItem[]
+  adjustments: InvoiceAdjustment[]
+}
+
 export interface InvoiceUpsertPayload {
   contract_id: string
   room_id: string
@@ -148,6 +164,22 @@ export interface InvoiceSummary {
   paidInvoices: number
   unpaidInvoices: number
   totalRevenue: number
+}
+
+export type InvoiceGenerateScope = 'room' | 'building' | 'all'
+
+export interface InvoiceGeneratePayload {
+  scope: InvoiceGenerateScope
+  month: string
+  room_id?: string
+  building_id?: string
+}
+
+export interface InvoiceGenerationResult {
+  month: string
+  generated: InvoiceListItem[]
+  skipped: Array<{ contract_id: string; room_id: string; reason: string }>
+  total: number
 }
 
 export interface InvoicePrefill {
