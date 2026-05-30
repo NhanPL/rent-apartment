@@ -1,7 +1,7 @@
 import dayjs from 'dayjs'
 import { apiRequest } from './apiClient'
 import { API_ROUTES } from './apiRoutes'
-import { getPaymentRequest, submitPaymentProof, type PaymentProofPayload, type PaymentRequest, type PaymentRequestStatus } from './paymentsService'
+import { getPaymentRequest, submitPaymentProof, type PaymentProofPayload, type PaymentRecord, type PaymentRequest, type PaymentRequestStatus } from './paymentsService'
 
 export type ContractStatus = 'DRAFT' | 'ACTIVE' | 'ENDED' | 'CANCELLED'
 export type RoomStatus = 'ACTIVE' | 'MAINTENANCE' | 'INACTIVE'
@@ -92,11 +92,31 @@ export interface InvoiceSummary {
   due_date: string | null
   issued_at: string | null
   paid_at: string | null
+  paid_amount: number
   rent_amount: number
   electric_amount: number
   water_amount: number
   other_amount: number
   total: number
+}
+
+export interface InvoiceItem {
+  id: string
+  invoice_id: string
+  code: string
+  name: string
+  quantity: number
+  unit_price: number
+  amount: number
+  meta?: Record<string, unknown> | null
+}
+
+export interface InvoiceDetail extends InvoiceSummary {
+  subtotal: number
+  discount: number
+  note: string | null
+  items: InvoiceItem[]
+  payments: PaymentRecord[]
 }
 
 export interface UtilityReadingSnapshot {
@@ -129,14 +149,23 @@ export interface UtilityEvidenceSubmitPayload {
 
 interface TenantRoomRow {
   tenant_id: string
+  tenant_user_id: string | null
   tenant_name: string
+  tenant_gender: string | null
+  tenant_phone: string
+  tenant_status: Tenant['status']
   room_id: string
   room_code: string
   room_status: RoomStatus
   room_floor: number | null
   room_area_m2: number | null
+  room_note: string | null
+  base_rent: number | string
+  max_occupants: number | string
   building_id: string
+  building_code: string
   building_name: string
+  manager_user_id: string
   contract_id: string
   contract_status: ContractStatus
   start_date: string
@@ -157,6 +186,7 @@ function toInvoiceSummary(row: Record<string, unknown>): InvoiceSummary {
     payment_request_status?: PaymentRequestStatus | null
     payment_status?: PaymentStatus | null
     paid_at?: string | null
+    paid_amount?: number | string | null
     rent_amount?: number | string | null
     electric_amount?: number | string | null
     water_amount?: number | string | null
@@ -173,11 +203,54 @@ function toInvoiceSummary(row: Record<string, unknown>): InvoiceSummary {
     due_date: invoice.due_date ?? null,
     issued_at: invoice.issued_at ?? null,
     paid_at: invoice.paid_at ?? null,
+    paid_amount: Number(invoice.paid_amount ?? 0),
     rent_amount: Number(invoice.rent_amount ?? 0),
     electric_amount: Number(invoice.electric_amount ?? 0),
     water_amount: Number(invoice.water_amount ?? 0),
     other_amount: Number(invoice.other_amount ?? 0),
     total: Number(invoice.total ?? invoice.subtotal ?? 0),
+  }
+}
+
+function toInvoiceItem(row: Record<string, unknown>): InvoiceItem {
+  const item = row as unknown as InvoiceItem & {
+    quantity?: number | string | null
+    unit_price?: number | string | null
+    amount?: number | string | null
+  }
+
+  return {
+    ...item,
+    quantity: Number(item.quantity ?? 0),
+    unit_price: Number(item.unit_price ?? 0),
+    amount: Number(item.amount ?? 0),
+  }
+}
+
+function toPaymentRecord(row: Record<string, unknown>): PaymentRecord {
+  const payment = row as unknown as PaymentRecord & { amount?: number | string | null }
+  return {
+    ...payment,
+    amount: Number(payment.amount ?? 0),
+  }
+}
+
+function toInvoiceDetail(row: Record<string, unknown>): InvoiceDetail {
+  const invoice = row as Record<string, unknown> & {
+    subtotal?: number | string | null
+    discount?: number | string | null
+    note?: string | null
+    items?: Record<string, unknown>[]
+    payments?: Record<string, unknown>[]
+  }
+
+  return {
+    ...toInvoiceSummary(row),
+    subtotal: Number(invoice.subtotal ?? 0),
+    discount: Number(invoice.discount ?? 0),
+    note: invoice.note ?? null,
+    items: invoice.items?.map(toInvoiceItem) ?? [],
+    payments: invoice.payments?.map(toPaymentRecord) ?? [],
   }
 }
 
@@ -188,11 +261,11 @@ export async function getMyRoomContext(): Promise<TenantRoomContext | null> {
   return {
     tenant: {
       id: row.tenant_id,
-      user_id: null,
+      user_id: row.tenant_user_id,
       full_name: row.tenant_name,
-      gender: null,
-      phone: '',
-      status: 'ACTIVE',
+      gender: row.tenant_gender,
+      phone: row.tenant_phone,
+      status: row.tenant_status,
     },
     room: {
       id: row.room_id,
@@ -201,14 +274,14 @@ export async function getMyRoomContext(): Promise<TenantRoomContext | null> {
       floor: row.room_floor,
       area_m2: row.room_area_m2,
       status: row.room_status,
-      base_rent: row.rent_price,
-      max_occupants: 1,
-      note: null,
+      base_rent: Number(row.base_rent),
+      max_occupants: Number(row.max_occupants),
+      note: row.room_note,
     },
     building: {
       id: row.building_id,
-      manager_user_id: '',
-      code: row.building_name,
+      manager_user_id: row.manager_user_id,
+      code: row.building_code,
       name: row.building_name,
     },
     contract: {
@@ -223,14 +296,14 @@ export async function getMyRoomContext(): Promise<TenantRoomContext | null> {
 }
 
 export async function getMyRoommates(): Promise<RoommateSummary[]> {
-  const rows = await apiRequest<Array<{ id: string; full_name: string; gender: string | null; phone: string }>>(API_ROUTES.me.roommates)
+  const rows = await apiRequest<RoommateSummary[]>(API_ROUTES.me.roommates)
   return rows.map((row) => ({
-    tenant_id: row.id,
+    tenant_id: row.tenant_id,
     full_name: row.full_name,
     gender: row.gender,
     phone: row.phone,
-    joined_at: dayjs().format('YYYY-MM-DD'),
-    is_primary: false,
+    joined_at: row.joined_at,
+    is_primary: row.is_primary,
   }))
 }
 
@@ -242,6 +315,11 @@ export async function getCurrentMonthBill(): Promise<InvoiceSummary | null> {
 export async function listMyRecentBills(): Promise<InvoiceSummary[]> {
   const rows = await apiRequest<Array<Record<string, unknown>>>(API_ROUTES.me.paymentStatus)
   return rows.map(toInvoiceSummary)
+}
+
+export async function getMyInvoiceDetail(invoiceId: string): Promise<InvoiceDetail> {
+  const row = await apiRequest<Record<string, unknown>>(API_ROUTES.me.invoiceDetail(invoiceId))
+  return toInvoiceDetail(row)
 }
 
 export async function getCurrentAndPreviousUtilityReadings(roomId: string, month: string): Promise<UtilityReadingSnapshot> {

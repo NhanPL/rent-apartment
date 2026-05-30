@@ -3,6 +3,7 @@ import { query } from '../../db';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { firstDayOfMonth } from '../../shared/utils/date';
+import { AppError } from '../../shared/errors/app-error';
 
 const router = Router();
 router.use(requireRole('TENANT'));
@@ -13,8 +14,9 @@ const tenantInvoiceProjection = `
   COALESCE(electricity.amount, 0)::float AS electric_amount,
   COALESCE(water.amount, 0)::float AS water_amount,
   COALESCE(other_fee.amount, GREATEST(i.subtotal - COALESCE(room_rent.amount, 0) - COALESCE(electricity.amount, 0) - COALESCE(water.amount, 0), 0), 0)::float AS other_amount,
-  latest_payment.status AS payment_status,
-  latest_payment.paid_at
+  COALESCE(paid_payment.amount, 0)::float AS paid_amount,
+  COALESCE(latest_success_payment.status, latest_payment.status) AS payment_status,
+  latest_success_payment.paid_at
 `;
 
 const tenantInvoiceJoins = `
@@ -37,11 +39,54 @@ const tenantInvoiceJoins = `
     ORDER BY p.paid_at DESC NULLS LAST, p.created_at DESC
     LIMIT 1
   ) latest_payment ON true
+  LEFT JOIN LATERAL (
+    SELECT p.status, p.paid_at
+    FROM payment p
+    WHERE p.invoice_id=i.id AND p.status='SUCCEEDED'
+    ORDER BY p.paid_at DESC NULLS LAST, p.created_at DESC
+    LIMIT 1
+  ) latest_success_payment ON true
+  LEFT JOIN LATERAL (
+    SELECT COALESCE(SUM(p.amount), 0) AS amount
+    FROM payment p
+    WHERE p.invoice_id=i.id AND p.status='SUCCEEDED'
+  ) paid_payment ON true
 `;
 
 router.get('/room', asyncHandler(async (req, res) => {
   const { rows } = await query(
-    `SELECT * FROM vw_tenant_current_room WHERE tenant_id = (SELECT id FROM tenant WHERE user_id=$1)`,
+    `SELECT
+       t.id AS tenant_id,
+       t.user_id AS tenant_user_id,
+       t.full_name AS tenant_name,
+       t.gender AS tenant_gender,
+       t.phone AS tenant_phone,
+       t.status AS tenant_status,
+       r.id AS room_id,
+       r.building_id,
+       r.code AS room_code,
+       r.floor AS room_floor,
+       r.area_m2 AS room_area_m2,
+       r.status AS room_status,
+       r.base_rent,
+       r.max_occupants,
+       r.note AS room_note,
+       b.code AS building_code,
+       b.name AS building_name,
+       b.manager_user_id,
+       c.id AS contract_id,
+       c.status AS contract_status,
+       c.start_date,
+       c.move_in_date,
+       c.rent_price
+     FROM tenant t
+     JOIN contract_tenant ct ON ct.tenant_id=t.id AND ct.left_at IS NULL
+     JOIN contract c ON c.id=ct.contract_id AND c.status='ACTIVE'
+     JOIN room r ON r.id=c.room_id
+     JOIN building b ON b.id=r.building_id
+     WHERE t.user_id=$1
+     ORDER BY ct.joined_at DESC
+     LIMIT 1`,
     [req.auth!.userId]
   );
   res.json(rows[0] ?? null);
@@ -49,11 +94,23 @@ router.get('/room', asyncHandler(async (req, res) => {
 
 router.get('/roommates', asyncHandler(async (req, res) => {
   const { rows } = await query(
-    `SELECT t.* FROM tenant t
+    `SELECT
+       t.id AS tenant_id,
+       t.full_name,
+       t.gender,
+       t.phone,
+       ct.joined_at,
+       ct.is_primary
+     FROM tenant t
      JOIN contract_tenant ct ON ct.tenant_id=t.id AND ct.left_at IS NULL
      WHERE ct.contract_id = (
-      SELECT contract_id FROM vw_tenant_current_room WHERE tenant_id = (SELECT id FROM tenant WHERE user_id=$1)
-     )`,
+      SELECT contract_id
+      FROM vw_tenant_current_room
+      WHERE tenant_id = (SELECT id FROM tenant WHERE user_id=$1)
+      ORDER BY start_date DESC
+      LIMIT 1
+     )
+     ORDER BY ct.is_primary DESC, ct.joined_at ASC, t.full_name ASC`,
     [req.auth!.userId]
   );
   res.json(rows);
@@ -96,6 +153,33 @@ router.get('/payment-status', asyncHandler(async (req, res) => {
     [req.auth!.userId]
   );
   res.json(rows);
+}));
+
+router.get('/invoices/:id', asyncHandler(async (req, res) => {
+  const { rows } = await query(
+    `SELECT ${tenantInvoiceProjection}, pr.id AS payment_request_id, pr.status AS payment_request_status
+     FROM invoice i
+     JOIN vw_tenant_current_room v ON v.contract_id=i.contract_id
+     ${tenantInvoiceJoins}
+     LEFT JOIN payment_request pr ON pr.invoice_id=i.id
+     WHERE v.tenant_id=(SELECT id FROM tenant WHERE user_id=$1) AND i.id=$2`,
+    [req.auth!.userId, req.params.id]
+  );
+  const invoice = rows[0];
+  if (!invoice) throw new AppError(404, 'Invoice not found', 'INVOICE_NOT_FOUND');
+
+  const [items, payments] = await Promise.all([
+    query('SELECT * FROM invoice_item WHERE invoice_id=$1 ORDER BY created_at', [req.params.id]),
+    query(
+      `SELECT *
+       FROM payment
+       WHERE invoice_id=$1
+       ORDER BY paid_at DESC NULLS LAST, created_at DESC`,
+      [req.params.id]
+    )
+  ]);
+
+  res.json({ ...invoice, items: items.rows, payments: payments.rows });
 }));
 
 export default router;

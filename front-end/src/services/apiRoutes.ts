@@ -61,6 +61,7 @@ export const API_ROUTES = {
     room: '/me/room',
     roommates: '/me/roommates',
     currentBill: '/me/current-bill',
+    invoiceDetail: (id: string) => `/me/invoices/${id}`,
     utilityReadings: '/me/utility-readings',
     paymentStatus: '/me/payment-status',
   },
