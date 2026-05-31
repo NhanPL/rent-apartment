@@ -1,17 +1,19 @@
-import { TeamOutlined } from '@ant-design/icons'
-import { Alert, Button, Card, Col, Descriptions, Empty, Form, Grid, Input, InputNumber, List, Row, Select, Skeleton, Space, Statistic, Table, Tag, Typography, message } from 'antd'
+import { EyeOutlined, TeamOutlined } from '@ant-design/icons'
+import { Alert, Button, Card, Col, Descriptions, Drawer, Empty, Form, Grid, Input, InputNumber, List, Row, Select, Skeleton, Space, Statistic, Table, Tag, Typography, message } from 'antd'
 import dayjs from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
 import {
   attachMyUtilityReadingEvidence,
   getCurrentAndPreviousUtilityReadings,
   getCurrentMonthBill,
+  getMyInvoiceDetail,
   getMyPaymentRequest,
   getMyRoomContext,
   getMyRoommates,
   listMyRecentBills,
   submitMyPaymentProof,
   upsertMyUtilityReading,
+  type InvoiceDetail,
   type InvoiceSummary,
   type RoommateSummary,
   type UtilityEvidenceType,
@@ -96,6 +98,9 @@ export function TenantRoomPage() {
   const [currentBill, setCurrentBill] = useState<InvoiceSummary | null>(null)
   const [currentPaymentRequest, setCurrentPaymentRequest] = useState<PaymentRequest | null>(null)
   const [billHistory, setBillHistory] = useState<InvoiceSummary[]>([])
+  const [billDetail, setBillDetail] = useState<InvoiceDetail | null>(null)
+  const [billDetailOpen, setBillDetailOpen] = useState(false)
+  const [billDetailLoading, setBillDetailLoading] = useState(false)
   const [utilitySnapshot, setUtilitySnapshot] = useState<UtilityReadingSnapshot | null>(null)
   const [paymentProofSubmitting, setPaymentProofSubmitting] = useState(false)
 
@@ -162,7 +167,15 @@ export function TenantRoomPage() {
 
       setRoommates(roommatesData)
       setCurrentBill(currentBillData)
-      setCurrentPaymentRequest(currentBillData?.payment_request_id ? await getMyPaymentRequest(currentBillData.payment_request_id) : null)
+      if (currentBillData?.payment_request_id) {
+        try {
+          setCurrentPaymentRequest(await getMyPaymentRequest(currentBillData.payment_request_id))
+        } catch {
+          setCurrentPaymentRequest(null)
+        }
+      } else {
+        setCurrentPaymentRequest(null)
+      }
       setBillHistory(historyData)
       await hydrateFormByMonth(roomContext.room.id, selectedMonth)
     } finally {
@@ -271,6 +284,20 @@ export function TenantRoomPage() {
     }
   }
 
+  const openBillDetail = async (invoiceId: string) => {
+    setBillDetailOpen(true)
+    setBillDetailLoading(true)
+    setBillDetail(null)
+    try {
+      setBillDetail(await getMyInvoiceDetail(invoiceId))
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Unable to load invoice detail.')
+      setBillDetailOpen(false)
+    } finally {
+      setBillDetailLoading(false)
+    }
+  }
+
   if (loading) {
     return <Skeleton active paragraph={{ rows: 14 }} />
   }
@@ -328,6 +355,7 @@ export function TenantRoomPage() {
                   {currentBill.payment_request_status ? <Tag color={paymentRequestStatusColor[currentBill.payment_request_status]}>Request: {currentBill.payment_request_status}</Tag> : null}
                 </Space>
                 <Typography.Text type="secondary">Ngày thanh toán: {currentBill.paid_at ? dayjs(currentBill.paid_at).format('DD/MM/YYYY') : '-'}</Typography.Text>
+                <Typography.Text type="secondary">Đã thanh toán: {currency.format(currentBill.paid_amount)}</Typography.Text>
                 {!currentPaymentRequest ? (
                   <Alert showIcon type="info" message="Chưa có yêu cầu chuyển khoản cho hóa đơn này." />
                 ) : (
@@ -655,6 +683,7 @@ export function TenantRoomPage() {
           columns={[
             { title: 'Tháng', dataIndex: 'month', render: (value: string) => dayjs(value).format('MM/YYYY') },
             { title: 'Tổng tiền', dataIndex: 'total', align: 'right', render: (value: number) => currency.format(value) },
+            { title: 'Đã trả', dataIndex: 'paid_amount', align: 'right', render: (value: number) => currency.format(value) },
             { title: 'Hóa đơn', dataIndex: 'status', render: (value: InvoiceSummary['status']) => <Tag color={invoiceStatusColor[value]}>{value}</Tag> },
             {
               title: 'Thanh toán',
@@ -662,9 +691,71 @@ export function TenantRoomPage() {
               render: (value: InvoiceSummary['payment_status']) => (value ? <Tag color={paymentStatusColor[value]}>{value}</Tag> : '-'),
             },
             { title: 'Ngày thanh toán', dataIndex: 'paid_at', render: (value: string | null) => (value ? dayjs(value).format('DD/MM/YYYY') : '-') },
+            {
+              title: '',
+              key: 'actions',
+              width: 72,
+              render: (_, row) => <Button size="small" icon={<EyeOutlined />} onClick={() => void openBillDetail(row.id)} />,
+            },
           ]}
         />
       </Card>
+
+      <Drawer
+        title="Chi tiết hóa đơn"
+        placement="right"
+        open={billDetailOpen}
+        width={isMobile ? '100%' : 720}
+        onClose={() => {
+          setBillDetailOpen(false)
+          setBillDetail(null)
+        }}
+      >
+        {billDetailLoading || !billDetail ? (
+          <Skeleton active paragraph={{ rows: 8 }} />
+        ) : (
+          <Space direction="vertical" size={16} style={{ width: '100%' }}>
+            <Descriptions bordered size="small" column={isMobile ? 1 : 2}>
+              <Descriptions.Item label="Kỳ hóa đơn">{dayjs(billDetail.month).format('MM/YYYY')}</Descriptions.Item>
+              <Descriptions.Item label="Trạng thái"><Tag color={invoiceStatusColor[billDetail.status]}>{billDetail.status}</Tag></Descriptions.Item>
+              <Descriptions.Item label="Tạm tính">{currency.format(billDetail.subtotal)}</Descriptions.Item>
+              <Descriptions.Item label="Giảm trừ">{currency.format(billDetail.discount)}</Descriptions.Item>
+              <Descriptions.Item label="Tổng tiền">{currency.format(billDetail.total)}</Descriptions.Item>
+              <Descriptions.Item label="Đã trả">{currency.format(billDetail.paid_amount)}</Descriptions.Item>
+              <Descriptions.Item label="Hạn thanh toán">{billDetail.due_date ? dayjs(billDetail.due_date).format('DD/MM/YYYY') : '-'}</Descriptions.Item>
+              <Descriptions.Item label="Ngày thanh toán">{billDetail.paid_at ? dayjs(billDetail.paid_at).format('DD/MM/YYYY') : '-'}</Descriptions.Item>
+              <Descriptions.Item label="Ghi chú" span={isMobile ? 1 : 2}>{billDetail.note ?? '-'}</Descriptions.Item>
+            </Descriptions>
+            <Table
+              rowKey="id"
+              size="small"
+              pagination={false}
+              dataSource={billDetail.items}
+              columns={[
+                { title: 'Khoản mục', dataIndex: 'name' },
+                { title: 'SL', dataIndex: 'quantity', align: 'right' },
+                { title: 'Đơn giá', dataIndex: 'unit_price', align: 'right', render: (value: number) => currency.format(value) },
+                { title: 'Thành tiền', dataIndex: 'amount', align: 'right', render: (value: number) => currency.format(value) },
+              ]}
+            />
+            <Card size="small" title="Lịch sử thanh toán">
+              <Table
+                rowKey="id"
+                size="small"
+                pagination={false}
+                dataSource={billDetail.payments}
+                locale={{ emptyText: <Empty description="Chưa có thanh toán" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+                columns={[
+                  { title: 'Ngày', dataIndex: 'paid_at', render: (value: string | null) => (value ? dayjs(value).format('DD/MM/YYYY HH:mm') : '-') },
+                  { title: 'Số tiền', dataIndex: 'amount', align: 'right', render: (value: number) => currency.format(value) },
+                  { title: 'Phương thức', dataIndex: 'method' },
+                  { title: 'Trạng thái', dataIndex: 'status', render: (value: string) => <Tag>{value}</Tag> },
+                ]}
+              />
+            </Card>
+          </Space>
+        )}
+      </Drawer>
     </Space>
   )
 }
