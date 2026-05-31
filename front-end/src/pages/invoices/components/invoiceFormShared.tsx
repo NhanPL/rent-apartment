@@ -106,6 +106,7 @@ export function InvoiceFormFields({
           issued_at: prefill.issued_at,
           due_date: prefill.due_date ?? form.getFieldValue('due_date'),
           rent_amount: prefill.rent_amount,
+          other_fees: prefill.other_fees,
           electricity_prev: prefill.electricity_prev,
           electricity_curr: electricityCurr < prefill.electricity_prev ? prefill.electricity_prev : electricityCurr,
           water_prev: prefill.water_prev,

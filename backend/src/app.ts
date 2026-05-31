@@ -7,6 +7,7 @@ import utilityRatesRoutes from './modules/utility-rates/utility-rates.routes';
 import utilityReadingsRoutes from './modules/utility-readings/utility-readings.routes';
 import invoicesRoutes from './modules/invoices/invoices.routes';
 import paymentsRoutes from './modules/payments/payments.routes';
+import fixedChargesRoutes from './modules/fixed-charges/fixed-charges.routes';
 import meRoutes from './modules/me/me.routes';
 import uploadsRoutes from './modules/uploads/uploads.routes';
 import authRoutes from './modules/auth/auth.routes';
@@ -41,6 +42,7 @@ app.use('/api/utility-rates', utilityRatesRoutes);
 app.use('/api/utility-readings', utilityReadingsRoutes);
 app.use('/api/invoices', invoicesRoutes);
 app.use('/api/payments', paymentsRoutes);
+app.use('/api/fixed-charges', fixedChargesRoutes);
 app.use('/api/me', meRoutes);
 app.use('/api/uploads', uploadsRoutes);
 
