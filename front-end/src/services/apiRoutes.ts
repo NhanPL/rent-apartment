@@ -21,6 +21,7 @@ export const API_ROUTES = {
   contracts: {
     list: '/contracts',
     detail: (id: string) => `/contracts/${id}`,
+    documents: (id: string) => `/contracts/${id}/documents`,
   },
   invoices: {
     list: '/invoices',
@@ -72,6 +73,7 @@ export const API_ROUTES = {
   },
   me: {
     room: '/me/room',
+    documents: '/me/documents',
     roommates: '/me/roommates',
     currentBill: '/me/current-bill',
     invoiceDetail: (id: string) => `/me/invoices/${id}`,
@@ -79,6 +81,7 @@ export const API_ROUTES = {
     paymentStatus: '/me/payment-status',
   },
   uploads: {
+    signature: '/uploads/signature',
     metadata: '/uploads/metadata',
   },
 } as const

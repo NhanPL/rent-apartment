@@ -5,6 +5,7 @@ import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
 import { parseBody } from '../../shared/utils/validation';
+import { validateStoredUpload } from '../uploads/uploads.service';
 import { assertRoomCanHostActiveContract, CURRENT_CONTRACT_STATUS, getContractRoomForManager } from './contracts.rules';
 
 const router = Router();
@@ -48,6 +49,15 @@ const contractTenantUpdateSchema = z.object({
   is_primary: z.boolean().optional(),
   joined_at: z.string().trim().min(1).optional(),
   left_at: nullableString
+});
+
+const contractDocumentSchema = z.object({
+  doc_type: z.enum(['SIGNED_SCAN', 'ADDENDUM', 'TERMINATION', 'OTHER']),
+  file_name: z.string().trim().nullable().optional(),
+  file_url: z.string().trim().url(),
+  mime_type: z.string().trim().min(1),
+  file_size: z.coerce.number().int().positive(),
+  note: nullableString
 });
 
 const parseIntParam = (value: unknown, fallback: number): number => {
@@ -319,8 +329,41 @@ router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 
 router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const contract = await getScopedContract({ query }, req.params.id, req.auth!.userId);
-  const tenants = await getContractParticipants({ query }, req.params.id);
-  res.json({ ...contract, tenants });
+  const [tenants, documents] = await Promise.all([
+    getContractParticipants({ query }, req.params.id),
+    query(
+      `SELECT *
+       FROM contract_document
+       WHERE contract_id=$1
+       ORDER BY uploaded_at DESC NULLS LAST, created_at DESC`,
+      [req.params.id]
+    )
+  ]);
+  res.json({ ...contract, tenants, documents: documents.rows });
+}));
+
+router.post('/:id/documents', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  const body = parseBody(contractDocumentSchema, req.body);
+  validateStoredUpload('CONTRACT_DOCUMENT', body, req.auth!.role);
+  await getScopedContract({ query }, req.params.id, req.auth!.userId);
+
+  const { rows } = await query<DbRow>(
+    `INSERT INTO contract_document(contract_id,doc_type,file_name,file_url,mime_type,file_size,uploaded_by_user_id,note)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+     RETURNING *`,
+    [
+      req.params.id,
+      body.doc_type,
+      body.file_name ?? null,
+      body.file_url,
+      body.mime_type,
+      body.file_size,
+      req.auth!.userId,
+      body.note ?? null
+    ]
+  );
+
+  res.status(201).json(rows[0]);
 }));
 
 router.post('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {

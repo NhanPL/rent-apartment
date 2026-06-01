@@ -4,23 +4,29 @@ import dayjs from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
 import {
   attachMyUtilityReadingEvidence,
+  createMyDocument,
   getCurrentAndPreviousUtilityReadings,
   getCurrentMonthBill,
   getMyInvoiceDetail,
   getMyPaymentRequest,
   getMyRoomContext,
   getMyRoommates,
+  listMyDocuments,
   listMyRecentBills,
   submitMyPaymentProof,
   upsertMyUtilityReading,
   type InvoiceDetail,
   type InvoiceSummary,
   type RoommateSummary,
+  type TenantDocument,
+  type TenantDocumentType,
   type UtilityEvidenceType,
   type UtilityReadingSnapshot,
   type UtilityReadingStatus,
 } from '../../services/tenantRoomService'
 import type { PaymentRequest, PaymentRequestStatus } from '../../services/paymentsService'
+import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
+import type { UploadedCloudinaryFile } from '../../services/uploadService'
 
 interface UtilityFormValues {
   month: string
@@ -34,7 +40,7 @@ interface UtilityFormValues {
 interface EvidenceFormValues {
   evidence_type: UtilityEvidenceType
   file_name?: string
-  file_url: string
+  file_url?: string
   mime_type?: string
   file_size?: number
   note?: string
@@ -42,12 +48,21 @@ interface EvidenceFormValues {
 
 interface PaymentProofFormValues {
   file_name?: string
-  file_url: string
+  file_url?: string
   mime_type?: string
   file_size?: number
   transfer_amount?: number
   transfer_time?: string
   payer_note?: string
+}
+
+interface TenantDocumentFormValues {
+  doc_type: TenantDocumentType
+  file_name?: string
+  file_url?: string
+  mime_type?: string
+  file_size?: number
+  note?: string
 }
 
 const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
@@ -86,6 +101,23 @@ const utilityReadingStatusColor: Record<UtilityReadingStatus, string> = {
   INVOICED: 'blue',
 }
 
+const tenantDocumentTypeLabel: Record<TenantDocumentType, string> = {
+  IDENTITY_FRONT: 'CCCD mặt trước',
+  IDENTITY_BACK: 'CCCD mặt sau',
+  RESIDENCE: 'Giấy tờ cư trú',
+  OTHER: 'Khác',
+}
+
+const imageAccept = 'image/jpeg,image/png,image/webp'
+const documentAccept = `${imageAccept},application/pdf`
+
+const uploadedFileFields = (file: UploadedCloudinaryFile) => ({
+  file_name: file.file_name,
+  file_url: file.file_url,
+  mime_type: file.mime_type,
+  file_size: file.file_size,
+})
+
 export function TenantRoomPage() {
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
@@ -103,10 +135,13 @@ export function TenantRoomPage() {
   const [billDetailLoading, setBillDetailLoading] = useState(false)
   const [utilitySnapshot, setUtilitySnapshot] = useState<UtilityReadingSnapshot | null>(null)
   const [paymentProofSubmitting, setPaymentProofSubmitting] = useState(false)
+  const [tenantDocuments, setTenantDocuments] = useState<TenantDocument[]>([])
+  const [tenantDocumentSubmitting, setTenantDocumentSubmitting] = useState(false)
 
   const [form] = Form.useForm<UtilityFormValues>()
   const [evidenceForm] = Form.useForm<EvidenceFormValues>()
   const [paymentProofForm] = Form.useForm<PaymentProofFormValues>()
+  const [tenantDocumentForm] = Form.useForm<TenantDocumentFormValues>()
   const monthValue = Form.useWatch('month', form)
   const electricityPrev = Form.useWatch('electricity_prev', form)
   const electricityCurr = Form.useWatch('electricity_curr', form)
@@ -154,18 +189,21 @@ export function TenantRoomPage() {
         setCurrentPaymentRequest(null)
         setBillHistory([])
         setUtilitySnapshot(null)
+        setTenantDocuments([])
         return
       }
 
       const selectedMonth = form.getFieldValue('month') || dayjs().format('YYYY-MM')
 
-      const [roommatesData, currentBillData, historyData] = await Promise.all([
+      const [roommatesData, currentBillData, historyData, documentData] = await Promise.all([
         getMyRoommates(),
         getCurrentMonthBill(),
         listMyRecentBills(),
+        listMyDocuments(),
       ])
 
       setRoommates(roommatesData)
+      setTenantDocuments(documentData)
       setCurrentBill(currentBillData)
       if (currentBillData?.payment_request_id) {
         try {
@@ -239,12 +277,17 @@ export function TenantRoomPage() {
 
     setEvidenceSubmitting(true)
     try {
+      if (!values.file_url || !values.mime_type || !values.file_size) {
+        message.warning('Please upload evidence file before submitting.')
+        return
+      }
+
       await attachMyUtilityReadingEvidence(currentReading.id, {
         evidence_type: values.evidence_type,
         file_name: values.file_name?.trim() || null,
         file_url: values.file_url.trim(),
-        mime_type: values.mime_type?.trim() || null,
-        file_size: values.file_size ?? null,
+        mime_type: values.mime_type,
+        file_size: values.file_size,
         note: values.note?.trim() || null,
       })
       evidenceForm.resetFields()
@@ -265,11 +308,16 @@ export function TenantRoomPage() {
 
     setPaymentProofSubmitting(true)
     try {
+      if (!values.file_url || !values.mime_type || !values.file_size) {
+        message.warning('Please upload payment proof before submitting.')
+        return
+      }
+
       await submitMyPaymentProof(currentPaymentRequest.id, {
         file_name: values.file_name?.trim() || null,
         file_url: values.file_url.trim(),
-        mime_type: values.mime_type?.trim() || null,
-        file_size: values.file_size ?? null,
+        mime_type: values.mime_type,
+        file_size: values.file_size,
         transfer_amount: values.transfer_amount ?? null,
         transfer_time: values.transfer_time ? dayjs(values.transfer_time).toISOString() : null,
         payer_note: values.payer_note?.trim() || null,
@@ -281,6 +329,33 @@ export function TenantRoomPage() {
       message.error(error instanceof Error ? error.message : 'Unable to submit payment proof.')
     } finally {
       setPaymentProofSubmitting(false)
+    }
+  }
+
+  const handleTenantDocumentSubmit = async (values: TenantDocumentFormValues) => {
+    if (!values.file_url || !values.mime_type || !values.file_size) {
+      message.warning('Please upload a document file before saving.')
+      return
+    }
+
+    setTenantDocumentSubmitting(true)
+    try {
+      await createMyDocument({
+        doc_type: values.doc_type,
+        file_name: values.file_name?.trim() || null,
+        file_url: values.file_url.trim(),
+        mime_type: values.mime_type,
+        file_size: values.file_size,
+        note: values.note?.trim() || null,
+      })
+      tenantDocumentForm.resetFields()
+      tenantDocumentForm.setFieldValue('doc_type', 'IDENTITY_FRONT')
+      setTenantDocuments(await listMyDocuments())
+      message.success('Document uploaded')
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Unable to save document.')
+    } finally {
+      setTenantDocumentSubmitting(false)
     }
   }
 
@@ -402,6 +477,32 @@ export function TenantRoomPage() {
                                 <Input placeholder="image/jpeg" />
                               </Form.Item>
                             </Col>
+                            <Col xs={24}>
+                              <Form.Item label="Upload payment proof">
+                                <Space wrap>
+                                  <CloudinaryUploadButton
+                                    accept={imageAccept}
+                                    context="PAYMENT_PROOF"
+                                    onUploaded={(file) => paymentProofForm.setFieldsValue(uploadedFileFields(file))}
+                                  >
+                                    Upload file
+                                  </CloudinaryUploadButton>
+                                  <Form.Item noStyle shouldUpdate={(prev, next) => prev.file_url !== next.file_url || prev.file_name !== next.file_name}>
+                                    {({ getFieldValue }) => {
+                                      const fileUrl = getFieldValue('file_url') as string | undefined
+                                      const fileName = getFieldValue('file_name') as string | undefined
+                                      return fileUrl ? (
+                                        <Typography.Link href={fileUrl} target="_blank" rel="noreferrer">
+                                          {fileName || 'Uploaded file'}
+                                        </Typography.Link>
+                                      ) : (
+                                        <Typography.Text type="secondary">No file uploaded</Typography.Text>
+                                      )
+                                    }}
+                                  </Form.Item>
+                                </Space>
+                              </Form.Item>
+                            </Col>
                             <Col xs={24} md={8}>
                               <Form.Item name="file_size" label="Dung lượng file">
                                 <InputNumber min={0} precision={0} style={{ width: '100%' }} />
@@ -443,6 +544,89 @@ export function TenantRoomPage() {
             </List.Item>
           )}
         />
+      </Card>
+
+      <Card title="Personal documents">
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Form<TenantDocumentFormValues>
+            form={tenantDocumentForm}
+            layout="vertical"
+            initialValues={{ doc_type: 'IDENTITY_FRONT' }}
+            onFinish={handleTenantDocumentSubmit}
+          >
+            <Row gutter={[16, 8]}>
+              <Col xs={24} md={8}>
+                <Form.Item name="doc_type" label="Document type" rules={[{ required: true, message: 'Please select document type' }]}>
+                  <Select
+                    options={(Object.keys(tenantDocumentTypeLabel) as TenantDocumentType[]).map((value) => ({
+                      value,
+                      label: tenantDocumentTypeLabel[value],
+                    }))}
+                  />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={16}>
+                <Form.Item name="file_url" hidden rules={[{ required: true, message: 'Please upload document file' }]}>
+                  <Input />
+                </Form.Item>
+                <Form.Item name="file_name" hidden>
+                  <Input />
+                </Form.Item>
+                <Form.Item name="mime_type" hidden>
+                  <Input />
+                </Form.Item>
+                <Form.Item name="file_size" hidden>
+                  <InputNumber />
+                </Form.Item>
+                <Form.Item label="File" required>
+                  <Space wrap>
+                    <CloudinaryUploadButton
+                      accept={documentAccept}
+                      context="TENANT_DOCUMENT"
+                      onUploaded={(file) => tenantDocumentForm.setFieldsValue(uploadedFileFields(file))}
+                    >
+                      Upload file
+                    </CloudinaryUploadButton>
+                    <Form.Item noStyle shouldUpdate={(prev, next) => prev.file_url !== next.file_url || prev.file_name !== next.file_name}>
+                      {({ getFieldValue }) => {
+                        const fileUrl = getFieldValue('file_url') as string | undefined
+                        const fileName = getFieldValue('file_name') as string | undefined
+                        return fileUrl ? (
+                          <Typography.Link href={fileUrl} target="_blank" rel="noreferrer">
+                            {fileName || 'Uploaded file'}
+                          </Typography.Link>
+                        ) : (
+                          <Typography.Text type="secondary">No file uploaded</Typography.Text>
+                        )
+                      }}
+                    </Form.Item>
+                  </Space>
+                </Form.Item>
+              </Col>
+              <Col xs={24}>
+                <Form.Item name="note" label="Note">
+                  <Input.TextArea rows={2} />
+                </Form.Item>
+              </Col>
+            </Row>
+            <Button htmlType="submit" type="primary" loading={tenantDocumentSubmitting} block={isMobile}>
+              Save document
+            </Button>
+          </Form>
+
+          <List
+            dataSource={tenantDocuments}
+            locale={{ emptyText: 'No documents uploaded.' }}
+            renderItem={(item) => (
+              <List.Item actions={[<Typography.Link href={item.file_url} target="_blank" rel="noreferrer">Open</Typography.Link>]}>
+                <List.Item.Meta
+                  title={tenantDocumentTypeLabel[item.doc_type] ?? item.doc_type}
+                  description={`${item.file_name ?? 'Uploaded file'} - ${item.mime_type} - ${dayjs(item.uploaded_at).format('DD/MM/YYYY HH:mm')}`}
+                />
+              </List.Item>
+            )}
+          />
+        </Space>
       </Card>
 
       <Card title="Chỉ số điện / nước hiện tại">
@@ -645,6 +829,33 @@ export function TenantRoomPage() {
               <Col xs={24} md={8}>
                 <Form.Item name="mime_type" label="MIME type">
                   <Input placeholder="image/jpeg" disabled={currentReading.status === 'INVOICED'} />
+                </Form.Item>
+              </Col>
+              <Col xs={24}>
+                <Form.Item label="Upload evidence file">
+                  <Space wrap>
+                    <CloudinaryUploadButton
+                      accept={imageAccept}
+                      context="UTILITY_EVIDENCE"
+                      disabled={currentReading.status === 'INVOICED'}
+                      onUploaded={(file) => evidenceForm.setFieldsValue(uploadedFileFields(file))}
+                    >
+                      Upload file
+                    </CloudinaryUploadButton>
+                    <Form.Item noStyle shouldUpdate={(prev, next) => prev.file_url !== next.file_url || prev.file_name !== next.file_name}>
+                      {({ getFieldValue }) => {
+                        const fileUrl = getFieldValue('file_url') as string | undefined
+                        const fileName = getFieldValue('file_name') as string | undefined
+                        return fileUrl ? (
+                          <Typography.Link href={fileUrl} target="_blank" rel="noreferrer">
+                            {fileName || 'Uploaded file'}
+                          </Typography.Link>
+                        ) : (
+                          <Typography.Text type="secondary">No file uploaded</Typography.Text>
+                        )
+                      }}
+                    </Form.Item>
+                  </Space>
                 </Form.Item>
               </Col>
               <Col xs={24} md={8}>

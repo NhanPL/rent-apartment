@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { parseBody } from '../../shared/utils/validation';
+import { validateStoredUpload } from '../uploads/uploads.service';
 import {
   approveUtilityReading,
   attachUtilityReadingEvidence,
@@ -25,9 +26,9 @@ const utilityReadingCreateSchema = z.object({
 const utilityEvidenceSchema = z.object({
   evidence_type: z.enum(['ELECTRIC', 'WATER', 'OTHER']),
   file_name: z.string().trim().nullable().optional(),
-  file_url: z.string().trim().min(1),
-  mime_type: z.string().trim().nullable().optional(),
-  file_size: z.coerce.number().int().nonnegative().nullable().optional(),
+  file_url: z.string().trim().url(),
+  mime_type: z.string().trim().min(1),
+  file_size: z.coerce.number().int().positive(),
   note: z.string().trim().nullable().optional()
 });
 
@@ -63,6 +64,7 @@ router.post('/', requireRole('TENANT'), asyncHandler(async (req, res) => {
 
 router.post('/:id/evidence', asyncHandler(async (req, res) => {
   const body = parseBody(utilityEvidenceSchema, req.body);
+  validateStoredUpload('UTILITY_EVIDENCE', body, req.auth!.role);
   res.status(201).json(await attachUtilityReadingEvidence(req.params.id, body, req.auth!));
 }));
 

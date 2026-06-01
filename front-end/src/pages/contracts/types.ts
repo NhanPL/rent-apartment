@@ -33,6 +33,22 @@ export interface ContractTenant {
   identity_number: string | null
 }
 
+export type ContractDocumentType = 'SIGNED_SCAN' | 'ADDENDUM' | 'TERMINATION' | 'OTHER'
+
+export interface ContractDocument {
+  id: string
+  contract_id: string
+  doc_type: ContractDocumentType
+  file_name: string | null
+  file_url: string | null
+  mime_type: string | null
+  file_size: number | null
+  uploaded_by_user_id: string | null
+  uploaded_at: string | null
+  note: string | null
+  created_at: string
+}
+
 export interface ContractListItem {
   id: string
   room_id: string
@@ -60,6 +76,16 @@ export interface ContractListItem {
 export interface ContractDetail extends ContractListItem {
   max_occupants: number
   tenants: ContractTenant[]
+  documents: ContractDocument[]
+}
+
+export interface ContractDocumentPayload {
+  doc_type: ContractDocumentType
+  file_name?: string | null
+  file_url: string
+  mime_type: string
+  file_size: number
+  note?: string | null
 }
 
 export interface ContractListParams {

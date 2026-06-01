@@ -746,18 +746,54 @@ BEFORE UPDATE ON payment_transaction
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 -- ============================================================
--- 11) Contract documents
+-- 11) Tenant and contract documents
 -- ============================================================
+CREATE TABLE IF NOT EXISTS tenant_document (
+  id                    uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  tenant_id             uuid NOT NULL REFERENCES tenant(id) ON DELETE CASCADE,
+
+  doc_type              varchar(50) NOT NULL,
+  file_name             text,
+  file_url              text NOT NULL,
+  mime_type             varchar(100) NOT NULL,
+  file_size             bigint NOT NULL,
+
+  uploaded_by_user_id   uuid REFERENCES app_user(id) ON DELETE SET NULL,
+  uploaded_at           timestamptz NOT NULL DEFAULT now(),
+
+  note                  text,
+  created_at            timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT ck_tenant_document_type
+    CHECK (doc_type IN ('IDENTITY_FRONT', 'IDENTITY_BACK', 'RESIDENCE', 'OTHER')),
+  CONSTRAINT ck_tenant_document_file_size
+    CHECK (file_size > 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tenant_document_tenant ON tenant_document(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_tenant_document_type ON tenant_document(doc_type);
+
 CREATE TABLE IF NOT EXISTS contract_document (
-  id             uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
-  contract_id    uuid NOT NULL REFERENCES contract(id) ON DELETE CASCADE,
+  id                    uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  contract_id           uuid NOT NULL REFERENCES contract(id) ON DELETE CASCADE,
 
-  doc_type       varchar(50) NOT NULL,
-  file_name      text,
-  file_url       text,
-  content_json   jsonb,
+  doc_type              varchar(50) NOT NULL,
+  file_name             text,
+  file_url              text,
+  mime_type             varchar(100),
+  file_size             bigint,
+  content_json          jsonb,
 
-  created_at     timestamptz NOT NULL DEFAULT now()
+  uploaded_by_user_id   uuid REFERENCES app_user(id) ON DELETE SET NULL,
+  uploaded_at           timestamptz NOT NULL DEFAULT now(),
+
+  note                  text,
+  created_at            timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT ck_contract_document_type
+    CHECK (doc_type IN ('SIGNED_SCAN', 'ADDENDUM', 'TERMINATION', 'OTHER')),
+  CONSTRAINT ck_contract_document_file_size
+    CHECK (file_size IS NULL OR file_size > 0)
 );
 
 CREATE INDEX IF NOT EXISTS idx_contract_document_contract ON contract_document(contract_id);

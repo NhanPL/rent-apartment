@@ -5,6 +5,8 @@ import type {
   ContractClosePayload,
   ContractCreatePayload,
   ContractDetail,
+  ContractDocument,
+  ContractDocumentPayload,
   ContractListItem,
   ContractListParams,
   ContractTenant,
@@ -24,6 +26,7 @@ type ContractApiRow = Omit<ContractListItem, NumericContractFields> &
 type ContractApiDetail = ContractApiRow & {
   max_occupants: number | string | null
   tenants?: ContractTenant[]
+  documents?: ContractDocument[]
 }
 
 type RoomApiRow = Omit<RoomOption, NumericRoomFields> & Record<NumericRoomFields, number | string | null>
@@ -68,6 +71,10 @@ const toContractDetail = (row: ContractApiDetail): ContractDetail => ({
   }),
   max_occupants: toNumber(row.max_occupants, 1),
   tenants: row.tenants ?? [],
+  documents: row.documents?.map((document) => ({
+    ...document,
+    file_size: document.file_size === null || document.file_size === undefined ? null : toNumber(document.file_size),
+  })) ?? [],
 })
 
 const toQueryString = (params: ContractListParams): string => {
@@ -130,6 +137,10 @@ export function updateContractTenant(id: string, tenantId: string, payload: Omit
 export function removeContractTenant(id: string, tenantId: string, leftAt?: string): Promise<void> {
   const queryString = leftAt ? `?left_at=${encodeURIComponent(leftAt)}` : ''
   return apiRequest<void>(`${API_ROUTES.contracts.detail(id)}/tenants/${tenantId}${queryString}`, { method: 'DELETE' })
+}
+
+export function addContractDocument(id: string, payload: ContractDocumentPayload): Promise<ContractDocument> {
+  return apiRequest<ContractDocument>(API_ROUTES.contracts.documents(id), { method: 'POST', body: payload })
 }
 
 export function listBuildings(): Promise<BuildingOption[]> {

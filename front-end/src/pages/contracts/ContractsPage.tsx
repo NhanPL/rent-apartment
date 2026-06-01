@@ -30,6 +30,7 @@ import dayjs from 'dayjs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   activateContract,
+  addContractDocument,
   addContractTenant,
   cancelContract,
   createContract,
@@ -48,6 +49,8 @@ import type {
   ContractClosePayload,
   ContractCreatePayload,
   ContractDetail,
+  ContractDocument,
+  ContractDocumentType,
   ContractListItem,
   ContractStatus,
   ContractTenant,
@@ -55,6 +58,8 @@ import type {
   RoomOption,
   TenantOption,
 } from './types'
+import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
+import type { UploadedCloudinaryFile } from '../../services/uploadService'
 import './ContractsPage.css'
 
 interface ContractFormValues {
@@ -84,6 +89,15 @@ interface CloseContractFormValues {
   note?: string
 }
 
+interface ContractDocumentFormValues {
+  doc_type: ContractDocumentType
+  file_name?: string
+  file_url?: string
+  mime_type?: string
+  file_size?: number
+  note?: string
+}
+
 const statusOptions: { label: string; value: ContractStatus; color: string }[] = [
   { label: 'Draft', value: 'DRAFT', color: 'default' },
   { label: 'Active', value: 'ACTIVE', color: 'green' },
@@ -93,6 +107,21 @@ const statusOptions: { label: string; value: ContractStatus; color: string }[] =
 
 const closedStatuses = new Set<ContractStatus>(['ENDED', 'CANCELLED'])
 const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
+const documentAccept = 'image/jpeg,image/png,image/webp,application/pdf'
+
+const contractDocumentTypeLabel: Record<ContractDocumentType, string> = {
+  SIGNED_SCAN: 'Signed scan',
+  ADDENDUM: 'Addendum',
+  TERMINATION: 'Termination',
+  OTHER: 'Other',
+}
+
+const uploadedFileFields = (file: UploadedCloudinaryFile) => ({
+  file_name: file.file_name,
+  file_url: file.file_url,
+  mime_type: file.mime_type,
+  file_size: file.file_size,
+})
 
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -180,6 +209,7 @@ export function ContractsPage() {
   const [contractForm] = Form.useForm<ContractFormValues>()
   const [addTenantForm] = Form.useForm<AddTenantFormValues>()
   const [closeForm] = Form.useForm<CloseContractFormValues>()
+  const [documentForm] = Form.useForm<ContractDocumentFormValues>()
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -212,6 +242,7 @@ export function ContractsPage() {
 
   const [closeAction, setCloseAction] = useState<'end' | 'cancel' | null>(null)
   const [closeLoading, setCloseLoading] = useState(false)
+  const [documentSaving, setDocumentSaving] = useState(false)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearch(searchInput), 300)
@@ -539,6 +570,42 @@ export function ContractsPage() {
       setActionLoading(null)
     }
   }, [detailItem, refreshDetailAndList])
+
+  const submitContractDocument = useCallback(async () => {
+    if (!detailItem) {
+      return
+    }
+
+    setDocumentSaving(true)
+
+    try {
+      const values = await documentForm.validateFields()
+      if (!values.file_url || !values.mime_type || !values.file_size) {
+        message.warning('Please upload a contract document first')
+        return
+      }
+
+      await addContractDocument(detailItem.id, {
+        doc_type: values.doc_type,
+        file_name: nullableText(values.file_name),
+        file_url: values.file_url,
+        mime_type: values.mime_type,
+        file_size: values.file_size,
+        note: nullableText(values.note),
+      })
+      documentForm.resetFields()
+      documentForm.setFieldValue('doc_type', 'SIGNED_SCAN')
+      message.success('Contract document uploaded')
+      await refreshDetailAndList(detailItem.id)
+    } catch (error: unknown) {
+      const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
+      if (!formError.errorFields) {
+        message.error(error instanceof Error ? error.message : 'Unable to upload contract document')
+      }
+    } finally {
+      setDocumentSaving(false)
+    }
+  }, [detailItem, documentForm, refreshDetailAndList])
 
   const statusHistoryItems = useMemo(() => {
     if (!detailItem) {
@@ -981,6 +1048,90 @@ export function ContractsPage() {
               <Typography.Title level={5}>Status history</Typography.Title>
               <Timeline items={statusHistoryItems} />
             </div>
+
+            <Card size="small" title="Contract documents">
+              <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                <Form<ContractDocumentFormValues>
+                  form={documentForm}
+                  layout="vertical"
+                  initialValues={{ doc_type: 'SIGNED_SCAN' }}
+                >
+                  <div className="contract-tenant-form">
+                    <Form.Item name="doc_type" label="Document type" rules={[{ required: true, message: 'Please select document type' }]}>
+                      <Select
+                        options={(Object.keys(contractDocumentTypeLabel) as ContractDocumentType[]).map((value) => ({
+                          value,
+                          label: contractDocumentTypeLabel[value],
+                        }))}
+                      />
+                    </Form.Item>
+                    <Form.Item name="note" label="Note">
+                      <Input />
+                    </Form.Item>
+                    <Form.Item name="file_url" hidden rules={[{ required: true, message: 'Please upload a file' }]}>
+                      <Input />
+                    </Form.Item>
+                    <Form.Item name="file_name" hidden>
+                      <Input />
+                    </Form.Item>
+                    <Form.Item name="mime_type" hidden>
+                      <Input />
+                    </Form.Item>
+                    <Form.Item name="file_size" hidden>
+                      <InputNumber />
+                    </Form.Item>
+                    <Form.Item label="File" required>
+                      <Space wrap>
+                        <CloudinaryUploadButton
+                          accept={documentAccept}
+                          context="CONTRACT_DOCUMENT"
+                          onUploaded={(file) => documentForm.setFieldsValue(uploadedFileFields(file))}
+                        >
+                          Upload file
+                        </CloudinaryUploadButton>
+                        <Form.Item noStyle shouldUpdate={(prev, next) => prev.file_url !== next.file_url || prev.file_name !== next.file_name}>
+                          {({ getFieldValue }) => {
+                            const fileUrl = getFieldValue('file_url') as string | undefined
+                            const fileName = getFieldValue('file_name') as string | undefined
+                            return fileUrl ? (
+                              <Typography.Link href={fileUrl} target="_blank" rel="noreferrer">
+                                {fileName || 'Uploaded file'}
+                              </Typography.Link>
+                            ) : (
+                              <Typography.Text type="secondary">No file uploaded</Typography.Text>
+                            )
+                          }}
+                        </Form.Item>
+                      </Space>
+                    </Form.Item>
+                    <Button type="primary" loading={documentSaving} onClick={() => void submitContractDocument()}>
+                      Save document
+                    </Button>
+                  </div>
+                </Form>
+
+                <Table<ContractDocument>
+                  rowKey="id"
+                  size="small"
+                  pagination={false}
+                  dataSource={detailItem.documents}
+                  locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No documents uploaded" /> }}
+                  columns={[
+                    { title: 'Type', dataIndex: 'doc_type', render: (value: ContractDocumentType) => contractDocumentTypeLabel[value] ?? value },
+                    {
+                      title: 'File',
+                      dataIndex: 'file_url',
+                      render: (value: string | null, item) => value ? (
+                        <Typography.Link href={value} target="_blank" rel="noreferrer">
+                          {item.file_name ?? 'Open file'}
+                        </Typography.Link>
+                      ) : '-',
+                    },
+                    { title: 'Uploaded', dataIndex: 'uploaded_at', render: (value: string | null) => (value ? dayjs(value).format('DD/MM/YYYY HH:mm') : '-') },
+                  ]}
+                />
+              </Space>
+            </Card>
 
             <div className="contract-tenants-section">
               <div className="contract-section-title">

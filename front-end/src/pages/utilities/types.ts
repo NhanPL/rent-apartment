@@ -68,8 +68,8 @@ export interface UtilityEvidencePayload {
   evidence_type: UtilityEvidenceType
   file_name?: string | null
   file_url: string
-  mime_type?: string | null
-  file_size?: number | null
+  mime_type: string
+  file_size: number
   note?: string | null
 }
 
