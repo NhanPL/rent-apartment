@@ -6,6 +6,7 @@ import { DashboardPage } from '../pages/dashboard/DashboardPage'
 import { RoomDetailPage } from '../pages/rooms/RoomDetailPage'
 import { TenantsPage } from '../pages/tenants/TenantsPage'
 import { InvoicesPage } from '../pages/invoices/InvoicesPage'
+import { FixedChargesPage } from '../pages/fixed-charges/FixedChargesPage'
 import { TenantRoomPage } from '../pages/tenant-room/TenantRoomPage'
 import { UtilitiesPage } from '../pages/utilities/UtilitiesPage'
 import { PaymentsPage } from '../pages/payments/PaymentsPage'
@@ -14,7 +15,7 @@ import { LoginPage } from '../features/auth/pages/LoginPage'
 import { useAuth } from '../features/auth/useAuth'
 import type { AppRole } from '../features/auth/types/auth'
 
-const adminPaths = new Set(['/dashboard', '/buildings', '/contracts', '/utilities', '/tenants', '/invoices', '/payments'])
+const adminPaths = new Set(['/dashboard', '/buildings', '/contracts', '/utilities', '/fixed-charges', '/tenants', '/invoices', '/payments'])
 
 function getBasePath(pathname: string) {
   if (pathname.startsWith('/rooms/')) {
@@ -101,6 +102,7 @@ export function AppRoutes() {
     if (protectedPath === '/buildings') return <BuildingsPage />
     if (protectedPath === '/contracts') return <ContractsPage />
     if (protectedPath === '/utilities') return <UtilitiesPage />
+    if (protectedPath === '/fixed-charges') return <FixedChargesPage />
     if (protectedPath.startsWith('/rooms/')) return <RoomDetailPage roomId={protectedPath.split('/')[2]} />
     if (protectedPath === '/tenants') return <TenantsPage />
     if (protectedPath === '/invoices') return <InvoicesPage />

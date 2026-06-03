@@ -1,0 +1,63 @@
+.fixed-charges-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.fixed-charges-toolbar,
+.fixed-charges-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.fixed-charges-filters,
+.fixed-charges-preview-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 12px;
+}
+
+.fixed-charge-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 12px;
+}
+
+.fixed-charge-form-full {
+  grid-column: 1 / -1;
+}
+
+.fixed-charge-drawer-actions {
+  position: sticky;
+  bottom: 0;
+  padding: 12px 0;
+  background: #fff;
+  border-top: 1px solid #f0f0f0;
+}
+
+@media (max-width: 1199px) {
+  .fixed-charges-filters,
+  .fixed-charges-preview-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .fixed-charges-toolbar,
+  .fixed-charges-preview-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .fixed-charges-toolbar .ant-btn {
+    width: 100%;
+  }
+
+  .fixed-charges-filters,
+  .fixed-charges-preview-form,
+  .fixed-charge-form-grid {
+    grid-template-columns: 1fr;
+  }
+}

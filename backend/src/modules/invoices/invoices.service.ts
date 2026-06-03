@@ -1,6 +1,7 @@
 import { query, withTransaction } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
 import { firstDayOfMonth } from '../../shared/utils/date';
+import { resolveFixedChargesForContract, type ResolvedFixedCharge } from '../fixed-charges/fixed-charges.service';
 
 type DbRow = Record<string, any>;
 type AuthScope = { userId: string; role: 'MANAGER' | 'TENANT' };
@@ -34,6 +35,7 @@ export interface InvoiceGeneratePayload {
 
 const calc = (q: number, p: number) => Number((q * p).toFixed(2));
 const toNumber = (value: unknown): number => Number(value ?? 0);
+const fixedChargeItemCode = (chargeCode: string) => `FIXED_${chargeCode}`.slice(0, 50);
 const invoiceItemsSubtotal = (payload: InvoiceUpsertPayload) => {
   const electricAmount = calc(Math.max(0, payload.electricity_curr - payload.electricity_prev), payload.electric_unit_price);
   const waterAmount = calc(Math.max(0, payload.water_curr - payload.water_prev), payload.water_unit_price);
@@ -221,6 +223,29 @@ const getDueDate = (month: string, billingDay: number) => {
   return dueDate.toISOString().slice(0, 10);
 };
 
+const toFixedChargeInvoiceItems = (fixedCharges: ResolvedFixedCharge[]) =>
+  fixedCharges
+    .filter((item) => item.quantity > 0 && item.amount > 0)
+    .map((item): [string, string, number, number, number, Record<string, unknown>] => [
+      fixedChargeItemCode(item.charge_code),
+      item.charge_name,
+      item.quantity,
+      item.unit_price,
+      item.amount,
+      {
+        source: 'generated:fixed_charge',
+        charge_id: item.charge_id,
+        charge_code: item.charge_code,
+        charge_type: item.charge_type,
+        priority_source: item.source,
+        source_id: item.source_id,
+        effective_from: item.effective_from,
+        persons_count: item.persons_count,
+        vehicles_count: item.vehicles_count,
+        room_month_extra_id: item.room_month_extra_id
+      }
+    ]);
+
 const generateInvoiceForContract = async (client: TxClient, contract: DbRow, month: string, managerId: string) => {
   const duplicate = await client.query('SELECT id FROM invoice WHERE contract_id=$1 AND month=$2 LIMIT 1', [contract.id, month]);
   if (duplicate.rows[0]) {
@@ -258,7 +283,14 @@ const generateInvoiceForContract = async (client: TxClient, contract: DbRow, mon
   const rent = toNumber(contract.rent_price);
   const electricAmount = calc(electricUsage, toNumber(rate.electricity_unit_price));
   const waterAmount = calc(waterUsage, toNumber(rate.water_unit_price));
-  const subtotal = rent + electricAmount + waterAmount;
+  const fixedCharges = await resolveFixedChargesForContract(client, {
+    contractId: contract.id,
+    roomId: contract.room_id,
+    buildingId: contract.building_id,
+    month
+  });
+  const fixedChargesAmount = fixedCharges.reduce((sum, item) => sum + item.amount, 0);
+  const subtotal = rent + electricAmount + waterAmount + fixedChargesAmount;
 
   const created = await client.query<DbRow>(
     `INSERT INTO invoice(contract_id, room_id, utility_reading_id, month, status, issued_at, due_date, note, subtotal, discount, total, approved_by_user_id, approved_at)
@@ -280,7 +312,8 @@ const generateInvoiceForContract = async (client: TxClient, contract: DbRow, mon
   await insertInvoiceItems(client, invoice.id, [
     ['ROOM_RENT', 'Room rent', 1, rent, rent, { source: 'generated:contract.rent_price', contract_id: contract.id }],
     ['ELECTRICITY', 'Electricity', electricUsage, toNumber(rate.electricity_unit_price), electricAmount, { source: 'generated:utility_reading', reading_id: reading.id, rate_id: rate.id, prev: reading.electricity_prev, curr: reading.electricity_curr }],
-    ['WATER', 'Water', waterUsage, toNumber(rate.water_unit_price), waterAmount, { source: 'generated:utility_reading', reading_id: reading.id, rate_id: rate.id, prev: reading.water_prev, curr: reading.water_curr }]
+    ['WATER', 'Water', waterUsage, toNumber(rate.water_unit_price), waterAmount, { source: 'generated:utility_reading', reading_id: reading.id, rate_id: rate.id, prev: reading.water_prev, curr: reading.water_curr }],
+    ...toFixedChargeInvoiceItems(fixedCharges)
   ]);
 
   await client.query(
@@ -370,7 +403,12 @@ export const createInvoiceFromReading = async (utilityReadingId: string, manager
     if (reading.status !== 'APPROVED') throw new AppError(409, 'Reading must be APPROVED to invoice');
 
     const contractRs = await client.query<DbRow>(
-      `SELECT * FROM contract WHERE room_id=$1 AND status='ACTIVE' ORDER BY start_date DESC LIMIT 1`,
+      `SELECT c.*, r.building_id
+       FROM contract c
+       JOIN room r ON r.id=c.room_id
+       WHERE c.room_id=$1 AND c.status='ACTIVE'
+       ORDER BY c.start_date DESC
+       LIMIT 1`,
       [reading.room_id]
     );
     const contract = contractRs.rows[0];
@@ -393,18 +431,26 @@ export const createInvoiceFromReading = async (utilityReadingId: string, manager
     const elecAmount = calc(elecUsage, Number(rate.electricity_unit_price));
     const waterAmount = calc(waterUsage, Number(rate.water_unit_price));
     const rent = Number(contract.rent_price);
+    const fixedCharges = await resolveFixedChargesForContract(client, {
+      contractId: contract.id,
+      roomId: reading.room_id,
+      buildingId: reading.building_id,
+      month
+    });
+    const fixedChargesAmount = fixedCharges.reduce((sum, item) => sum + item.amount, 0);
 
     const invRs = await client.query<DbRow>(
       `INSERT INTO invoice(contract_id, room_id, utility_reading_id, month, status, issued_at, due_date, subtotal, discount, total, approved_by_user_id, approved_at)
        VALUES($1,$2,$3,$4,'ISSUED',now(),$5,$6,0,$6,$7,now()) RETURNING *`,
-      [contract.id, reading.room_id, reading.id, month, month, rent + elecAmount + waterAmount, managerId]
+      [contract.id, reading.room_id, reading.id, month, month, rent + elecAmount + waterAmount + fixedChargesAmount, managerId]
     );
     const invoice = invRs.rows[0];
 
     await insertInvoiceItems(client, invoice.id, [
       ['ROOM_RENT', 'Room rent', 1, rent, rent, { source: 'generated:contract.rent_price', contract_id: contract.id }],
       ['ELECTRICITY', 'Electricity', elecUsage, Number(rate.electricity_unit_price), elecAmount, { source: 'generated:utility_reading', reading_id: reading.id, rate_id: rate.id, prev: reading.electricity_prev, curr: reading.electricity_curr }],
-      ['WATER', 'Water', waterUsage, Number(rate.water_unit_price), waterAmount, { source: 'generated:utility_reading', reading_id: reading.id, rate_id: rate.id, prev: reading.water_prev, curr: reading.water_curr }]
+      ['WATER', 'Water', waterUsage, Number(rate.water_unit_price), waterAmount, { source: 'generated:utility_reading', reading_id: reading.id, rate_id: rate.id, prev: reading.water_prev, curr: reading.water_curr }],
+      ...toFixedChargeInvoiceItems(fixedCharges)
     ]);
 
     await client.query(`UPDATE utility_reading SET status='INVOICED' WHERE id=$1`, [reading.id]);
@@ -656,6 +702,14 @@ export const getInvoicePrefill = async (roomId: string, monthValue: string | und
   const billingDay = Number(contract?.billing_day ?? 1);
   const dueDate = new Date(`${month}T00:00:00.000Z`);
   dueDate.setUTCDate(Math.min(Math.max(billingDay, 1), 28));
+  const fixedCharges = contract
+    ? await resolveFixedChargesForContract({ query }, {
+        contractId: contract.id,
+        roomId,
+        buildingId: room.building_id,
+        month
+      })
+    : [];
 
   return {
     building_id: room.building_id,
@@ -668,6 +722,8 @@ export const getInvoicePrefill = async (roomId: string, monthValue: string | und
     electricity_prev: toNumber(reading?.electricity_curr ?? reading?.electricity_prev),
     water_prev: toNumber(reading?.water_curr ?? reading?.water_prev),
     electric_unit_price: toNumber(rateRs.rows[0]?.electricity_unit_price),
-    water_unit_price: toNumber(rateRs.rows[0]?.water_unit_price)
+    water_unit_price: toNumber(rateRs.rows[0]?.water_unit_price),
+    other_fees: fixedCharges.reduce((sum, item) => sum + item.amount, 0),
+    fixed_charges: fixedCharges
   };
 };

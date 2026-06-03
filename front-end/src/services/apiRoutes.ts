@@ -21,6 +21,7 @@ export const API_ROUTES = {
   contracts: {
     list: '/contracts',
     detail: (id: string) => `/contracts/${id}`,
+    documents: (id: string) => `/contracts/${id}/documents`,
   },
   invoices: {
     list: '/invoices',
@@ -45,6 +46,19 @@ export const API_ROUTES = {
     approveProof: (id: string) => `/payments/proofs/${id}/approve`,
     rejectProof: (id: string) => `/payments/proofs/${id}/reject`,
   },
+  fixedCharges: {
+    catalog: '/fixed-charges/catalog',
+    catalogDetail: (id: string) => `/fixed-charges/catalog/${id}`,
+    buildingCharges: '/fixed-charges/building-charges',
+    buildingChargeDetail: (id: string) => `/fixed-charges/building-charges/${id}`,
+    roomOverrides: '/fixed-charges/room-overrides',
+    roomOverrideDetail: (id: string) => `/fixed-charges/room-overrides/${id}`,
+    contractOverrides: '/fixed-charges/contract-overrides',
+    contractOverrideDetail: (id: string) => `/fixed-charges/contract-overrides/${id}`,
+    roomMonthExtras: '/fixed-charges/room-month-extras',
+    roomMonthExtraDetail: (id: string) => `/fixed-charges/room-month-extras/${id}`,
+    resolve: '/fixed-charges/resolve',
+  },
   utilityReadings: {
     list: '/utility-readings',
     detail: (id: string) => `/utility-readings/${id}`,
@@ -59,6 +73,7 @@ export const API_ROUTES = {
   },
   me: {
     room: '/me/room',
+    documents: '/me/documents',
     roommates: '/me/roommates',
     currentBill: '/me/current-bill',
     invoiceDetail: (id: string) => `/me/invoices/${id}`,
@@ -66,6 +81,7 @@ export const API_ROUTES = {
     paymentStatus: '/me/payment-status',
   },
   uploads: {
+    signature: '/uploads/signature',
     metadata: '/uploads/metadata',
   },
 } as const

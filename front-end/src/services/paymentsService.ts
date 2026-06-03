@@ -84,8 +84,8 @@ export interface PaymentRequestPayload {
 export interface PaymentProofPayload {
   file_name?: string | null
   file_url: string
-  mime_type?: string | null
-  file_size?: number | null
+  mime_type: string
+  file_size: number
   transfer_amount?: number | null
   transfer_time?: string | null
   payer_note?: string | null

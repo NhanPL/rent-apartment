@@ -1,12 +1,37 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { query } from '../../db';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { firstDayOfMonth } from '../../shared/utils/date';
 import { AppError } from '../../shared/errors/app-error';
+import { parseBody } from '../../shared/utils/validation';
+import { validateStoredUpload } from '../uploads/uploads.service';
 
 const router = Router();
 router.use(requireRole('TENANT'));
+
+const tenantDocumentSchema = z.object({
+  doc_type: z.enum(['IDENTITY_FRONT', 'IDENTITY_BACK', 'RESIDENCE', 'OTHER']),
+  file_name: z.string().trim().nullable().optional(),
+  file_url: z.string().trim().url(),
+  mime_type: z.string().trim().min(1),
+  file_size: z.coerce.number().int().positive(),
+  note: z.string().trim().nullable().optional()
+});
+
+const getCurrentTenantId = async (userId: string): Promise<string> => {
+  const tenantRs = await query<{ id: string }>(
+    `SELECT id
+     FROM tenant
+     WHERE user_id=$1 AND status <> 'DELETED'
+     LIMIT 1`,
+    [userId]
+  );
+  const tenant = tenantRs.rows[0];
+  if (!tenant) throw new AppError(404, 'Tenant profile not found', 'TENANT_NOT_FOUND');
+  return tenant.id;
+};
 
 const tenantInvoiceProjection = `
   i.*,
@@ -90,6 +115,41 @@ router.get('/room', asyncHandler(async (req, res) => {
     [req.auth!.userId]
   );
   res.json(rows[0] ?? null);
+}));
+
+router.get('/documents', asyncHandler(async (req, res) => {
+  const tenantId = await getCurrentTenantId(req.auth!.userId);
+  const { rows } = await query(
+    `SELECT *
+     FROM tenant_document
+     WHERE tenant_id=$1
+     ORDER BY uploaded_at DESC, created_at DESC`,
+    [tenantId]
+  );
+  res.json(rows);
+}));
+
+router.post('/documents', asyncHandler(async (req, res) => {
+  const body = parseBody(tenantDocumentSchema, req.body);
+  validateStoredUpload('TENANT_DOCUMENT', body, req.auth!.role);
+
+  const tenantId = await getCurrentTenantId(req.auth!.userId);
+  const { rows } = await query(
+    `INSERT INTO tenant_document(tenant_id,doc_type,file_name,file_url,mime_type,file_size,uploaded_by_user_id,note)
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+     RETURNING *`,
+    [
+      tenantId,
+      body.doc_type,
+      body.file_name ?? null,
+      body.file_url,
+      body.mime_type,
+      body.file_size,
+      req.auth!.userId,
+      body.note ?? null
+    ]
+  );
+  res.status(201).json(rows[0]);
 }));
 
 router.get('/roommates', asyncHandler(async (req, res) => {

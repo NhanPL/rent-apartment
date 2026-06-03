@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { parseBody } from '../../shared/utils/validation';
+import { validateStoredUpload } from '../uploads/uploads.service';
 import {
   createPaymentRequest,
   getPaymentRequestForInvoice,
@@ -29,9 +30,9 @@ const paymentRequestSchema = z.object({
 
 const paymentProofSchema = z.object({
   file_name: z.string().trim().nullable().optional(),
-  file_url: z.string().trim().min(1),
-  mime_type: z.string().trim().nullable().optional(),
-  file_size: z.coerce.number().int().nonnegative().nullable().optional(),
+  file_url: z.string().trim().url(),
+  mime_type: z.string().trim().min(1),
+  file_size: z.coerce.number().int().positive(),
   transfer_amount: z.coerce.number().positive().nullable().optional(),
   transfer_time: z.string().trim().nullable().optional(),
   payer_note: z.string().trim().nullable().optional()
@@ -68,6 +69,7 @@ router.post('/requests/:id/expire', requireRole('MANAGER'), asyncHandler(async (
 
 router.post('/requests/:id/proofs', requireRole('TENANT'), asyncHandler(async (req, res) => {
   const body = parseBody(paymentProofSchema, req.body);
+  validateStoredUpload('PAYMENT_PROOF', body, req.auth!.role);
   res.status(201).json(await submitPaymentProof(req.params.id, body, req.auth!.userId));
 }));
 

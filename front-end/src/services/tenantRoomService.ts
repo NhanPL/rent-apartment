@@ -9,6 +9,7 @@ export type InvoiceStatus = 'DRAFT' | 'ISSUED' | 'PAID' | 'VOID' | 'OVERDUE'
 export type PaymentStatus = 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED' | 'CANCELLED'
 export type UtilityReadingStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'INVOICED'
 export type UtilityEvidenceType = 'ELECTRIC' | 'WATER' | 'OTHER'
+export type TenantDocumentType = 'IDENTITY_FRONT' | 'IDENTITY_BACK' | 'RESIDENCE' | 'OTHER'
 
 export interface Tenant {
   id: string
@@ -142,9 +143,32 @@ export interface UtilityEvidenceSubmitPayload {
   evidence_type: UtilityEvidenceType
   file_name: string | null
   file_url: string
-  mime_type: string | null
-  file_size: number | null
+  mime_type: string
+  file_size: number
   note: string | null
+}
+
+export interface TenantDocument {
+  id: string
+  tenant_id: string
+  doc_type: TenantDocumentType
+  file_name: string | null
+  file_url: string
+  mime_type: string
+  file_size: number
+  uploaded_by_user_id: string | null
+  uploaded_at: string
+  note: string | null
+  created_at: string
+}
+
+export interface TenantDocumentPayload {
+  doc_type: TenantDocumentType
+  file_name?: string | null
+  file_url: string
+  mime_type: string
+  file_size: number
+  note?: string | null
 }
 
 interface TenantRoomRow {
@@ -171,6 +195,10 @@ interface TenantRoomRow {
   start_date: string
   move_in_date: string | null
   rent_price: number
+}
+
+type TenantDocumentApiRow = Omit<TenantDocument, 'file_size'> & {
+  file_size: number | string
 }
 
 function toInvoiceSummary(row: Record<string, unknown>): InvoiceSummary {
@@ -304,6 +332,20 @@ export async function getMyRoommates(): Promise<RoommateSummary[]> {
     phone: row.phone,
     joined_at: row.joined_at,
     is_primary: row.is_primary,
+  }))
+}
+
+export function listMyDocuments(): Promise<TenantDocument[]> {
+  return apiRequest<TenantDocumentApiRow[]>(API_ROUTES.me.documents).then((rows) => rows.map((row) => ({
+    ...row,
+    file_size: Number(row.file_size ?? 0),
+  })))
+}
+
+export function createMyDocument(payload: TenantDocumentPayload): Promise<TenantDocument> {
+  return apiRequest<TenantDocumentApiRow>(API_ROUTES.me.documents, { method: 'POST', body: payload }).then((row) => ({
+    ...row,
+    file_size: Number(row.file_size ?? 0),
   }))
 }
 

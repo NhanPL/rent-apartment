@@ -190,6 +190,7 @@ export interface InvoicePrefill {
   issued_at: string
   due_date: string | null
   rent_amount: number
+  other_fees: number
   electricity_prev: number
   water_prev: number
   electric_unit_price: number

@@ -255,6 +255,7 @@ export async function getInvoicePrefill(roomId: string, month: string): Promise<
   return {
     ...prefill,
     rent_amount: toNumber(prefill.rent_amount),
+    other_fees: toNumber(prefill.other_fees),
     electricity_prev: toNumber(prefill.electricity_prev),
     water_prev: toNumber(prefill.water_prev),
     electric_unit_price: toNumber(prefill.electric_unit_price),

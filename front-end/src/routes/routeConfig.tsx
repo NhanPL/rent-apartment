@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { BankOutlined, CreditCardOutlined, FileTextOutlined, DashboardOutlined, ProfileOutlined, ThunderboltOutlined, UserSwitchOutlined, UserOutlined } from '@ant-design/icons'
+import { BankOutlined, CreditCardOutlined, DollarOutlined, FileTextOutlined, DashboardOutlined, ProfileOutlined, ThunderboltOutlined, UserSwitchOutlined, UserOutlined } from '@ant-design/icons'
 
 export interface RouteDefinition {
   key: string
@@ -16,6 +16,7 @@ export const routeItems: RouteDefinition[] = [
   { key: 'buildings', path: '/buildings', label: 'Buildings' },
   { key: 'contracts', path: '/contracts', label: 'Contracts' },
   { key: 'utilities', path: '/utilities', label: 'Utilities' },
+  { key: 'fixed-charges', path: '/fixed-charges', label: 'Fixed Charges' },
   { key: 'tenants', path: '/tenants', label: 'Tenants' },
   { key: 'invoices', path: '/invoices', label: 'Invoices' },
   { key: 'payments', path: '/payments', label: 'Payments' },
@@ -27,6 +28,7 @@ export const sidebarRouteItems: SidebarRouteItem[] = [
   { key: 'buildings', path: '/buildings', label: 'Buildings', icon: <BankOutlined /> },
   { key: 'contracts', path: '/contracts', label: 'Contracts', icon: <ProfileOutlined /> },
   { key: 'utilities', path: '/utilities', label: 'Utilities', icon: <ThunderboltOutlined /> },
+  { key: 'fixed-charges', path: '/fixed-charges', label: 'Fixed Charges', icon: <DollarOutlined /> },
   { key: 'tenants', path: '/tenants', label: 'Tenants', icon: <UserOutlined /> },
   { key: 'invoices', path: '/invoices', label: 'Invoices', icon: <FileTextOutlined /> },
   { key: 'payments', path: '/payments', label: 'Payments', icon: <CreditCardOutlined /> },
