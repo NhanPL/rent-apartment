@@ -51,7 +51,7 @@ export function DashboardSummaryCards({ loading, summary, currencyFormatter }: D
   if (loading || !summary) {
     return (
       <Row gutter={[16, 16]}>
-        {Array.from({ length: 8 }).map((_, index) => (
+        {Array.from({ length: 9 }).map((_, index) => (
           <Col key={index} xs={24} sm={12} xl={6}>
             <Card style={{ height: '100%' }}>
               <Skeleton active paragraph={{ rows: 1 }} title={false} />
@@ -110,6 +110,16 @@ export function DashboardSummaryCards({ loading, summary, currencyFormatter }: D
       icon: <WarningOutlined style={{ fontSize: iconSize }} />,
       iconBg: '#FFFBE6',
       iconColor: '#D48806',
+      subtitle: currencyFormatter(summary.overdueAmount),
+    },
+    {
+      key: 'unpaid-bills',
+      label: 'Unpaid Bills',
+      value: summary.unpaidInvoices,
+      icon: <WarningOutlined style={{ fontSize: iconSize }} />,
+      iconBg: '#FFF7E6',
+      iconColor: '#FA8C16',
+      subtitle: currencyFormatter(summary.unpaidAmount),
     },
     {
       key: 'monthly-revenue',

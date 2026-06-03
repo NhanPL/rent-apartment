@@ -11,6 +11,9 @@ export interface DashboardSummary {
   vacantRooms: number
   totalTenants: number
   overdueInvoices: number
+  overdueAmount: number
+  unpaidInvoices: number
+  unpaidAmount: number
   monthlyRevenue: number
   occupancyRate: number
 }
@@ -61,4 +64,14 @@ export interface DashboardData {
   buildingDistributionChart: DashboardBuildingDistributionPoint[]
   recentTenants: DashboardRecentActivityItem[]
   recentUnpaidInvoices: DashboardUnpaidInvoiceItem[]
+}
+
+export interface DashboardFilters {
+  month: string
+  buildingId?: string
+}
+
+export interface DashboardBuildingOption {
+  id: string
+  name: string
 }

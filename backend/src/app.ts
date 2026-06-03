@@ -10,6 +10,7 @@ import paymentsRoutes from './modules/payments/payments.routes';
 import fixedChargesRoutes from './modules/fixed-charges/fixed-charges.routes';
 import meRoutes from './modules/me/me.routes';
 import uploadsRoutes from './modules/uploads/uploads.routes';
+import dashboardRoutes from './modules/dashboard/dashboard.routes';
 import authRoutes from './modules/auth/auth.routes';
 import { requireAuth } from './shared/middleware/auth';
 import { errorHandler } from './shared/middleware/error-handler';
@@ -45,5 +46,6 @@ app.use('/api/payments', paymentsRoutes);
 app.use('/api/fixed-charges', fixedChargesRoutes);
 app.use('/api/me', meRoutes);
 app.use('/api/uploads', uploadsRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 app.use(errorHandler);
