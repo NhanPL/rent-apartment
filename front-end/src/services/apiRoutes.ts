@@ -9,6 +9,9 @@ export const API_ROUTES = {
     list: '/buildings',
     detail: (id: string) => `/buildings/${id}`,
   },
+  dashboard: {
+    summary: '/dashboard/summary',
+  },
   rooms: {
     list: '/rooms',
     detail: (id: string) => `/rooms/${id}`,

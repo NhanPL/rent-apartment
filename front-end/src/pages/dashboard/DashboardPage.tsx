@@ -1,11 +1,12 @@
 import { ReloadOutlined } from '@ant-design/icons'
-import { Button, Space, Typography } from 'antd'
+import { Button, DatePicker, Select, Space, Typography } from 'antd'
+import dayjs, { type Dayjs } from 'dayjs'
 import { useCallback, useEffect, useState } from 'react'
-import { dashboardFormatters, getDashboardData } from '../../services/dashboardService'
+import { dashboardFormatters, getDashboardData, listDashboardBuildings } from '../../services/dashboardService'
 import { DashboardCharts } from './components/DashboardCharts'
 import { DashboardRecentActivity } from './components/DashboardRecentActivity'
 import { DashboardSummaryCards } from './components/DashboardSummaryCards'
-import type { DashboardData } from './types'
+import type { DashboardBuildingOption, DashboardData } from './types'
 import './DashboardPage.css'
 
 interface DashboardPageProps {
@@ -16,24 +17,46 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<DashboardData | null>(null)
+  const [month, setMonth] = useState<Dayjs>(() => dayjs().startOf('month'))
+  const [buildingId, setBuildingId] = useState<string | undefined>()
+  const [buildings, setBuildings] = useState<DashboardBuildingOption[]>([])
 
   const loadDashboard = useCallback(async () => {
     setLoading(true)
     setError(null)
 
     try {
-      const result = await getDashboardData()
+      const result = await getDashboardData({
+        month: month.format('YYYY-MM'),
+        buildingId,
+      })
       setData(result)
-    } catch {
-      setError('Please try again in a moment.')
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Please try again in a moment.')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [buildingId, month])
 
   useEffect(() => {
     void loadDashboard()
   }, [loadDashboard])
+
+  useEffect(() => {
+    let active = true
+
+    listDashboardBuildings()
+      .then((items) => {
+        if (active) setBuildings(items)
+      })
+      .catch(() => {
+        if (active) setBuildings([])
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
 
   return (
     <Space direction="vertical" size={16} className="dashboard-page">
@@ -46,9 +69,27 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
             Metrics are derived from building, room, contract, tenant, invoice, and payment entities.
           </Typography.Text>
         </div>
-        <Button icon={<ReloadOutlined />} onClick={() => void loadDashboard()}>
-          Refresh
-        </Button>
+        <Space wrap className="dashboard-page-actions">
+          <DatePicker
+            picker="month"
+            allowClear={false}
+            value={month}
+            onChange={(value) => setMonth((value ?? dayjs()).startOf('month'))}
+          />
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder="All buildings"
+            value={buildingId}
+            onChange={(value) => setBuildingId(value)}
+            options={buildings.map((building) => ({ value: building.id, label: building.name }))}
+            className="dashboard-building-filter"
+          />
+          <Button icon={<ReloadOutlined />} onClick={() => void loadDashboard()}>
+            Refresh
+          </Button>
+        </Space>
       </div>
 
       <DashboardSummaryCards

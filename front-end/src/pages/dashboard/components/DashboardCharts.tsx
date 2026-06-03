@@ -106,7 +106,7 @@ export function DashboardCharts({
                   </div>
                   {!compact ? (
                     <Typography.Text type="secondary" className="dashboard-bar-meta">
-                      Collected {currencyFormatter(item.collected)} · Unpaid {currencyFormatter(item.unpaid)}
+                      Collected {currencyFormatter(item.collected)} - Unpaid {currencyFormatter(item.unpaid)}
                     </Typography.Text>
                   ) : null}
                 </div>
