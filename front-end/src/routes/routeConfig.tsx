@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { BankOutlined, CreditCardOutlined, DollarOutlined, FileTextOutlined, DashboardOutlined, ProfileOutlined, ThunderboltOutlined, UserSwitchOutlined, UserOutlined } from '@ant-design/icons'
+import { BankOutlined, BarChartOutlined, CreditCardOutlined, DollarOutlined, FileTextOutlined, DashboardOutlined, ProfileOutlined, ThunderboltOutlined, UserSwitchOutlined, UserOutlined } from '@ant-design/icons'
 
 export interface RouteDefinition {
   key: string
@@ -20,6 +20,7 @@ export const routeItems: RouteDefinition[] = [
   { key: 'tenants', path: '/tenants', label: 'Tenants' },
   { key: 'invoices', path: '/invoices', label: 'Invoices' },
   { key: 'payments', path: '/payments', label: 'Payments' },
+  { key: 'reports', path: '/reports', label: 'Reports' },
   { key: 'my-room', path: '/my-room', label: 'My Room' },
 ]
 
@@ -32,5 +33,6 @@ export const sidebarRouteItems: SidebarRouteItem[] = [
   { key: 'tenants', path: '/tenants', label: 'Tenants', icon: <UserOutlined /> },
   { key: 'invoices', path: '/invoices', label: 'Invoices', icon: <FileTextOutlined /> },
   { key: 'payments', path: '/payments', label: 'Payments', icon: <CreditCardOutlined /> },
+  { key: 'reports', path: '/reports', label: 'Reports', icon: <BarChartOutlined /> },
   { key: 'my-room', path: '/my-room', label: 'My Room', icon: <UserSwitchOutlined /> },
 ]

@@ -10,12 +10,13 @@ import { FixedChargesPage } from '../pages/fixed-charges/FixedChargesPage'
 import { TenantRoomPage } from '../pages/tenant-room/TenantRoomPage'
 import { UtilitiesPage } from '../pages/utilities/UtilitiesPage'
 import { PaymentsPage } from '../pages/payments/PaymentsPage'
+import { ReportsPage } from '../pages/reports/ReportsPage'
 import { routeItems, sidebarRouteItems } from './routeConfig'
 import { LoginPage } from '../features/auth/pages/LoginPage'
 import { useAuth } from '../features/auth/useAuth'
 import type { AppRole } from '../features/auth/types/auth'
 
-const adminPaths = new Set(['/dashboard', '/buildings', '/contracts', '/utilities', '/fixed-charges', '/tenants', '/invoices', '/payments'])
+const adminPaths = new Set(['/dashboard', '/buildings', '/contracts', '/utilities', '/fixed-charges', '/tenants', '/invoices', '/payments', '/reports'])
 
 function getBasePath(pathname: string) {
   if (pathname.startsWith('/rooms/')) {
@@ -107,6 +108,7 @@ export function AppRoutes() {
     if (protectedPath === '/tenants') return <TenantsPage />
     if (protectedPath === '/invoices') return <InvoicesPage />
     if (protectedPath === '/payments') return <PaymentsPage />
+    if (protectedPath === '/reports') return <ReportsPage />
     if (protectedPath === '/my-room') return <TenantRoomPage />
     return null
   }

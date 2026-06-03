@@ -96,3 +96,42 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   return (await response.json()) as T
 }
+
+export async function apiRequestText(path: string, options: RequestOptions = {}): Promise<string> {
+  const { method = 'GET', body, headers, skipAuth = false, retry = true } = options
+  const requestHeaders: Record<string, string> = {
+    Accept: 'text/csv, text/plain, */*',
+    ...(body ? { 'Content-Type': 'application/json' } : {}),
+    ...headers,
+  }
+
+  const accessToken = getAccessToken()
+  if (!skipAuth && accessToken) {
+    requestHeaders.Authorization = `Bearer ${accessToken}`
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method,
+    headers: requestHeaders,
+    body: body ? JSON.stringify(body) : undefined,
+  })
+
+  if (response.status === 401 && !skipAuth && retry) {
+    const refreshed = await tryRefreshToken()
+    if (refreshed) {
+      return apiRequestText(path, { ...options, retry: false })
+    }
+
+    clearAuthStorage()
+    if (window.location.pathname !== '/login') {
+      window.location.replace('/login')
+    }
+    throw new ApiError('Unauthorized', 'UNAUTHORIZED', 401)
+  }
+
+  if (!response.ok) {
+    throw await parseError(response)
+  }
+
+  return response.text()
+}
