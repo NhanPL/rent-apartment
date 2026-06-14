@@ -129,29 +129,29 @@ describe('AppRoutes', () => {
     setAuth(null)
   })
 
-  it('redirects unauthenticated users to the login page', () => {
+  it('redirects unauthenticated users to the login page', async () => {
     window.history.replaceState(null, '', '/dashboard')
 
     render(<AppRoutes />)
 
-    expect(screen.getByText('Login Page')).not.toBeNull()
+    expect(await screen.findByText('Login Page')).not.toBeNull()
     expect(window.location.pathname).toBe('/login')
   })
 
-  it('renders the requested manager route with manager sidebar items', () => {
+  it('renders the requested manager route with manager sidebar items', async () => {
     setAuth(managerUser)
     window.history.replaceState(null, '', '/dashboard')
 
     render(<AppRoutes />)
 
     expect(screen.getByTestId('page-title').textContent).toBe('Dashboard')
-    expect(screen.getByText('Dashboard Page')).not.toBeNull()
+    expect(await screen.findByText('Dashboard Page')).not.toBeNull()
     expect(screen.getByTestId('current-user').textContent).toBe('Manager One')
     expect(screen.getByText('Buildings')).not.toBeNull()
     expect(screen.queryByText('My Room')).toBeNull()
   })
 
-  it('redirects tenants away from manager-only routes to their room page', () => {
+  it('redirects tenants away from manager-only routes to their room page', async () => {
     setAuth(tenantUser)
     window.history.replaceState(null, '', '/dashboard')
 
@@ -159,12 +159,12 @@ describe('AppRoutes', () => {
 
     expect(window.location.pathname).toBe('/my-room')
     expect(screen.getByTestId('page-title').textContent).toBe('My Room')
-    expect(screen.getByText('Tenant Room Page')).not.toBeNull()
+    expect(await screen.findByText('Tenant Room Page')).not.toBeNull()
     expect(screen.getAllByText('My Room')).toHaveLength(2)
     expect(screen.queryByText('Buildings')).toBeNull()
   })
 
-  it('sends authenticated users away from login to their role home route', () => {
+  it('sends authenticated users away from login to their role home route', async () => {
     setAuth(managerUser)
     window.history.replaceState(null, '', '/login')
 
@@ -172,6 +172,6 @@ describe('AppRoutes', () => {
 
     expect(window.location.pathname).toBe('/dashboard')
     expect(screen.getByTestId('page-title').textContent).toBe('Dashboard')
-    expect(screen.getByText('Dashboard Page')).not.toBeNull()
+    expect(await screen.findByText('Dashboard Page')).not.toBeNull()
   })
 })
