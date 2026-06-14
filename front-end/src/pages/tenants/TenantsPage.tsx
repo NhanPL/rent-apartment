@@ -45,39 +45,17 @@ import type {
   ContractStatus,
   RoomOption,
   TenantDetail,
-  TenantFormPayload,
   TenantListItem,
   TenantStatus,
 } from './types'
 import { exportRentalContractDocx } from '../../services/rentalContractDocx'
+import {
+  defaultTenantFormValues,
+  mapTenantFormValuesToPayload,
+  toNumberOrUndefined,
+  type TenantFormValues,
+} from './tenantFormPayload'
 import './TenantsPage.css'
-
-interface TenantFormValues {
-  full_name: string
-  dob?: string
-  gender?: string
-  identity_number: string
-  identity_issued_date?: string
-  identity_issued_place?: string
-  email?: string
-  phone: string
-  permanent_address?: string
-  status: TenantStatus
-  note?: string
-  rental: {
-    building_id?: string
-    room_id?: string
-    contract_status?: ContractStatus
-    start_date?: string
-    end_date?: string
-    move_in_date?: string
-    move_out_date?: string
-    rent_price?: number
-    deposit_amount?: number
-    billing_day?: number
-    contract_note?: string
-  }
-}
 
 const statusOptions: { label: string; value: TenantStatus; color: string }[] = [
   { label: 'Active', value: 'ACTIVE', color: 'green' },
@@ -91,28 +69,6 @@ const contractStatusOptions: { label: string; value: ContractStatus }[] = [
   { label: 'Ended', value: 'ENDED' },
   { label: 'Cancelled', value: 'CANCELLED' },
 ]
-
-const defaultFormValues: TenantFormValues = {
-  full_name: '',
-  phone: '',
-  identity_number: '',
-  status: 'ACTIVE',
-  rental: {
-    contract_status: 'DRAFT',
-    billing_day: 1,
-  },
-}
-
-const toNumberOrUndefined = (value: unknown): number | undefined => {
-  if (value === null || value === undefined || value === '') {
-    return undefined
-  }
-
-  const numericValue = Number(value)
-  return Number.isFinite(numericValue) ? numericValue : undefined
-}
-
-const toNumberOrNull = (value: unknown): number | null => toNumberOrUndefined(value) ?? null
 
 const formatMoneyInput = (value: string | number | undefined) => {
   if (value === undefined || value === '') {
@@ -186,7 +142,7 @@ export function TenantsPage() {
   const [saveLoading, setSaveLoading] = useState(false)
   const [discardModalOpen, setDiscardModalOpen] = useState(false)
   const [editingTenantId, setEditingTenantId] = useState<string | null>(null)
-  const [drawerInitialValues, setDrawerInitialValues] = useState<TenantFormValues>(defaultFormValues)
+  const [drawerInitialValues, setDrawerInitialValues] = useState<TenantFormValues>(defaultTenantFormValues)
   const [activeFormTab, setActiveFormTab] = useState<'tenant' | 'rental'>('tenant')
 
   const [detailOpen, setDetailOpen] = useState(false)
@@ -275,7 +231,7 @@ export function TenantsPage() {
   const openCreate = useCallback(() => {
     setDrawerMode('create')
     setEditingTenantId(null)
-    setDrawerInitialValues(defaultFormValues)
+    setDrawerInitialValues(defaultTenantFormValues)
     setDiscardModalOpen(false)
     setDrawerOpen(true)
   }, [])
@@ -335,45 +291,6 @@ export function TenantsPage() {
     setDrawerOpen(false)
   }, [isDirty])
 
-  const mapToPayload = useCallback((values: TenantFormValues): TenantFormPayload => {
-    const hasRental =
-      Boolean(values.rental.room_id) ||
-      Boolean(values.rental.start_date) ||
-      values.rental.rent_price !== undefined ||
-      values.rental.deposit_amount !== undefined
-
-    return {
-      tenant: {
-        full_name: values.full_name,
-        phone: values.phone,
-        identity_number: values.identity_number,
-        status: values.status,
-        dob: values.dob ?? null,
-        gender: values.gender ?? null,
-        identity_issued_date: values.identity_issued_date ?? null,
-        identity_issued_place: values.identity_issued_place ?? null,
-        email: values.email ?? null,
-        permanent_address: values.permanent_address ?? null,
-        note: values.note ?? null,
-      },
-      contract: hasRental
-        ? {
-            building_id: values.rental.building_id ?? null,
-            room_id: values.rental.room_id ?? null,
-            status: values.rental.contract_status ?? 'DRAFT',
-            start_date: values.rental.start_date ?? null,
-            end_date: values.rental.end_date ?? null,
-            move_in_date: values.rental.move_in_date ?? null,
-            move_out_date: values.rental.move_out_date ?? null,
-            rent_price: toNumberOrNull(values.rental.rent_price),
-            deposit_amount: toNumberOrNull(values.rental.deposit_amount),
-            billing_day: values.rental.billing_day ?? null,
-            note: values.rental.contract_note ?? null,
-          }
-        : null,
-    }
-  }, [])
-
   const getFieldTab = useCallback(
     (fieldNamePath: (string | number)[]) => {
       const [root] = fieldNamePath
@@ -408,7 +325,7 @@ export function TenantsPage() {
 
     try {
       const values = await form.validateFields()
-      const payload = mapToPayload(values)
+      const payload = mapTenantFormValuesToPayload(values)
 
       if (drawerMode === 'create') {
         await createTenant(payload)
@@ -431,7 +348,7 @@ export function TenantsPage() {
     } finally {
       setSaveLoading(false)
     }
-  }, [drawerMode, editingTenantId, form, loadTenants, mapToPayload, showFirstValidationError])
+  }, [drawerMode, editingTenantId, form, loadTenants, showFirstValidationError])
 
   const handleDeleteClick = useCallback((tenant: TenantListItem) => {
     setDeleteTarget(tenant)
