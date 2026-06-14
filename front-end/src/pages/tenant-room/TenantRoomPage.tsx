@@ -1,9 +1,10 @@
-import { EyeOutlined, TeamOutlined } from '@ant-design/icons'
+import { CreditCardOutlined, EyeOutlined, TeamOutlined } from '@ant-design/icons'
 import { Alert, Button, Card, Col, Descriptions, Drawer, Empty, Form, Grid, Input, InputNumber, List, Row, Select, Skeleton, Space, Statistic, Table, Tag, Typography, message } from 'antd'
 import dayjs from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
 import {
   attachMyUtilityReadingEvidence,
+  createMyVnpayPayment,
   createMyDocument,
   getCurrentAndPreviousUtilityReadings,
   getCurrentMonthBill,
@@ -134,6 +135,7 @@ export function TenantRoomPage() {
   const [billDetailOpen, setBillDetailOpen] = useState(false)
   const [billDetailLoading, setBillDetailLoading] = useState(false)
   const [utilitySnapshot, setUtilitySnapshot] = useState<UtilityReadingSnapshot | null>(null)
+  const [vnpaySubmitting, setVnpaySubmitting] = useState(false)
   const [paymentProofSubmitting, setPaymentProofSubmitting] = useState(false)
   const [tenantDocuments, setTenantDocuments] = useState<TenantDocument[]>([])
   const [tenantDocumentSubmitting, setTenantDocumentSubmitting] = useState(false)
@@ -164,6 +166,8 @@ export function TenantRoomPage() {
 
   const currentReading = utilitySnapshot?.current_reading ?? null
   const readingLocked = currentReading?.status === 'APPROVED' || currentReading?.status === 'INVOICED'
+  const currentRemainingAmount = currentBill ? Math.max(currentBill.total - currentBill.paid_amount, 0) : 0
+  const canPayCurrentBill = Boolean(currentBill && currentBill.status !== 'PAID' && currentBill.status !== 'VOID' && currentRemainingAmount > 0)
 
   const hydrateFormByMonth = async (roomId: string, month: string) => {
     const snapshot = await getCurrentAndPreviousUtilityReadings(roomId, `${month}-01`)
@@ -332,6 +336,22 @@ export function TenantRoomPage() {
     }
   }
 
+  const handleVnpayPayment = async () => {
+    if (!currentBill) {
+      return
+    }
+
+    setVnpaySubmitting(true)
+    try {
+      const checkout = await createMyVnpayPayment(currentBill.id)
+      window.location.assign(checkout.redirect_url)
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Unable to create VNPAY payment.')
+    } finally {
+      setVnpaySubmitting(false)
+    }
+  }
+
   const handleTenantDocumentSubmit = async (values: TenantDocumentFormValues) => {
     if (!values.file_url || !values.mime_type || !values.file_size) {
       message.warning('Please upload a document file before saving.')
@@ -431,6 +451,14 @@ export function TenantRoomPage() {
                 </Space>
                 <Typography.Text type="secondary">Ngày thanh toán: {currentBill.paid_at ? dayjs(currentBill.paid_at).format('DD/MM/YYYY') : '-'}</Typography.Text>
                 <Typography.Text type="secondary">Đã thanh toán: {currency.format(currentBill.paid_amount)}</Typography.Text>
+                {canPayCurrentBill ? (
+                  <Space wrap>
+                    <Button type="primary" icon={<CreditCardOutlined />} loading={vnpaySubmitting} onClick={() => void handleVnpayPayment()}>
+                      Pay with VNPAY
+                    </Button>
+                    <Typography.Text type="secondary">Remaining: {currency.format(currentRemainingAmount)}</Typography.Text>
+                  </Space>
+                ) : null}
                 {!currentPaymentRequest ? (
                   <Alert showIcon type="info" message="Chưa có yêu cầu chuyển khoản cho hóa đơn này." />
                 ) : (

@@ -3,6 +3,16 @@ import { z } from 'zod';
 
 dotenv.config();
 
+const optionalTrimmedString = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z.string().trim().optional()
+);
+
+const optionalUrlString = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z.string().trim().url().optional()
+);
+
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
   DATABASE_URL: z.string().min(1),
@@ -17,6 +27,7 @@ const envSchema = z.object({
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
   CLIENT_ORIGIN: z.string().default('http://localhost:5173'),
   FRONTEND_URL: z.string().default('http://localhost:5173'),
+  PUBLIC_API_BASE_URL: optionalUrlString,
   DEFAULT_BANK_CODE: z.string().optional(),
   DEFAULT_BANK_ACCOUNT_NO: z.string().optional(),
   DEFAULT_BANK_ACCOUNT_NAME: z.string().optional(),
@@ -24,6 +35,15 @@ const envSchema = z.object({
   CLOUDINARY_API_KEY: z.string().trim().optional(),
   CLOUDINARY_API_SECRET: z.string().trim().optional(),
   CLOUDINARY_UPLOAD_ROOT_FOLDER: z.string().trim().default('rent-apartment'),
+  VNPAY_TMN_CODE: optionalTrimmedString,
+  VNPAY_HASH_SECRET: optionalTrimmedString,
+  VNPAY_PAYMENT_URL: z.string().trim().url().default('https://sandbox.vnpayment.vn/paymentv2/vpcpay.html'),
+  VNPAY_RETURN_URL: optionalUrlString,
+  VNPAY_IPN_URL: optionalUrlString,
+  VNPAY_VERSION: z.string().trim().default('2.1.0'),
+  VNPAY_LOCALE: z.enum(['vn', 'en']).default('vn'),
+  VNPAY_ORDER_TYPE: z.string().trim().default('other'),
+  VNPAY_EXPIRE_MINUTES: z.coerce.number().int().positive().default(15),
   SMTP_HOST: z.string().min(1),
   SMTP_PORT: z.coerce.number().int().positive(),
   SMTP_SECURE: z.enum(['true', 'false']).default('false'),

@@ -49,7 +49,7 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
-  CREATE TYPE payment_method AS ENUM ('CASH', 'BANK_TRANSFER', 'E_WALLET', 'CARD', 'OTHER');
+  CREATE TYPE payment_method AS ENUM ('CASH', 'BANK_TRANSFER', 'E_WALLET', 'CARD', 'VNPAY', 'MOMO', 'OTHER');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
