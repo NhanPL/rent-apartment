@@ -120,6 +120,7 @@ FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TABLE IF NOT EXISTS tenant (
   id                    uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id               uuid UNIQUE REFERENCES app_user(id) ON DELETE SET NULL,
+  manager_user_id       uuid NOT NULL CONSTRAINT fk_tenant_manager_user REFERENCES app_user(id) ON DELETE RESTRICT,
 
   full_name             text NOT NULL,
   dob                   date,
@@ -146,8 +147,19 @@ ALTER TABLE tenant DROP CONSTRAINT IF EXISTS ck_tenant_status;
 ALTER TABLE tenant
   ADD CONSTRAINT ck_tenant_status CHECK (status IN ('ACTIVE','MOVED_OUT','BLACKLIST','DELETED'));
 
+ALTER TABLE tenant
+  ADD COLUMN IF NOT EXISTS manager_user_id uuid;
+
+DO $$ BEGIN
+  ALTER TABLE tenant
+    ADD CONSTRAINT fk_tenant_manager_user
+    FOREIGN KEY (manager_user_id) REFERENCES app_user(id) ON DELETE RESTRICT;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
 CREATE INDEX IF NOT EXISTS idx_tenant_phone ON tenant(phone);
 CREATE INDEX IF NOT EXISTS idx_tenant_user_id ON tenant(user_id);
+CREATE INDEX IF NOT EXISTS idx_tenant_manager ON tenant(manager_user_id);
+CREATE INDEX IF NOT EXISTS idx_tenant_manager_status ON tenant(manager_user_id, status);
 
 DROP TRIGGER IF EXISTS trg_tenant_updated_at ON tenant;
 CREATE TRIGGER trg_tenant_updated_at
@@ -264,6 +276,43 @@ CREATE INDEX IF NOT EXISTS idx_contract_tenant_primary ON contract_tenant(contra
 CREATE UNIQUE INDEX IF NOT EXISTS uq_contract_primary_tenant
 ON contract_tenant(contract_id)
 WHERE is_primary = true;
+
+UPDATE tenant t
+SET manager_user_id = owner.manager_user_id
+FROM (
+  SELECT DISTINCT ON (ct.tenant_id)
+    ct.tenant_id,
+    b.manager_user_id
+  FROM contract_tenant ct
+  JOIN contract c ON c.id = ct.contract_id
+  JOIN room r ON r.id = c.room_id
+  JOIN building b ON b.id = r.building_id
+  ORDER BY
+    ct.tenant_id,
+    CASE WHEN ct.left_at IS NULL AND c.status = 'ACTIVE' THEN 0 ELSE 1 END,
+    c.start_date DESC,
+    c.created_at DESC
+) owner
+WHERE t.id = owner.tenant_id
+  AND t.manager_user_id IS NULL;
+
+UPDATE tenant t
+SET manager_user_id = only_manager.id
+FROM (
+  SELECT MIN(id) AS id
+  FROM app_user
+  WHERE role = 'MANAGER'
+  HAVING COUNT(*) = 1
+) only_manager
+WHERE t.manager_user_id IS NULL;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM tenant WHERE manager_user_id IS NULL) THEN
+    ALTER TABLE tenant ALTER COLUMN manager_user_id SET NOT NULL;
+  ELSE
+    RAISE NOTICE 'tenant.manager_user_id remains nullable because some legacy tenants could not be backfilled';
+  END IF;
+END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_room_active_contract
 ON contract(room_id)

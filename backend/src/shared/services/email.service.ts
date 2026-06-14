@@ -15,19 +15,43 @@ interface TenantWelcomePayload {
   password: string;
 }
 
-const transporter = nodemailer.createTransport({
-  host: env.SMTP_HOST,
-  port: env.SMTP_PORT,
-  secure: env.SMTP_SECURE === 'true',
-  auth: {
-    user: env.SMTP_USER,
-    pass: env.SMTP_PASS
+let transporter: ReturnType<typeof nodemailer.createTransport> | null = null;
+
+const isSmtpConfigured = (): boolean =>
+  Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS && env.SMTP_FROM_EMAIL);
+
+const getTransporter = (): ReturnType<typeof nodemailer.createTransport> | null => {
+  if (!isSmtpConfigured()) {
+    return null;
   }
-});
+
+  if (!transporter) {
+    transporter = nodemailer.createTransport({
+      host: env.SMTP_HOST,
+      port: env.SMTP_PORT,
+      secure: env.SMTP_SECURE === 'true',
+      auth: {
+        user: env.SMTP_USER,
+        pass: env.SMTP_PASS
+      }
+    });
+  }
+
+  return transporter;
+};
 
 export const sendEmail = async (payload: SendEmailPayload): Promise<void> => {
-  await transporter.sendMail({
-    from: `"${env.SMTP_FROM_NAME}" <${env.SMTP_FROM_EMAIL}>`,
+  const mailer = getTransporter();
+  if (!mailer) {
+    console.warn('SMTP is not configured; skipping email send.', {
+      to: payload.to,
+      subject: payload.subject
+    });
+    return;
+  }
+
+  await mailer.sendMail({
+    from: `"${env.SMTP_FROM_NAME || 'Rent Apartment'}" <${env.SMTP_FROM_EMAIL}>`,
     to: payload.to,
     subject: payload.subject,
     html: payload.html

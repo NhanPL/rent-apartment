@@ -12,8 +12,10 @@ import {
   normalizeTenantContractInput,
   validateTenantContractRoom
 } from './tenants.service';
+import { assertTenantBelongsToManager } from './tenants.repository';
 
 const router = Router();
+const db = { query };
 
 interface TenantListRow {
   id: string;
@@ -29,6 +31,7 @@ interface TenantListRow {
   permanent_address: string | null;
   status: string;
   note: string | null;
+  manager_user_id: string;
   created_at: string;
   updated_at: string;
   room_id: string | null;
@@ -160,15 +163,8 @@ router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const roomId = String(req.query.room_id ?? '').trim();
 
   const conditions: string[] = [
-    `t.status <> 'DELETED'`,
-    `(v.building_id IS NOT NULL OR NOT EXISTS (
-       SELECT 1
-       FROM contract_tenant ct_scope
-       JOIN contract c_scope ON c_scope.id=ct_scope.contract_id
-       WHERE ct_scope.tenant_id=t.id
-         AND ct_scope.left_at IS NULL
-         AND c_scope.status='ACTIVE'
-     ))`
+    `t.manager_user_id=$1`,
+    `t.status <> 'DELETED'`
   ];
   const params: unknown[] = [req.auth!.userId];
 
@@ -251,29 +247,9 @@ router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
     `SELECT t.*
      FROM tenant t
      WHERE t.id=$1
-       AND t.status <> $2
-       AND (
-         NOT EXISTS (
-           SELECT 1
-           FROM contract_tenant ct_scope
-           JOIN contract c_scope ON c_scope.id=ct_scope.contract_id
-           WHERE ct_scope.tenant_id=t.id
-             AND ct_scope.left_at IS NULL
-             AND c_scope.status='ACTIVE'
-         )
-         OR EXISTS (
-           SELECT 1
-           FROM contract_tenant ct_scope
-           JOIN contract c_scope ON c_scope.id=ct_scope.contract_id
-           JOIN room r_scope ON r_scope.id=c_scope.room_id
-           JOIN building b_scope ON b_scope.id=r_scope.building_id
-           WHERE ct_scope.tenant_id=t.id
-             AND ct_scope.left_at IS NULL
-             AND c_scope.status='ACTIVE'
-             AND b_scope.manager_user_id=$3
-         )
-       )`,
-    [req.params.id, 'DELETED', req.auth!.userId]
+       AND t.manager_user_id=$2
+       AND t.status <> $3`,
+    [req.params.id, req.auth!.userId, 'DELETED']
   );
   const tenant = tenantRs.rows[0];
   if (!tenant) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
@@ -337,43 +313,23 @@ router.patch('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const idParam = params.length - 1;
   const managerParam = params.length;
   const scopedTenantWhere = `id=$${idParam}
+    AND manager_user_id=$${managerParam}
     AND status <> 'DELETED'
-    AND (
-      NOT EXISTS (
-        SELECT 1
-        FROM contract_tenant ct_scope
-        JOIN contract c_scope ON c_scope.id=ct_scope.contract_id
-        WHERE ct_scope.tenant_id=tenant.id
-          AND ct_scope.left_at IS NULL
-          AND c_scope.status='ACTIVE'
-      )
-      OR EXISTS (
-        SELECT 1
-        FROM contract_tenant ct_scope
-        JOIN contract c_scope ON c_scope.id=ct_scope.contract_id
-        JOIN room r_scope ON r_scope.id=c_scope.room_id
-        JOIN building b_scope ON b_scope.id=r_scope.building_id
-        WHERE ct_scope.tenant_id=tenant.id
-          AND ct_scope.left_at IS NULL
-          AND c_scope.status='ACTIVE'
-          AND b_scope.manager_user_id=$${managerParam}
-      )
-    )`;
+  `;
 
   const result = await withTransaction(async (client) => {
+    await assertTenantBelongsToManager(client, req.params.id, req.auth!.userId);
+
     if (tenantPayload.status === 'MOVED_OUT') {
       const activeContract = await client.query<{ id: string }>(
         `SELECT c.id
          FROM contract_tenant ct
          JOIN contract c ON c.id=ct.contract_id
-         JOIN room r ON r.id=c.room_id
-         JOIN building b ON b.id=r.building_id
          WHERE ct.tenant_id=$1
            AND ct.left_at IS NULL
            AND c.status='ACTIVE'
-           AND b.manager_user_id=$2
          LIMIT 1`,
-        [req.params.id, req.auth!.userId]
+        [req.params.id]
       );
       if (activeContract.rows[0]) {
         throw new AppError(409, 'End active contract before marking tenant as moved out', 'TENANT_HAS_ACTIVE_CONTRACT');
@@ -401,30 +357,10 @@ router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
       `SELECT id, user_id
        FROM tenant
        WHERE id=$1
-         AND status <> $2
-         AND (
-           NOT EXISTS (
-             SELECT 1
-             FROM contract_tenant ct_scope
-             JOIN contract c_scope ON c_scope.id=ct_scope.contract_id
-             WHERE ct_scope.tenant_id=tenant.id
-               AND ct_scope.left_at IS NULL
-               AND c_scope.status='ACTIVE'
-           )
-           OR EXISTS (
-             SELECT 1
-             FROM contract_tenant ct_scope
-             JOIN contract c_scope ON c_scope.id=ct_scope.contract_id
-             JOIN room r_scope ON r_scope.id=c_scope.room_id
-             JOIN building b_scope ON b_scope.id=r_scope.building_id
-             WHERE ct_scope.tenant_id=tenant.id
-               AND ct_scope.left_at IS NULL
-               AND c_scope.status='ACTIVE'
-               AND b_scope.manager_user_id=$3
-           )
-         )
+         AND manager_user_id=$2
+         AND status <> $3
        FOR UPDATE`,
-      [req.params.id, 'DELETED', req.auth!.userId]
+      [req.params.id, req.auth!.userId, 'DELETED']
     );
     const tenant = tenantRs.rows[0];
     if (!tenant) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
@@ -472,6 +408,7 @@ router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 }));
 
 router.get('/:id/contracts', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  await assertTenantBelongsToManager(db, req.params.id, req.auth!.userId);
   const rs = await query(
     `SELECT c.*, r.code AS room_code, b.id AS building_id, b.name AS building_name, ct.is_primary, ct.joined_at, ct.left_at
      FROM contract_tenant ct
@@ -485,6 +422,7 @@ router.get('/:id/contracts', requireRole('MANAGER'), asyncHandler(async (req, re
   res.json(rs.rows);
 }));
 router.get('/:id/invoices', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  await assertTenantBelongsToManager(db, req.params.id, req.auth!.userId);
   const rs = await query(
     `SELECT i.*, c.contract_code, r.code AS room_code, b.name AS building_name
      FROM contract_tenant ct
@@ -499,6 +437,7 @@ router.get('/:id/invoices', requireRole('MANAGER'), asyncHandler(async (req, res
   res.json(rs.rows);
 }));
 router.get('/:id/payments', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  await assertTenantBelongsToManager(db, req.params.id, req.auth!.userId);
   const rs = await query(
     `SELECT p.*, i.month, i.total AS invoice_total, i.status AS invoice_status, i.due_date, i.id AS invoice_id
      FROM contract_tenant ct
@@ -514,6 +453,7 @@ router.get('/:id/payments', requireRole('MANAGER'), asyncHandler(async (req, res
   res.json(rs.rows);
 }));
 router.post('/:id/export-contract', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  await assertTenantBelongsToManager(db, req.params.id, req.auth!.userId);
   const detailRs = await query(
     `SELECT t.full_name tenant_name,t.phone,t.email,t.identity_number,t.permanent_address,
             c.contract_code,c.start_date,c.end_date,c.rent_price,c.deposit_amount,c.billing_day,c.note contract_note,
