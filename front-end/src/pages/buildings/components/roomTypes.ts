@@ -1,4 +1,6 @@
 export type RoomStatus = 'ACTIVE' | 'MAINTENANCE' | 'INACTIVE'
+export type RoomInvoiceStatus = 'DRAFT' | 'ISSUED' | 'PAID' | 'VOID' | 'OVERDUE'
+export type RoomUtilityReadingStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'INVOICED'
 
 export interface Room {
   id: string
@@ -13,6 +15,16 @@ export interface Room {
   note: string | null
   created_at: string
   updated_at: string
+  occupants_count?: number
+  active_contract_id?: string | null
+  latest_invoice_id?: string | null
+  latest_invoice_month?: string | null
+  latest_invoice_status?: RoomInvoiceStatus | null
+  latest_invoice_due_date?: string | null
+  latest_invoice_total?: number | null
+  latest_reading_id?: string | null
+  latest_reading_month?: string | null
+  latest_reading_status?: RoomUtilityReadingStatus | null
 }
 
 export interface RoomUpsertPayload {

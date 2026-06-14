@@ -17,11 +17,18 @@ const buildingBodySchema = z.object({
 
 router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const { rows } = await query(
-    `SELECT b.*, COUNT(r.id)::int AS units, COALESCE(BOOL_OR(r.status = 'ACTIVE'), false) AS has_active_rooms
+    `SELECT
+       b.*,
+       COUNT(r.id)::int AS units,
+       COUNT(r.id) FILTER (WHERE r.status = 'ACTIVE')::int AS active_units,
+       COALESCE(BOOL_OR(r.status = 'ACTIVE'), false) AS has_active_rooms,
+       COALESCE(mp.full_name, u.email::text, u.username::text) AS manager_name
      FROM building b
+     JOIN app_user u ON u.id=b.manager_user_id
+     LEFT JOIN manager_profile mp ON mp.user_id=b.manager_user_id
      LEFT JOIN room r ON r.building_id=b.id
      WHERE b.manager_user_id=$1
-     GROUP BY b.id
+     GROUP BY b.id, mp.full_name, u.email, u.username
      ORDER BY b.created_at DESC`,
     [req.auth!.userId]
   );
@@ -30,11 +37,18 @@ router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 
 router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const { rows } = await query(
-    `SELECT b.*, COUNT(r.id)::int AS units, COALESCE(BOOL_OR(r.status = 'ACTIVE'), false) AS has_active_rooms
+    `SELECT
+       b.*,
+       COUNT(r.id)::int AS units,
+       COUNT(r.id) FILTER (WHERE r.status = 'ACTIVE')::int AS active_units,
+       COALESCE(BOOL_OR(r.status = 'ACTIVE'), false) AS has_active_rooms,
+       COALESCE(mp.full_name, u.email::text, u.username::text) AS manager_name
      FROM building b
+     JOIN app_user u ON u.id=b.manager_user_id
+     LEFT JOIN manager_profile mp ON mp.user_id=b.manager_user_id
      LEFT JOIN room r ON r.building_id=b.id
      WHERE b.id = $1 AND b.manager_user_id=$2
-     GROUP BY b.id`,
+     GROUP BY b.id, mp.full_name, u.email, u.username`,
     [req.params.id, req.auth!.userId]
   );
   if (!rows[0]) throw new AppError(404, 'Building not found', 'BUILDING_NOT_FOUND');

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { DetailPanel } from './components/DetailPanel'
 import { MasterListPanel } from './components/MasterListPanel'
 import { UpsertDrawer } from './components/UpsertDrawer'
-import type { BuildingEntity, BuildingFormValues, StatusFilter } from './components/types'
+import type { BuildingEntity, BuildingFormValues } from './components/types'
 import { createBuilding, deleteBuilding, listBuildings, updateBuilding } from './components/roomService'
 import './EntitySplitPage.css'
 
@@ -20,7 +20,6 @@ export function EntitySplitPage() {
   const [selectedId, setSelectedId] = useState<string>()
   const [searchInput, setSearchInput] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('create')
   const [saving, setSaving] = useState(false)
@@ -64,10 +63,9 @@ export function EntitySplitPage() {
           debouncedSearch.length === 0 ||
           item.name.toLowerCase().includes(debouncedSearch) ||
           item.code.toLowerCase().includes(debouncedSearch)
-        const statusMatched = statusFilter === 'all' || item.status === statusFilter
-        return searchMatched && statusMatched
+        return searchMatched
       }),
-    [items, debouncedSearch, statusFilter],
+    [items, debouncedSearch],
   )
 
   const selectedItem = useMemo(() => items.find((item) => item.id === selectedId) ?? null, [items, selectedId])
@@ -151,9 +149,7 @@ export function EntitySplitPage() {
             items={filteredItems}
             selectedId={selectedId}
             searchValue={searchInput}
-            statusFilter={statusFilter}
             onSearchChange={setSearchInput}
-            onStatusFilterChange={setStatusFilter}
             onSelect={handleSelect}
             onAdd={openCreate}
           />

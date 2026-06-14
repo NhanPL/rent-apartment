@@ -33,21 +33,65 @@ const roomUpdateSchema = z.object({
   note: nullableString
 });
 
+const roomSummarySelect = `
+  r.*,
+  COALESCE(occupancy.occupants_count, 0)::int AS occupants_count,
+  occupancy.active_contract_id,
+  latest_invoice.id AS latest_invoice_id,
+  latest_invoice.month AS latest_invoice_month,
+  latest_invoice.status AS latest_invoice_status,
+  latest_invoice.due_date AS latest_invoice_due_date,
+  latest_invoice.total::float AS latest_invoice_total,
+  latest_reading.id AS latest_reading_id,
+  latest_reading.month AS latest_reading_month,
+  latest_reading.status AS latest_reading_status
+`;
+
+const roomSummaryJoins = `
+  LEFT JOIN LATERAL (
+    SELECT
+      c.id AS active_contract_id,
+      COUNT(ct.tenant_id) FILTER (WHERE ct.left_at IS NULL)::int AS occupants_count
+    FROM contract c
+    LEFT JOIN contract_tenant ct ON ct.contract_id=c.id
+    WHERE c.room_id=r.id AND c.status='ACTIVE'
+    GROUP BY c.id, c.start_date, c.created_at
+    ORDER BY c.start_date DESC, c.created_at DESC
+    LIMIT 1
+  ) occupancy ON true
+  LEFT JOIN LATERAL (
+    SELECT i.id, i.month, i.status, i.due_date, i.total
+    FROM invoice i
+    WHERE i.room_id=r.id
+    ORDER BY i.month DESC, i.created_at DESC
+    LIMIT 1
+  ) latest_invoice ON true
+  LEFT JOIN LATERAL (
+    SELECT ur.id, ur.month, ur.status
+    FROM utility_reading ur
+    WHERE ur.room_id=r.id
+    ORDER BY ur.month DESC, ur.created_at DESC
+    LIMIT 1
+  ) latest_reading ON true
+`;
+
 router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const buildingId = (req.query.buildingId ?? req.query.building_id) as string | undefined;
   const { rows } = buildingId
     ? await query(
-      `SELECT r.*
+      `SELECT ${roomSummarySelect}
        FROM room r
        JOIN building b ON b.id = r.building_id
+       ${roomSummaryJoins}
        WHERE r.building_id=$1 AND b.manager_user_id=$2
        ORDER BY r.code`,
       [buildingId, req.auth!.userId]
     )
     : await query(
-      `SELECT r.*
+      `SELECT ${roomSummarySelect}
        FROM room r
        JOIN building b ON b.id = r.building_id
+       ${roomSummaryJoins}
        WHERE b.manager_user_id=$1
        ORDER BY r.created_at DESC`,
       [req.auth!.userId]
@@ -57,9 +101,10 @@ router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 
 router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const { rows } = await query(
-    `SELECT r.*, b.name AS building_name
+    `SELECT ${roomSummarySelect}, b.name AS building_name
      FROM room r
      JOIN building b ON b.id = r.building_id
+     ${roomSummaryJoins}
      WHERE r.id=$1 AND b.manager_user_id=$2`,
     [req.params.id, req.auth!.userId]
   );

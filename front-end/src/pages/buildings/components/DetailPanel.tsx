@@ -1,7 +1,7 @@
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import { Button, Descriptions, Empty, Grid, Input, Modal, Select, Skeleton, Space, Tabs, Tag, Timeline, Typography, message } from 'antd'
 import { useCallback, useEffect, useState } from 'react'
-import { createRoom, deleteRoom, listRoomsByBuildingId, listTenantsByRoomId, updateRoom } from './roomService'
+import { createRoom, deleteRoom, listRoomsByBuildingId, updateRoom } from './roomService'
 import { RoomsTable } from './RoomsTable'
 import { RoomsUpsertDrawer } from './RoomsUpsertDrawer'
 import type { Room } from './roomTypes'
@@ -14,11 +14,6 @@ interface DetailPanelProps {
   onDelete: (id: string) => Promise<void>
 }
 
-const statusColor: Record<BuildingEntity['status'], string> = {
-  active: 'green',
-  inactive: 'default',
-}
-
 export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProps) {
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
@@ -29,7 +24,6 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
   const [roomsSearchInput, setRoomsSearchInput] = useState('')
   const [roomsSearch, setRoomsSearch] = useState('')
   const [roomsFilter, setRoomsFilter] = useState<Room['status'] | 'ALL'>('ALL')
-  const [tenantCountByRoomId, setTenantCountByRoomId] = useState<Record<string, number>>({})
 
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('create')
@@ -49,17 +43,9 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
     try {
       const rooms = await listRoomsByBuildingId({ building_id: buildingId, search: roomsSearch, status: roomsFilter })
       setRoomsData(rooms)
-      const entries = await Promise.all(
-        rooms.map(async (room) => {
-          const tenants = await listTenantsByRoomId(room.id)
-          return [room.id, tenants.length] as const
-        }),
-      )
-      setTenantCountByRoomId(Object.fromEntries(entries))
     } catch (error) {
       message.error(error instanceof Error ? error.message : 'Unable to load rooms')
       setRoomsData([])
-      setTenantCountByRoomId({})
     } finally {
       setRoomsLoading(false)
     }
@@ -90,6 +76,8 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
   const existingRoomCodes = roomsData
     .filter((room) => (drawerMode === 'edit' && editingRoom ? room.id !== editingRoom.id : true))
     .map((room) => room.code)
+  const totalRooms = roomsLoading ? item.units : roomsData.length
+  const activeRooms = roomsLoading ? item.activeUnits : roomsData.filter((room) => room.status === 'ACTIVE').length
 
   return (
     <>
@@ -99,7 +87,9 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
             <Typography.Title level={isMobile ? 5 : isTablet ? 4 : 3} style={{ margin: 0 }}>
               {item.name}
             </Typography.Title>
-            <Tag color={statusColor[item.status]}>{item.status.toUpperCase()}</Tag>
+            <Tag color={activeRooms > 0 ? 'green' : 'default'}>
+              {activeRooms}/{totalRooms} active rooms
+            </Tag>
           </Space>
           <Space wrap>
             <Button size={isMobile ? 'large' : 'middle'} icon={<EditOutlined />} onClick={() => onEdit(item)}>
@@ -120,9 +110,9 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
               children: (
                 <Descriptions bordered column={isMobile ? 1 : 2}>
                   <Descriptions.Item label="Code">{item.code}</Descriptions.Item>
-                  <Descriptions.Item label="Status">{item.status}</Descriptions.Item>
                   <Descriptions.Item label="Manager">{item.manager}</Descriptions.Item>
-                  <Descriptions.Item label="Units">{item.units}</Descriptions.Item>
+                  <Descriptions.Item label="Rooms">{totalRooms}</Descriptions.Item>
+                  <Descriptions.Item label="Active rooms">{activeRooms}</Descriptions.Item>
                   <Descriptions.Item label="Address" span={isMobile ? 1 : 2}>
                     {item.address}
                   </Descriptions.Item>
@@ -177,7 +167,6 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
                   <RoomsTable
                     loading={roomsLoading}
                     data={roomsData}
-                    tenantCountByRoomId={tenantCountByRoomId}
                     onView={(room) => {
                       window.history.pushState(null, '', `/rooms/${room.id}?buildingId=${item.id}`)
                       window.dispatchEvent(new PopStateEvent('popstate'))

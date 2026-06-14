@@ -1,23 +1,16 @@
 import { BankOutlined, PlusOutlined } from '@ant-design/icons'
-import { Button, Empty, Grid, Input, List, Select, Skeleton, Space, Tag, Typography } from 'antd'
+import { Button, Empty, Grid, Input, List, Skeleton, Space, Tag, Typography } from 'antd'
 import type { ChangeEvent } from 'react'
-import type { BuildingEntity, StatusFilter } from './types'
+import type { BuildingEntity } from './types'
 
 interface MasterListPanelProps {
   loading: boolean
   items: BuildingEntity[]
   selectedId?: string
   searchValue: string
-  statusFilter: StatusFilter
   onSearchChange: (value: string) => void
-  onStatusFilterChange: (value: StatusFilter) => void
   onSelect: (id: string) => void
   onAdd: () => void
-}
-
-const statusColor: Record<BuildingEntity['status'], string> = {
-  active: 'green',
-  inactive: 'default',
 }
 
 export function MasterListPanel({
@@ -25,9 +18,7 @@ export function MasterListPanel({
   items,
   selectedId,
   searchValue,
-  statusFilter,
   onSearchChange,
-  onStatusFilterChange,
   onSelect,
   onAdd,
 }: MasterListPanelProps) {
@@ -46,16 +37,6 @@ export function MasterListPanel({
           placeholder="Search by code or name"
           value={searchValue}
           onChange={(event: ChangeEvent<HTMLInputElement>) => onSearchChange(event.target.value)}
-        />
-        <Select
-          size={isMobile ? 'large' : 'middle'}
-          value={statusFilter}
-          options={[
-            { label: 'All', value: 'all' },
-            { label: 'Active', value: 'active' },
-            { label: 'Inactive', value: 'inactive' },
-          ]}
-          onChange={onStatusFilterChange}
         />
         <Button size={isMobile ? 'large' : 'middle'} type="primary" icon={<PlusOutlined />} onClick={onAdd}>
           Add
@@ -96,7 +77,9 @@ export function MasterListPanel({
                   title={<Typography.Text strong ellipsis>{item.name}</Typography.Text>}
                   description={<Typography.Text type="secondary" ellipsis>{`${item.code} • ${item.address}`}</Typography.Text>}
                 />
-                <Tag color={statusColor[item.status]}>{item.status.toUpperCase()}</Tag>
+                <Tag color={item.activeUnits > 0 ? 'green' : 'default'}>
+                  {item.activeUnits}/{item.units} rooms
+                </Tag>
               </List.Item>
             )}
           />

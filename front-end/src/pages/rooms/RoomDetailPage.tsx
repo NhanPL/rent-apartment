@@ -1,8 +1,11 @@
-import { ArrowLeftOutlined, DeleteOutlined, EditOutlined, EyeOutlined } from '@ant-design/icons'
+import { ArrowLeftOutlined, BankOutlined, DeleteOutlined, EditOutlined, EyeOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { Button, Card, Descriptions, Empty, Grid, Modal, Skeleton, Space, Table, Tag, Typography, message } from 'antd'
+import dayjs from 'dayjs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { createPaymentRequest } from '../../services/paymentsService'
 import {
   deleteRoom,
+  generateMonthlyInvoiceForRoom,
   getRoomDetail,
   listMonthlyBillsByRoomId,
   listTenantsByRoomId,
@@ -40,6 +43,7 @@ export function RoomDetailPage({ roomId }: RoomDetailPageProps) {
   const [room, setRoom] = useState<(Room & { building_name: string }) | null>(null)
   const [tenants, setTenants] = useState<TenantSummary[]>([])
   const [bills, setBills] = useState<MonthlyBill[]>([])
+  const [quickActionLoading, setQuickActionLoading] = useState<'invoice' | 'payment' | null>(null)
 
   const [roomDrawerOpen, setRoomDrawerOpen] = useState(false)
 
@@ -78,6 +82,47 @@ export function RoomDetailPage({ roomId }: RoomDetailPageProps) {
     window.dispatchEvent(new PopStateEvent('popstate'))
   }, [])
 
+  const latestPayableBill = useMemo(
+    () => bills.find((bill) => !['PAID', 'VOID'].includes(bill.invoice_status)) ?? null,
+    [bills],
+  )
+
+  const generateCurrentMonthInvoice = useCallback(async () => {
+    if (!room) return
+
+    setQuickActionLoading('invoice')
+    try {
+      const month = dayjs().startOf('month').format('YYYY-MM-DD')
+      const result = await generateMonthlyInvoiceForRoom(room.id, month)
+      if (result.generated.length > 0) {
+        message.success(`Generated invoice for ${dayjs(month).format('MM/YYYY')}`)
+      } else {
+        const reason = result.skipped[0]?.reason
+        message.warning(reason ? `Invoice was not generated: ${reason}` : 'No invoice was generated for this room')
+      }
+      await refresh()
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Unable to generate invoice')
+    } finally {
+      setQuickActionLoading(null)
+    }
+  }, [refresh, room])
+
+  const createQuickPaymentRequest = useCallback(async () => {
+    if (!latestPayableBill) return
+
+    setQuickActionLoading('payment')
+    try {
+      await createPaymentRequest({ invoice_id: latestPayableBill.id })
+      message.success(`Payment request created for ${dayjs(latestPayableBill.month).format('MM/YYYY')}`)
+      await refresh()
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Unable to create payment request')
+    } finally {
+      setQuickActionLoading(null)
+    }
+  }, [latestPayableBill, refresh])
+
   if (loading) {
     return <Skeleton active paragraph={{ rows: 12 }} />
   }
@@ -110,6 +155,21 @@ export function RoomDetailPage({ roomId }: RoomDetailPageProps) {
           </Space>
           <Space wrap>
             <Tag color={roomStatusColor[room.status]}>{room.status}</Tag>
+            <Button
+              icon={<ThunderboltOutlined />}
+              loading={quickActionLoading === 'invoice'}
+              onClick={() => void generateCurrentMonthInvoice()}
+            >
+              Generate Invoice
+            </Button>
+            <Button
+              icon={<BankOutlined />}
+              disabled={!latestPayableBill}
+              loading={quickActionLoading === 'payment'}
+              onClick={() => void createQuickPaymentRequest()}
+            >
+              Payment Request
+            </Button>
             <Button icon={<EditOutlined />} onClick={() => setRoomDrawerOpen(true)}>
               Edit Room
             </Button>
