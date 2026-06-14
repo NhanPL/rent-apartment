@@ -10,6 +10,7 @@ import { FixedChargesPage } from '../pages/fixed-charges/FixedChargesPage'
 import { TenantRoomPage } from '../pages/tenant-room/TenantRoomPage'
 import { UtilitiesPage } from '../pages/utilities/UtilitiesPage'
 import { PaymentsPage } from '../pages/payments/PaymentsPage'
+import { PaymentResultPage } from '../pages/payments/PaymentResultPage'
 import { ReportsPage } from '../pages/reports/ReportsPage'
 import { routeItems, sidebarRouteItems } from './routeConfig'
 import { LoginPage } from '../features/auth/pages/LoginPage'
@@ -31,6 +32,10 @@ function homePathByRole(role: AppRole) {
 
 function canAccess(pathname: string, role: AppRole) {
   if (pathname === '/my-room') {
+    return role === 'TENANT'
+  }
+
+  if (pathname === '/payment-result') {
     return role === 'TENANT'
   }
 
@@ -108,6 +113,7 @@ export function AppRoutes() {
     if (protectedPath === '/tenants') return <TenantsPage />
     if (protectedPath === '/invoices') return <InvoicesPage />
     if (protectedPath === '/payments') return <PaymentsPage />
+    if (protectedPath === '/payment-result') return <PaymentResultPage />
     if (protectedPath === '/reports') return <ReportsPage />
     if (protectedPath === '/my-room') return <TenantRoomPage />
     return null

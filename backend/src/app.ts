@@ -7,6 +7,7 @@ import utilityRatesRoutes from './modules/utility-rates/utility-rates.routes';
 import utilityReadingsRoutes from './modules/utility-readings/utility-readings.routes';
 import invoicesRoutes from './modules/invoices/invoices.routes';
 import paymentsRoutes from './modules/payments/payments.routes';
+import vnpayPublicRoutes from './modules/payments/vnpay.routes';
 import fixedChargesRoutes from './modules/fixed-charges/fixed-charges.routes';
 import meRoutes from './modules/me/me.routes';
 import uploadsRoutes from './modules/uploads/uploads.routes';
@@ -34,6 +35,7 @@ app.use(express.json());
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 app.use('/api/auth', authRoutes);
+app.use('/api/payments/vnpay', vnpayPublicRoutes);
 
 app.use('/api', requireAuth);
 app.use('/api/buildings', buildingsRoutes);

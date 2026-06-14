@@ -22,6 +22,7 @@ export const routeItems: RouteDefinition[] = [
   { key: 'payments', path: '/payments', label: 'Payments' },
   { key: 'reports', path: '/reports', label: 'Reports' },
   { key: 'my-room', path: '/my-room', label: 'My Room' },
+  { key: 'payment-result', path: '/payment-result', label: 'Payment Result' },
 ]
 
 export const sidebarRouteItems: SidebarRouteItem[] = [
