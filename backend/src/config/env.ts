@@ -12,6 +12,8 @@ const optionalUrlString = z.preprocess(
   (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
   z.string().trim().url().optional()
 );
+const optionalString = z.string().optional().default('');
+const optionalEmail = z.union([z.string().email(), z.literal('')]).optional().default('');
 
 const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
@@ -47,10 +49,10 @@ const envSchema = z.object({
   SMTP_HOST: z.string().min(1),
   SMTP_PORT: z.coerce.number().int().positive(),
   SMTP_SECURE: z.enum(['true', 'false']).default('false'),
-  SMTP_USER: z.string().min(1),
-  SMTP_PASS: z.string().min(1),
-  SMTP_FROM_NAME: z.string().min(1),
-  SMTP_FROM_EMAIL: z.string().email()
+  SMTP_USER: optionalString,
+  SMTP_PASS: optionalString,
+  SMTP_FROM_NAME: optionalString,
+  SMTP_FROM_EMAIL: optionalEmail
 });
 
 const parsed = envSchema.safeParse(process.env);
