@@ -1,23 +1,32 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { AppLayout } from '../layout/AppLayout'
-import { BuildingsPage } from '../pages/buildings/BuildingsPage'
-import { ContractsPage } from '../pages/contracts/ContractsPage'
-import { DashboardPage } from '../pages/dashboard/DashboardPage'
-import { RoomDetailPage } from '../pages/rooms/RoomDetailPage'
-import { TenantsPage } from '../pages/tenants/TenantsPage'
-import { InvoicesPage } from '../pages/invoices/InvoicesPage'
-import { FixedChargesPage } from '../pages/fixed-charges/FixedChargesPage'
-import { TenantRoomPage } from '../pages/tenant-room/TenantRoomPage'
-import { UtilitiesPage } from '../pages/utilities/UtilitiesPage'
-import { PaymentsPage } from '../pages/payments/PaymentsPage'
-import { PaymentResultPage } from '../pages/payments/PaymentResultPage'
-import { ReportsPage } from '../pages/reports/ReportsPage'
 import { routeItems, sidebarRouteItems } from './routeConfig'
-import { LoginPage } from '../features/auth/pages/LoginPage'
 import { useAuth } from '../features/auth/useAuth'
 import type { AppRole } from '../features/auth/types/auth'
 
+const LoginPage = lazy(() => import('../features/auth/pages/LoginPage').then((module) => ({ default: module.LoginPage })))
+const BuildingsPage = lazy(() => import('../pages/buildings/BuildingsPage').then((module) => ({ default: module.BuildingsPage })))
+const ContractsPage = lazy(() => import('../pages/contracts/ContractsPage').then((module) => ({ default: module.ContractsPage })))
+const DashboardPage = lazy(() => import('../pages/dashboard/DashboardPage').then((module) => ({ default: module.DashboardPage })))
+const RoomDetailPage = lazy(() => import('../pages/rooms/RoomDetailPage').then((module) => ({ default: module.RoomDetailPage })))
+const TenantsPage = lazy(() => import('../pages/tenants/TenantsPage').then((module) => ({ default: module.TenantsPage })))
+const InvoicesPage = lazy(() => import('../pages/invoices/InvoicesPage').then((module) => ({ default: module.InvoicesPage })))
+const FixedChargesPage = lazy(() => import('../pages/fixed-charges/FixedChargesPage').then((module) => ({ default: module.FixedChargesPage })))
+const TenantRoomPage = lazy(() => import('../pages/tenant-room/TenantRoomPage').then((module) => ({ default: module.TenantRoomPage })))
+const UtilitiesPage = lazy(() => import('../pages/utilities/UtilitiesPage').then((module) => ({ default: module.UtilitiesPage })))
+const PaymentsPage = lazy(() => import('../pages/payments/PaymentsPage').then((module) => ({ default: module.PaymentsPage })))
+const PaymentResultPage = lazy(() => import('../pages/payments/PaymentResultPage').then((module) => ({ default: module.PaymentResultPage })))
+const ReportsPage = lazy(() => import('../pages/reports/ReportsPage').then((module) => ({ default: module.ReportsPage })))
+
 const adminPaths = new Set(['/dashboard', '/buildings', '/contracts', '/utilities', '/fixed-charges', '/tenants', '/invoices', '/payments', '/reports'])
+
+function RouteFallback() {
+  return (
+    <div role="status" aria-live="polite">
+      Loading page...
+    </div>
+  )
+}
 
 function getBasePath(pathname: string) {
   if (pathname.startsWith('/rooms/')) {
@@ -79,7 +88,11 @@ export function AppRoutes() {
     if (pathname !== '/login') {
       window.history.replaceState(null, '', '/login')
     }
-    return <LoginPage />
+    return (
+      <Suspense fallback={<RouteFallback />}>
+        <LoginPage />
+      </Suspense>
+    )
   }
 
   const targetPath = pathname === '/login' ? homePathByRole(user.role) : resolveProtectedPath(pathname, user.role)
@@ -124,7 +137,7 @@ export function AppRoutes() {
       }}
       items={allowedSidebarItems}
       pageTitle={pageTitle}
-      content={renderPage()}
+      content={<Suspense fallback={<RouteFallback />}>{renderPage()}</Suspense>}
       currentUserName={user.fullName ?? user.username ?? user.email ?? 'User'}
       onLogout={async () => {
         await logout()

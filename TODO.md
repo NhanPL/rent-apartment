@@ -8,7 +8,7 @@ File này tổng hợp các việc còn thiếu/chưa hoàn chỉnh sau khi rà 
 - [x] Backend `npm run build` pass.
 - [x] Frontend `npm run lint` pass.
 - [x] Frontend `npm run build` pass.
-- [ ] Frontend build đang cảnh báo bundle lớn khoảng `1.25 MB`; cần code-splitting khi thêm nhiều màn mới.
+- [x] Frontend build không còn cảnh báo bundle lớn sau code-splitting; chunk JS lớn nhất hiện khoảng `356.12 kB`.
 
 ## P0 - Blocker / Cần chốt trước
 
@@ -214,10 +214,10 @@ File này tổng hợp các việc còn thiếu/chưa hoàn chỉnh sau khi rà 
 
 ### P4.5 - Frontend performance
 
-- [ ] [FE] Code-split các màn lớn: tenants, payments/invoices, dashboard.
-- [ ] [FE] Lazy-load route components.
-- [ ] [FE] Tách vendor chunk Ant Design nếu cần.
-- [ ] [FE] Theo dõi lại bundle warning sau khi split.
+- [x] [FE] Code-split các màn lớn: tenants, payments/invoices, dashboard.
+- [x] [FE] Lazy-load route components.
+- [x] [FE] Tách vendor chunk Ant Design nếu cần (Vite đang tự tách theo component, không cần ép manual chunk).
+- [x] [FE] Theo dõi lại bundle warning sau khi split; chunk JS lớn nhất khoảng `356.12 kB`, không còn warning.
 
 ## Sprint đề xuất
 
