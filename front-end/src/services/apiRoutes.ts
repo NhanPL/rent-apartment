@@ -12,6 +12,10 @@ export const API_ROUTES = {
   dashboard: {
     summary: '/dashboard/summary',
   },
+  reports: {
+    summary: '/reports/summary',
+    exportCsv: '/reports/export.csv',
+  },
   rooms: {
     list: '/rooms',
     detail: (id: string) => `/rooms/${id}`,
