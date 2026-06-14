@@ -207,10 +207,10 @@ File này tổng hợp các việc còn thiếu/chưa hoàn chỉnh sau khi rà 
 
 ### P4.4 - Migration strategy
 
-- [ ] [DB] Tách `database.sql` thành migrations versioned.
-- [ ] [DB] Tách schema và seed/demo data.
-- [ ] [DB] Thêm script migrate local.
-- [ ] [DB] Document rollback/restore tối thiểu.
+- [x] [DB] Tách `database.sql` thành migrations versioned.
+- [x] [DB] Tách schema và seed/demo data.
+- [x] [DB] Thêm script migrate local.
+- [x] [DB] Document rollback/restore tối thiểu.
 
 ### P4.5 - Frontend performance
 
