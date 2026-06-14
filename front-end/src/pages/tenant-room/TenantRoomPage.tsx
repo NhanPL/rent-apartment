@@ -28,15 +28,12 @@ import {
 import type { PaymentRequest, PaymentRequestStatus } from '../../services/paymentsService'
 import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
 import type { UploadedCloudinaryFile } from '../../services/uploadService'
-
-interface UtilityFormValues {
-  month: string
-  electricity_prev: number | null
-  electricity_curr: number | null
-  water_prev: number | null
-  water_curr: number | null
-  note: string
-}
+import {
+  calculateReadingUsage,
+  isTenantUtilityReadingLocked,
+  validateTenantUtilityReading,
+  type TenantUtilityReadingFormValues,
+} from './utilityReadingForm'
 
 interface EvidenceFormValues {
   evidence_type: UtilityEvidenceType
@@ -140,7 +137,7 @@ export function TenantRoomPage() {
   const [tenantDocuments, setTenantDocuments] = useState<TenantDocument[]>([])
   const [tenantDocumentSubmitting, setTenantDocumentSubmitting] = useState(false)
 
-  const [form] = Form.useForm<UtilityFormValues>()
+  const [form] = Form.useForm<TenantUtilityReadingFormValues>()
   const [evidenceForm] = Form.useForm<EvidenceFormValues>()
   const [paymentProofForm] = Form.useForm<PaymentProofFormValues>()
   const [tenantDocumentForm] = Form.useForm<TenantDocumentFormValues>()
@@ -150,22 +147,18 @@ export function TenantRoomPage() {
   const waterPrev = Form.useWatch('water_prev', form)
   const waterCurr = Form.useWatch('water_curr', form)
 
-  const electricUsage = useMemo(() => {
-    if (electricityPrev === null || electricityPrev === undefined || electricityCurr === null || electricityCurr === undefined) {
-      return null
-    }
-    return Math.max(0, electricityCurr - electricityPrev)
-  }, [electricityCurr, electricityPrev])
+  const electricUsage = useMemo(
+    () => calculateReadingUsage(electricityPrev, electricityCurr),
+    [electricityCurr, electricityPrev],
+  )
 
-  const waterUsage = useMemo(() => {
-    if (waterPrev === null || waterPrev === undefined || waterCurr === null || waterCurr === undefined) {
-      return null
-    }
-    return Math.max(0, waterCurr - waterPrev)
-  }, [waterCurr, waterPrev])
+  const waterUsage = useMemo(
+    () => calculateReadingUsage(waterPrev, waterCurr),
+    [waterCurr, waterPrev],
+  )
 
   const currentReading = utilitySnapshot?.current_reading ?? null
-  const readingLocked = currentReading?.status === 'APPROVED' || currentReading?.status === 'INVOICED'
+  const readingLocked = isTenantUtilityReadingLocked(currentReading?.status)
   const currentRemainingAmount = currentBill ? Math.max(currentBill.total - currentBill.paid_amount, 0) : 0
   const canPayCurrentBill = Boolean(currentBill && currentBill.status !== 'PAID' && currentBill.status !== 'VOID' && currentRemainingAmount > 0)
 
@@ -240,31 +233,28 @@ export function TenantRoomPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [context?.room.id, monthValue])
 
-  const handleSubmit = async (values: UtilityFormValues) => {
+  const handleSubmit = async (values: TenantUtilityReadingFormValues) => {
     if (!context) {
       return
     }
 
-    if (readingLocked) {
-      message.warning('Reading for this month is already approved or invoiced.')
-      return
-    }
-
-    if (values.electricity_curr === null || values.electricity_curr === undefined || values.water_curr === null || values.water_curr === undefined) {
-      message.error('Vui lòng nhập đầy đủ chỉ số điện và nước hiện tại')
+    const validation = validateTenantUtilityReading(values, readingLocked)
+    if (!validation.ok) {
+      if (validation.reason === 'locked') {
+        message.warning('Reading for this month is already approved or invoiced.')
+      } else if (validation.reason === 'missing-month') {
+        message.error('Vui lòng chọn tháng ghi chỉ số')
+      } else {
+        message.error('Vui lòng nhập đầy đủ chỉ số điện và nước hiện tại')
+      }
       return
     }
 
     setSubmitting(true)
     try {
-      await upsertMyUtilityReading(context.room.id, {
-        month: `${values.month}-01`,
-        electricity_curr: values.electricity_curr,
-        water_curr: values.water_curr,
-        note: values.note.trim() || null,
-      })
+      await upsertMyUtilityReading(context.room.id, validation.payload)
 
-      await hydrateFormByMonth(context.room.id, values.month)
+      await hydrateFormByMonth(context.room.id, validation.formMonth)
       message.success('Đã ghi nhận chỉ số điện nước thành công')
     } catch (error) {
       message.error(error instanceof Error ? error.message : 'Không thể lưu chỉ số điện nước')
@@ -700,7 +690,7 @@ export function TenantRoomPage() {
       </Card>
 
       <Card title="Nhập chỉ số điện / nước theo tháng">
-        <Form<UtilityFormValues>
+        <Form<TenantUtilityReadingFormValues>
           form={form}
           layout="vertical"
           onFinish={handleSubmit}

@@ -2,6 +2,7 @@ import { Form } from 'antd'
 import { useMemo } from 'react'
 import type { FormInstance } from 'antd/es/form'
 import type { InvoiceStatus } from '../types'
+import { calculateInvoiceTotals } from './invoiceCalculation'
 
 export interface InvoiceFormValues {
   building_id?: string
@@ -55,12 +56,29 @@ export function useInvoiceDerivedValues(form: FormInstance<InvoiceFormValues>) {
   const otherFees = Form.useWatch('other_fees', form) ?? 0
   const discount = Form.useWatch('discount', form) ?? 0
 
-  const electricUsage = useMemo(() => Math.max(0, electricityCurr - electricityPrev), [electricityCurr, electricityPrev])
-  const waterUsage = useMemo(() => Math.max(0, waterCurr - waterPrev), [waterCurr, waterPrev])
-  const electricAmount = useMemo(() => electricUsage * electricUnitPrice, [electricUsage, electricUnitPrice])
-  const waterAmount = useMemo(() => waterUsage * waterUnitPrice, [waterUsage, waterUnitPrice])
-  const subtotal = useMemo(() => rentAmount + electricAmount + waterAmount + otherFees, [rentAmount, electricAmount, waterAmount, otherFees])
-  const totalAmount = useMemo(() => Math.max(0, subtotal - discount), [subtotal, discount])
-
-  return { electricUsage, waterUsage, electricAmount, waterAmount, subtotal, totalAmount }
+  return useMemo(
+    () =>
+      calculateInvoiceTotals({
+        rentAmount,
+        electricityPrev,
+        electricityCurr,
+        waterPrev,
+        waterCurr,
+        electricUnitPrice,
+        waterUnitPrice,
+        otherFees,
+        discount,
+      }),
+    [
+      discount,
+      electricUnitPrice,
+      electricityCurr,
+      electricityPrev,
+      otherFees,
+      rentAmount,
+      waterCurr,
+      waterPrev,
+      waterUnitPrice,
+    ],
+  )
 }

@@ -82,17 +82,11 @@ export function AppRoutes() {
     return <LoginPage />
   }
 
-  if (pathname === '/login') {
-    const homePath = homePathByRole(user.role)
-    window.history.replaceState(null, '', homePath)
-    return null
+  const targetPath = pathname === '/login' ? homePathByRole(user.role) : resolveProtectedPath(pathname, user.role)
+  if (targetPath !== pathname) {
+    window.history.replaceState(null, '', targetPath)
   }
-
-  const protectedPath = resolveProtectedPath(pathname, user.role)
-  if (protectedPath !== pathname) {
-    window.history.replaceState(null, '', protectedPath)
-    return null
-  }
+  const protectedPath = targetPath
 
   const pageTitle = protectedPath.startsWith('/rooms/')
     ? 'Room Detail'
