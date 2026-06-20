@@ -86,9 +86,9 @@ class FakeDb {
       { id: ids.roomB, building_id: ids.buildingB, code: 'B201', floor: 2, area_m2: 25, max_occupants: 2, base_rent: 900, status: 'OCCUPIED' }
     ];
     this.tenants = [
-      this.tenantRow(ids.tenantA, ids.tenantAUser, 'Alice Tenant', 'ID-A', 'tenant@example.com', '0900000001'),
-      this.tenantRow(ids.tenantB, ids.tenantBUser, 'Bob Tenant', 'ID-B', 'tenant-b@example.com', '0900000002'),
-      this.tenantRow(ids.tenantFree, null, 'Free Tenant', 'ID-FREE', 'free@example.com', '0900000003')
+      this.tenantRow(ids.tenantA, ids.tenantAUser, ids.managerAUser, 'Alice Tenant', 'ID-A', 'tenant@example.com', '0900000001'),
+      this.tenantRow(ids.tenantB, ids.tenantBUser, ids.managerBUser, 'Bob Tenant', 'ID-B', 'tenant-b@example.com', '0900000002'),
+      this.tenantRow(ids.tenantFree, null, ids.managerAUser, 'Free Tenant', 'ID-FREE', 'free@example.com', '0900000003')
     ];
     this.contracts = [
       this.contractRow(ids.contractA, ids.roomA, 'CONTRACT-A', 'ACTIVE', '2026-01-01', 1000, 5),
@@ -170,15 +170,20 @@ class FakeDb {
       return result<T>(tenant ? [{ id: tenant.id } as T] : []);
     }
 
+    if (sql.startsWith('select id from tenant where id=$1')) {
+      const tenant = this.tenants.find((item) => item.id === params[0] && item.manager_user_id === params[1] && item.status !== 'DELETED');
+      return result<T>(tenant ? [{ id: tenant.id } as T] : []);
+    }
+
     if (sql.startsWith('insert into tenant(')) {
-      const row = this.tenantRow(this.newId(), null, String(params[0]), String(params[3]), params[6] as string | null, String(params[7]));
-      row.dob = params[1] ?? null;
-      row.gender = params[2] ?? null;
-      row.identity_issued_date = params[4] ?? null;
-      row.identity_issued_place = params[5] ?? null;
-      row.permanent_address = params[8] ?? null;
-      row.status = params[9] ?? 'ACTIVE';
-      row.note = params[10] ?? null;
+      const row = this.tenantRow(this.newId(), null, String(params[0]), String(params[1]), String(params[4]), params[7] as string | null, String(params[8]));
+      row.dob = params[2] ?? null;
+      row.gender = params[3] ?? null;
+      row.identity_issued_date = params[5] ?? null;
+      row.identity_issued_place = params[6] ?? null;
+      row.permanent_address = params[9] ?? null;
+      row.status = params[10] ?? 'ACTIVE';
+      row.note = params[11] ?? null;
       this.tenants.push(row);
       return result<T>([{ id: row.id, full_name: row.full_name, email: row.email } as T]);
     }
@@ -212,8 +217,8 @@ class FakeDb {
     }
 
     if (sql.startsWith('select t.* from tenant t where t.id=$1')) {
-      const tenant = this.tenants.find((item) => item.id === params[0] && item.status !== params[1]);
-      return result<T>(tenant && this.isTenantVisibleToManager(tenant.id, String(params[2])) ? [tenant as T] : []);
+      const tenant = this.tenants.find((item) => item.id === params[0] && item.manager_user_id === params[1] && item.status !== params[2]);
+      return result<T>(tenant ? [tenant as T] : []);
     }
 
     if (sql.startsWith('select t.id as tenant_id')) {
@@ -252,13 +257,13 @@ class FakeDb {
     if (sql.startsWith('select * from tenant where')) {
       const tenantId = params[params.length - 2];
       const managerId = String(params[params.length - 1]);
-      const tenant = this.tenants.find((item) => item.id === tenantId && item.status !== 'DELETED');
-      return result<T>(tenant && this.isTenantVisibleToManager(tenant.id, managerId) ? [tenant as T] : []);
+      const tenant = this.tenants.find((item) => item.id === tenantId && item.manager_user_id === managerId && item.status !== 'DELETED');
+      return result<T>(tenant ? [tenant as T] : []);
     }
 
     if (sql.startsWith('select id, user_id from tenant')) {
-      const tenant = this.tenants.find((item) => item.id === params[0] && item.status !== params[1]);
-      return result<T>(tenant && this.isTenantVisibleToManager(tenant.id, String(params[2])) ? [{ id: tenant.id, user_id: tenant.user_id } as T] : []);
+      const tenant = this.tenants.find((item) => item.id === params[0] && item.manager_user_id === params[1] && item.status !== params[2]);
+      return result<T>(tenant ? [{ id: tenant.id, user_id: tenant.user_id } as T] : []);
     }
 
     if (sql.startsWith("update tenant set status='deleted'")) {
@@ -678,10 +683,11 @@ class FakeDb {
     return fn(this.client);
   }
 
-  private tenantRow(id: string, userId: string | null, fullName: string, identityNumber: string, email: string | null, phone: string) {
+  private tenantRow(id: string, userId: string | null, managerUserId: string, fullName: string, identityNumber: string, email: string | null, phone: string) {
     return {
       id,
       user_id: userId,
+      manager_user_id: managerUserId,
       full_name: fullName,
       dob: null,
       gender: null,
@@ -805,7 +811,7 @@ class FakeDb {
   }
 
   private visibleTenantsForManager(managerId: string) {
-    return this.tenants.filter((tenant) => this.isTenantVisibleToManager(tenant.id, managerId));
+    return this.tenants.filter((tenant) => tenant.manager_user_id === managerId && tenant.status !== 'DELETED');
   }
 
   private decorateTenantForManager(tenant: Row, managerId: string) {
