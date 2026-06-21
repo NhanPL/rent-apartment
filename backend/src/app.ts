@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import buildingsRoutes from './modules/buildings/buildings.routes';
 import roomsRoutes from './modules/rooms/rooms.routes';
 import tenantsRoutes from './modules/tenants/tenants.routes';
@@ -30,6 +31,14 @@ app.use((req, res, next) => {
   }
   next();
 });
+
+app.use(cors({
+  origin: [
+    "http://localhost:5173",
+    "https://rent-apartment-three.vercel.app/"
+  ],
+  credentials: true
+}));
 
 app.use(express.json());
 
