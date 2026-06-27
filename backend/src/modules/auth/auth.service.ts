@@ -9,7 +9,7 @@ interface UserRow {
   role: AppRole;
   email: string | null;
   username: string | null;
-  password_hash: string;
+  password_hash: string | null;
   is_active: boolean;
 }
 
@@ -53,7 +53,13 @@ const toUserProfile = async (user: UserRow): Promise<UserProfile> => {
 
 const isBcryptHash = (hash: string): boolean => hash.startsWith('$2a$') || hash.startsWith('$2b$') || hash.startsWith('$2y$');
 
+const hasPassword = (user: UserRow): user is UserRow & { password_hash: string } => Boolean(user.password_hash?.trim());
+
 const verifyPassword = async (user: UserRow, plainPassword: string): Promise<boolean> => {
+  if (!hasPassword(user)) {
+    return true;
+  }
+
   if (isBcryptHash(user.password_hash)) {
     return bcrypt.compare(plainPassword, user.password_hash);
   }
@@ -70,7 +76,7 @@ const verifyPassword = async (user: UserRow, plainPassword: string): Promise<boo
   return true;
 };
 
-export const authenticateLogin = async (identifier: string, password: string): Promise<LoginResult> => {
+export const authenticateLogin = async (identifier: string, password = ''): Promise<LoginResult> => {
   const { rows } = await query<UserRow>(
     `SELECT id, role, email, username, password_hash, is_active
      FROM app_user

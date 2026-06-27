@@ -17,7 +17,7 @@ export interface LoginFormValues {
 
 export interface LoginPayload {
   identifier: string
-  password: string
+  password?: string
 }
 
 export interface LoginResponse {
