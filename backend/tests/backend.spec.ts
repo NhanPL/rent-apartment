@@ -68,6 +68,41 @@ describe('backend API smoke tests', () => {
     });
   });
 
+  it('allows users without a stored password to log in without submitting one', async () => {
+    const tenantWithNullPassword = fakeDb.users.find((user) => user.id === ids.tenantAUser)!;
+    tenantWithNullPassword.password_hash = null;
+
+    const nullPasswordSession = await request(app)
+      .post('/api/auth/login')
+      .send({ identifier: 'tenant@example.com' })
+      .expect(200);
+
+    expect(nullPasswordSession.body.user).toMatchObject({
+      id: ids.tenantAUser,
+      role: 'TENANT'
+    });
+
+    const tenantWithEmptyPassword = fakeDb.users.find((user) => user.id === ids.tenantBUser)!;
+    tenantWithEmptyPassword.password_hash = '';
+
+    const emptyPasswordSession = await request(app)
+      .post('/api/auth/login')
+      .send({ identifier: 'tenant-b@example.com', password: '' })
+      .expect(200);
+
+    expect(emptyPasswordSession.body.user).toMatchObject({
+      id: ids.tenantBUser,
+      role: 'TENANT'
+    });
+  });
+
+  it('still rejects password-backed users when no password is submitted', async () => {
+    await request(app)
+      .post('/api/auth/login')
+      .send({ identifier: 'manager@example.com' })
+      .expect(401);
+  });
+
   it('enforces RBAC for manager-only tenant endpoints', async () => {
     const tenantSession = await login('tenant@example.com');
 

@@ -22,14 +22,14 @@ export function LoginForm() {
     try {
       const user = await login({
         identifier: values.identifier.trim(),
-        password: values.password,
+        password: values.password ?? '',
       })
 
       const targetPath = getHomePathByRole(user.role)
       window.history.replaceState(null, '', targetPath)
       window.dispatchEvent(new PopStateEvent('popstate'))
-    } catch {
-      setError('Invalid username/email or password. Please try again.')
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : 'Unable to sign in. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -55,7 +55,6 @@ export function LoginForm() {
         <Form.Item
           label="Username or email"
           name="identifier"
-          rules={[{ required: true, message: 'Please enter your username or email.' }]}
         >
           <Input autoComplete="username" placeholder="manager@rent.vn or username" allowClear />
         </Form.Item>
@@ -63,9 +62,8 @@ export function LoginForm() {
         <Form.Item
           label="Password"
           name="password"
-          rules={[{ required: true, message: 'Please enter your password.' }]}
         >
-          <Input.Password autoComplete="current-password" placeholder="Enter your password" />
+          <Input.Password autoComplete="current-password" placeholder="Enter password if your account has one" />
         </Form.Item>
 
         <Form.Item name="rememberMe" valuePropName="checked">
