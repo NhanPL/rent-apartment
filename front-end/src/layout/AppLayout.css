@@ -19,13 +19,17 @@
 .app-header {
   display: flex;
   align-items: center;
+  gap: 12px;
   background: #fff;
   border-bottom: 1px solid #f0f0f0;
   padding: 0 16px;
 }
 
-.header-space {
-  width: 100%;
+.header-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
   min-width: 0;
 }
 
@@ -66,7 +70,12 @@
 
 @media (max-width: 767px) {
   .app-header {
+    gap: 8px;
     padding: 0 12px;
+  }
+
+  .header-main {
+    gap: 8px;
   }
 
   .app-content {
@@ -86,6 +95,7 @@
 .user-menu-button {
   margin-left: auto;
   max-width: 220px;
+  flex: 0 1 auto;
 }
 
 .user-menu-button span {
