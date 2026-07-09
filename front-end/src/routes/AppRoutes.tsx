@@ -7,6 +7,7 @@ import type { AppRole } from '../features/auth/types/auth'
 const LoginPage = lazy(() => import('../features/auth/pages/LoginPage').then((module) => ({ default: module.LoginPage })))
 const BuildingsPage = lazy(() => import('../pages/buildings/BuildingsPage').then((module) => ({ default: module.BuildingsPage })))
 const ContractsPage = lazy(() => import('../pages/contracts/ContractsPage').then((module) => ({ default: module.ContractsPage })))
+const RentalRegistrationPage = lazy(() => import('../pages/rental-registration/RentalRegistrationPage').then((module) => ({ default: module.RentalRegistrationPage })))
 const DashboardPage = lazy(() => import('../pages/dashboard/DashboardPage').then((module) => ({ default: module.DashboardPage })))
 const RoomDetailPage = lazy(() => import('../pages/rooms/RoomDetailPage').then((module) => ({ default: module.RoomDetailPage })))
 const TenantsPage = lazy(() => import('../pages/tenants/TenantsPage').then((module) => ({ default: module.TenantsPage })))
@@ -18,7 +19,7 @@ const PaymentsPage = lazy(() => import('../pages/payments/PaymentsPage').then((m
 const PaymentResultPage = lazy(() => import('../pages/payments/PaymentResultPage').then((module) => ({ default: module.PaymentResultPage })))
 const ReportsPage = lazy(() => import('../pages/reports/ReportsPage').then((module) => ({ default: module.ReportsPage })))
 
-const adminPaths = new Set(['/dashboard', '/buildings', '/contracts', '/utilities', '/fixed-charges', '/tenants', '/invoices', '/payments', '/reports'])
+const adminPaths = new Set(['/dashboard', '/buildings', '/rental-registration', '/contracts', '/utilities', '/fixed-charges', '/tenants', '/invoices', '/payments', '/reports'])
 
 function RouteFallback() {
   return (
@@ -113,6 +114,7 @@ export function AppRoutes() {
       }} />
     }
     if (protectedPath === '/buildings') return <BuildingsPage />
+    if (protectedPath === '/rental-registration') return <RentalRegistrationPage />
     if (protectedPath === '/contracts') return <ContractsPage />
     if (protectedPath === '/utilities') return <UtilitiesPage />
     if (protectedPath === '/fixed-charges') return <FixedChargesPage />

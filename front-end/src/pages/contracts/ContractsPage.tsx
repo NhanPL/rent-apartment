@@ -47,6 +47,7 @@ import {
 import type {
   BuildingOption,
   ContractClosePayload,
+  ContractBusinessStage,
   ContractCreatePayload,
   ContractDetail,
   ContractDocument,
@@ -105,6 +106,15 @@ const statusOptions: { label: string; value: ContractStatus; color: string }[] =
   { label: 'Cancelled', value: 'CANCELLED', color: 'red' },
 ]
 
+const businessStageOptions: { label: string; value: ContractBusinessStage; color: string }[] = [
+  { label: 'Da giu phong', value: 'RESERVED', color: 'gold' },
+  { label: 'Cho ky', value: 'WAITING_SIGNATURE', color: 'orange' },
+  { label: 'Cho ban giao', value: 'WAITING_HANDOVER', color: 'cyan' },
+  { label: 'Dang o', value: 'ACTIVE', color: 'green' },
+  { label: 'Da huy', value: 'CANCELLED', color: 'red' },
+  { label: 'Da ket thuc', value: 'ENDED', color: 'blue' },
+]
+
 const closedStatuses = new Set<ContractStatus>(['ENDED', 'CANCELLED'])
 const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
 const documentAccept = 'image/jpeg,image/png,image/webp,application/pdf'
@@ -130,6 +140,12 @@ const formatDate = (value: string | null | undefined) => (value ? dayjs(value).f
 const statusTag = (value: ContractStatus) => {
   const status = statusOptions.find((item) => item.value === value)
   return <Tag color={status?.color}>{status?.label ?? value}</Tag>
+}
+
+const businessStageTag = (value: ContractBusinessStage | undefined) => {
+  if (!value) return <Typography.Text type="secondary">-</Typography.Text>
+  const stage = businessStageOptions.find((item) => item.value === value)
+  return <Tag color={stage?.color}>{stage?.label ?? value}</Tag>
 }
 
 const nullableText = (value: string | undefined): string | null => {
@@ -221,6 +237,7 @@ export function ContractsPage() {
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<ContractStatus | undefined>()
+  const [businessStageFilter, setBusinessStageFilter] = useState<ContractBusinessStage | undefined>()
   const [buildingFilter, setBuildingFilter] = useState<string | undefined>()
   const [roomFilter, setRoomFilter] = useState<string | undefined>()
   const [tenantFilter, setTenantFilter] = useState<string | undefined>()
@@ -251,7 +268,7 @@ export function ContractsPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [search, statusFilter, buildingFilter, roomFilter, tenantFilter])
+  }, [search, statusFilter, businessStageFilter, buildingFilter, roomFilter, tenantFilter])
 
   const loadOptions = useCallback(async () => {
     try {
@@ -276,6 +293,7 @@ export function ContractsPage() {
       const response = await listContracts({
         search,
         status: statusFilter,
+        business_stage: businessStageFilter,
         building_id: buildingFilter,
         room_id: roomFilter,
         tenant_id: tenantFilter,
@@ -289,7 +307,7 @@ export function ContractsPage() {
     } finally {
       setLoading(false)
     }
-  }, [buildingFilter, page, pageSize, roomFilter, search, statusFilter, tenantFilter])
+  }, [buildingFilter, businessStageFilter, page, pageSize, roomFilter, search, statusFilter, tenantFilter])
 
   useEffect(() => {
     void loadOptions()
@@ -639,6 +657,13 @@ export function ContractsPage() {
         render: (value: ContractStatus) => statusTag(value),
       },
       {
+        title: 'Business stage',
+        dataIndex: 'business_stage',
+        key: 'business_stage',
+        width: 160,
+        render: (value: ContractBusinessStage | undefined) => businessStageTag(value),
+      },
+      {
         title: 'Building / Room',
         key: 'room',
         width: 220,
@@ -808,6 +833,13 @@ export function ContractsPage() {
               allowClear
               options={statusOptions.map((item) => ({ label: item.label, value: item.value }))}
               onChange={(value) => setStatusFilter(value)}
+            />
+            <Select
+              value={businessStageFilter}
+              placeholder="Business stage"
+              allowClear
+              options={businessStageOptions.map((item) => ({ label: item.label, value: item.value }))}
+              onChange={(value) => setBusinessStageFilter(value)}
             />
             <Select
               value={buildingFilter}
@@ -1009,6 +1041,7 @@ export function ContractsPage() {
               </Space>
               <Space wrap className="contract-detail-actions">
                 {statusTag(detailItem.status)}
+                {businessStageTag(detailItem.business_stage)}
                 <Button icon={<EditOutlined />} disabled={!detailCanChange} onClick={() => void openEdit(detailItem.id)}>
                   Edit
                 </Button>
@@ -1031,6 +1064,8 @@ export function ContractsPage() {
             </div>
 
             <Descriptions bordered size="small" column={screens.lg ? 2 : 1}>
+              <Descriptions.Item label="Business stage">{businessStageTag(detailItem.business_stage)}</Descriptions.Item>
+              <Descriptions.Item label="Technical status">{statusTag(detailItem.status)}</Descriptions.Item>
               <Descriptions.Item label="Rent">{currency.format(detailItem.rent_price)}</Descriptions.Item>
               <Descriptions.Item label="Deposit">{currency.format(detailItem.deposit_amount)}</Descriptions.Item>
               <Descriptions.Item label="Billing day">{detailItem.billing_day}</Descriptions.Item>

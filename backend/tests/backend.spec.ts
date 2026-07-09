@@ -247,6 +247,169 @@ describe('backend API smoke tests', () => {
     expect(overCapacity.body.code).toBe('ROOM_MAX_OCCUPANTS_EXCEEDED');
   });
 
+  it('runs the rental registration reserve, cancel, and handover workflow', async () => {
+    const managerSession = await login('manager@example.com');
+
+    const available = await request(app)
+      .get('/api/rental-registration/available-rooms')
+      .set(auth(managerSession.accessToken))
+      .expect(200);
+
+    expect(available.body.map((room: { id: string }) => room.id)).toContain(ids.roomSmall);
+    expect(available.body.map((room: { id: string }) => room.id)).not.toContain(ids.roomA);
+
+    const reservedForCancel = await request(app)
+      .post('/api/rental-registration/reserve')
+      .set(auth(managerSession.accessToken))
+      .send({
+        room_id: ids.roomSmall,
+        tenant: {
+          full_name: 'Reservation Cancel Tenant',
+          phone: '0955555555',
+          identity_number: 'ID-CANCEL',
+          email: 'cancel@example.com'
+        },
+        start_date: '2026-07-15',
+        rent_price: 800,
+        deposit_amount: 800,
+        billing_day: 5,
+        note: 'Holding room'
+      })
+      .expect(201);
+
+    expect(reservedForCancel.body).toMatchObject({
+      room_id: ids.roomSmall,
+      status: 'DRAFT',
+      business_stage: 'RESERVED'
+    });
+
+    await request(app)
+      .post(`/api/rental-registration/${reservedForCancel.body.id}/cancel`)
+      .set(auth(managerSession.accessToken))
+      .send({})
+      .expect(400);
+
+    const cancelled = await request(app)
+      .post(`/api/rental-registration/${reservedForCancel.body.id}/cancel`)
+      .set(auth(managerSession.accessToken))
+      .send({ reason: 'Tenant changed plans', cancel_date: '2026-07-10' })
+      .expect(200);
+
+    expect(cancelled.body).toMatchObject({
+      id: reservedForCancel.body.id,
+      status: 'CANCELLED',
+      business_stage: 'CANCELLED'
+    });
+
+    const reservedForHandover = await request(app)
+      .post('/api/rental-registration/reserve')
+      .set(auth(managerSession.accessToken))
+      .send({
+        room_id: ids.roomSmall,
+        tenant_id: ids.tenantFree,
+        start_date: '2026-08-01',
+        rent_price: 850,
+        deposit_amount: 850,
+        billing_day: 7
+      })
+      .expect(201);
+
+    const activated = await request(app)
+      .post(`/api/rental-registration/${reservedForHandover.body.id}/handover`)
+      .set(auth(managerSession.accessToken))
+      .send({
+        move_in_date: '2026-08-03',
+        electricity_curr: 10,
+        water_curr: 4,
+        persons_count: 1,
+        vehicles_count: 1,
+        note: 'Clean handover'
+      })
+      .expect(200);
+
+    expect(activated.body).toMatchObject({
+      id: reservedForHandover.body.id,
+      status: 'ACTIVE',
+      business_stage: 'ACTIVE',
+      move_in_date: '2026-08-03'
+    });
+    expect(fakeDb.utilityReadings.find((reading) => reading.room_id === ids.roomSmall && reading.month === '2026-08-01')).toMatchObject({
+      status: 'APPROVED',
+      electricity_curr: 10,
+      water_curr: 4
+    });
+    expect(fakeDb.roomMonthExtras.find((extra) => extra.room_id === ids.roomSmall && extra.month === '2026-08-01')).toMatchObject({
+      persons_count: 1,
+      vehicles_count: 1
+    });
+  });
+
+  it('rejects invalid rental registration reservations and handovers', async () => {
+    const managerSession = await login('manager@example.com');
+
+    await request(app)
+      .post('/api/rental-registration/reserve')
+      .set(auth(managerSession.accessToken))
+      .send({
+        room_id: ids.roomA,
+        tenant_id: ids.tenantFree,
+        start_date: '2026-07-15',
+        rent_price: 1000,
+        deposit_amount: 1000,
+        billing_day: 5
+      })
+      .expect(409);
+
+    const duplicateTenantReservation = await request(app)
+      .post('/api/rental-registration/reserve')
+      .set(auth(managerSession.accessToken))
+      .send({
+        room_id: ids.roomSmall,
+        tenant_id: ids.tenantA,
+        start_date: '2026-07-15',
+        rent_price: 800,
+        deposit_amount: 800,
+        billing_day: 5
+      })
+      .expect(201);
+
+    const duplicateActive = await request(app)
+      .post(`/api/rental-registration/${duplicateTenantReservation.body.id}/handover`)
+      .set(auth(managerSession.accessToken))
+      .send({
+        move_in_date: '2026-07-15',
+        electricity_curr: 1,
+        water_curr: 1,
+        persons_count: 1,
+        vehicles_count: 0
+      })
+      .expect(409);
+
+    expect(duplicateActive.body.code).toBe('TENANT_HAS_ACTIVE_CONTRACT');
+
+    fakeDb.contractTenants.push({
+      contract_id: duplicateTenantReservation.body.id,
+      tenant_id: ids.tenantFree,
+      is_primary: false,
+      joined_at: '2026-07-15',
+      left_at: null
+    });
+
+    const overCapacity = await request(app)
+      .post(`/api/rental-registration/${duplicateTenantReservation.body.id}/handover`)
+      .set(auth(managerSession.accessToken))
+      .send({
+        move_in_date: '2026-07-15',
+        electricity_curr: 1,
+        water_curr: 1,
+        persons_count: 2,
+        vehicles_count: 0
+      })
+      .expect(409);
+
+    expect(overCapacity.body.code).toBe('ROOM_MAX_OCCUPANTS_EXCEEDED');
+  });
+
   it('submits, approves, and rejects utility readings', async () => {
     const tenantSession = await login('tenant@example.com');
     const managerSession = await login('manager@example.com');

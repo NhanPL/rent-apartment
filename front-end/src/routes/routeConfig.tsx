@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { BankOutlined, BarChartOutlined, CreditCardOutlined, DollarOutlined, FileTextOutlined, DashboardOutlined, ProfileOutlined, ThunderboltOutlined, UserSwitchOutlined, UserOutlined } from '@ant-design/icons'
+import { BankOutlined, BarChartOutlined, CreditCardOutlined, DollarOutlined, FileTextOutlined, DashboardOutlined, FormOutlined, ProfileOutlined, ThunderboltOutlined, UserSwitchOutlined, UserOutlined } from '@ant-design/icons'
 
 export interface RouteDefinition {
   key: string
@@ -14,6 +14,7 @@ export interface SidebarRouteItem extends RouteDefinition {
 export const routeItems: RouteDefinition[] = [
   { key: 'dashboard', path: '/dashboard', label: 'Dashboard' },
   { key: 'buildings', path: '/buildings', label: 'Buildings' },
+  { key: 'rental-registration', path: '/rental-registration', label: 'Rental Registration' },
   { key: 'contracts', path: '/contracts', label: 'Contracts' },
   { key: 'utilities', path: '/utilities', label: 'Utilities' },
   { key: 'fixed-charges', path: '/fixed-charges', label: 'Fixed Charges' },
@@ -28,6 +29,7 @@ export const routeItems: RouteDefinition[] = [
 export const sidebarRouteItems: SidebarRouteItem[] = [
   { key: 'dashboard', path: '/dashboard', label: 'Dashboard', icon: <DashboardOutlined /> },
   { key: 'buildings', path: '/buildings', label: 'Buildings', icon: <BankOutlined /> },
+  { key: 'rental-registration', path: '/rental-registration', label: 'Rental Registration', icon: <FormOutlined /> },
   { key: 'contracts', path: '/contracts', label: 'Contracts', icon: <ProfileOutlined /> },
   { key: 'utilities', path: '/utilities', label: 'Utilities', icon: <ThunderboltOutlined /> },
   { key: 'fixed-charges', path: '/fixed-charges', label: 'Fixed Charges', icon: <DollarOutlined /> },

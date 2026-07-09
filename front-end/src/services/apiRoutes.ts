@@ -30,6 +30,12 @@ export const API_ROUTES = {
     detail: (id: string) => `/contracts/${id}`,
     documents: (id: string) => `/contracts/${id}/documents`,
   },
+  rentalRegistration: {
+    availableRooms: '/rental-registration/available-rooms',
+    reserve: '/rental-registration/reserve',
+    handover: (contractId: string) => `/rental-registration/${contractId}/handover`,
+    cancel: (contractId: string) => `/rental-registration/${contractId}/cancel`,
+  },
   invoices: {
     list: '/invoices',
     detail: (id: string) => `/invoices/${id}`,

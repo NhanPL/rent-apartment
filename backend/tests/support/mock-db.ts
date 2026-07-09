@@ -46,6 +46,7 @@ class FakeDb {
   utilityReadings: Row[] = [];
   utilityRates: Row[] = [];
   utilityEvidence: Row[] = [];
+  roomMonthExtras: Row[] = [];
   invoices: Row[] = [];
   invoiceItems: Row[] = [];
   invoiceAdjustments: Row[] = [];
@@ -81,9 +82,9 @@ class FakeDb {
       { id: ids.buildingB, name: 'Beta Building', address: 'B Street', manager_user_id: ids.managerBUser }
     ];
     this.rooms = [
-      { id: ids.roomA, building_id: ids.buildingA, code: 'A101', floor: 1, area_m2: 25, max_occupants: 2, base_rent: 1000, status: 'OCCUPIED' },
-      { id: ids.roomSmall, building_id: ids.buildingA, code: 'A102', floor: 1, area_m2: 18, max_occupants: 1, base_rent: 800, status: 'VACANT' },
-      { id: ids.roomB, building_id: ids.buildingB, code: 'B201', floor: 2, area_m2: 25, max_occupants: 2, base_rent: 900, status: 'OCCUPIED' }
+      { id: ids.roomA, building_id: ids.buildingA, code: 'A101', floor: 1, area_m2: 25, max_occupants: 2, base_rent: 1000, deposit_default: 1000, status: 'ACTIVE' },
+      { id: ids.roomSmall, building_id: ids.buildingA, code: 'A102', floor: 1, area_m2: 18, max_occupants: 1, base_rent: 800, deposit_default: 800, status: 'ACTIVE' },
+      { id: ids.roomB, building_id: ids.buildingB, code: 'B201', floor: 2, area_m2: 25, max_occupants: 2, base_rent: 900, deposit_default: 900, status: 'ACTIVE' }
     ];
     this.tenants = [
       this.tenantRow(ids.tenantA, ids.tenantAUser, ids.managerAUser, 'Alice Tenant', 'ID-A', 'tenant@example.com', '0900000001'),
@@ -107,6 +108,7 @@ class FakeDb {
       { id: ids.utilityRateA, building_id: ids.buildingA, electricity_unit_price: 5, water_unit_price: 2, effective_from: '2026-01-01' }
     ];
     this.utilityEvidence = [];
+    this.roomMonthExtras = [];
     this.invoices = [
       {
         id: ids.invoiceIssued,
@@ -172,6 +174,16 @@ class FakeDb {
 
     if (sql.startsWith('select id from tenant where id=$1')) {
       const tenant = this.tenants.find((item) => item.id === params[0] && item.manager_user_id === params[1] && item.status !== 'DELETED');
+      return result<T>(tenant ? [{ id: tenant.id } as T] : []);
+    }
+
+    if (sql.startsWith('select * from tenant where id=$1 and manager_user_id=$2')) {
+      const tenant = this.tenants.find((item) => item.id === params[0] && item.manager_user_id === params[1] && item.status !== 'DELETED');
+      return result<T>(tenant ? [tenant as T] : []);
+    }
+
+    if (sql.startsWith('select id from tenant where manager_user_id=$1')) {
+      const tenant = this.tenants.find((item) => item.manager_user_id === params[0] && item.status !== 'DELETED' && (item.phone === params[1] || item.identity_number === params[2]));
       return result<T>(tenant ? [{ id: tenant.id } as T] : []);
     }
 
@@ -280,8 +292,32 @@ class FakeDb {
       return result<T>(room ? [{ id: room.id, building_id: room.building_id, max_occupants: room.max_occupants } as T] : []);
     }
 
+    if (sql.startsWith('select r.* from room r join building b')) {
+      const room = this.getRoomForManager(String(params[0]), String(params[1]));
+      return result<T>(room ? [room as T] : []);
+    }
+
+    if (sql.startsWith('select r.id, r.building_id, r.code')) {
+      const managerId = String(params[0]);
+      const buildingId = params[1] ? String(params[1]) : null;
+      const rows = this.rooms.filter((room) => {
+        const building = this.buildings.find((item) => item.id === room.building_id);
+        const active = this.contracts.find((contract) => contract.room_id === room.id && contract.status === 'ACTIVE');
+        return building?.manager_user_id === managerId && room.status === 'ACTIVE' && !active && (!buildingId || building.id === buildingId);
+      }).map((room) => {
+        const building = this.buildings.find((item) => item.id === room.building_id)!;
+        return { ...room, building_name: building.name };
+      });
+      return result<T>(rows as T[]);
+    }
+
     if (sql.startsWith('select id from contract where room_id=$1 and status=$2')) {
       const active = this.contracts.find((item) => item.room_id === params[0] && item.status === params[1] && (!params[2] || item.id !== params[2]));
+      return result<T>(active ? [{ id: active.id } as T] : []);
+    }
+
+    if (sql.startsWith("select id from contract where room_id=$1 and status='active'")) {
+      const active = this.contracts.find((item) => item.room_id === params[0] && item.status === 'ACTIVE');
       return result<T>(active ? [{ id: active.id } as T] : []);
     }
 
@@ -291,12 +327,15 @@ class FakeDb {
     }
 
     if (sql.startsWith('insert into contract(')) {
-      const row = this.contractRow(this.newId(), String(params[0]), String(params[1]), String(params[2]), String(params[3]), Number(params[7] ?? 0), Number(params[9] ?? 1));
-      row.end_date = params[4] ?? null;
-      row.move_in_date = params[5] ?? null;
-      row.move_out_date = params[6] ?? null;
-      row.deposit_amount = params[8] ?? 0;
-      row.note = params[10] ?? null;
+      const statusIsLiteralDraft = sql.includes("values($1,$2,'draft'");
+      const row = statusIsLiteralDraft
+        ? this.contractRow(this.newId(), String(params[0]), String(params[1]), 'DRAFT', String(params[2]), Number(params[4] ?? 0), Number(params[6] ?? 1))
+        : this.contractRow(this.newId(), String(params[0]), String(params[1]), String(params[2]), String(params[3]), Number(params[7] ?? 0), Number(params[9] ?? 1));
+      row.end_date = statusIsLiteralDraft ? params[3] ?? null : params[4] ?? null;
+      row.move_in_date = statusIsLiteralDraft ? null : params[5] ?? null;
+      row.move_out_date = statusIsLiteralDraft ? null : params[6] ?? null;
+      row.deposit_amount = statusIsLiteralDraft ? params[5] ?? 0 : params[8] ?? 0;
+      row.note = statusIsLiteralDraft ? params[7] ?? null : params[10] ?? null;
       this.contracts.push(row);
       return result<T>([row as T]);
     }
@@ -304,6 +343,11 @@ class FakeDb {
     if (sql.startsWith('select c.*, r.building_id, r.code as room_code, r.max_occupants')) {
       const contract = this.getContractForManager(String(params[0]), String(params[1]));
       return result<T>(contract ? [this.decorateContract(contract) as T] : []);
+    }
+
+    if (sql.startsWith('select c.*, r.code as room_code, r.max_occupants')) {
+      const contract = this.getContractForManager(String(params[0]), String(params[1]));
+      return result<T>(contract ? [{ ...this.decorateContract(contract), signed_document_count: 0 } as T] : []);
     }
 
     if (sql.startsWith('select ct.contract_id, ct.tenant_id')) {
@@ -373,7 +417,7 @@ class FakeDb {
       return result<T>([]);
     }
 
-    if (sql.startsWith('select c.id from contract c join contract_tenant')) {
+    if (sql.startsWith('select c.id from contract c join contract_tenant') && !sql.includes('any($2::uuid[])')) {
       const contract = this.contracts.find((item) => item.room_id === params[0] && item.status === 'ACTIVE' && this.contractTenants.some((ct) => ct.contract_id === item.id && !ct.left_at && this.tenants.some((tenant) => tenant.id === ct.tenant_id && tenant.user_id === params[1])));
       return result<T>(contract ? [{ id: contract.id } as T] : []);
     }
@@ -391,6 +435,22 @@ class FakeDb {
     }
 
     if (sql.startsWith('insert into utility_reading(')) {
+      if (sql.includes('on conflict')) {
+        let row = this.utilityReadings.find((item) => item.room_id === params[0] && item.month === params[1]);
+        if (!row) {
+          row = this.readingRow(this.newId(), String(params[0]), String(params[1]), Number(params[2]), Number(params[2]), Number(params[3]), Number(params[3]), 'APPROVED');
+          this.utilityReadings.push(row);
+        } else {
+          row.electricity_prev = params[2];
+          row.electricity_curr = params[2];
+          row.water_prev = params[3];
+          row.water_curr = params[3];
+          row.status = 'APPROVED';
+        }
+        row.reported_by_user_id = params[4];
+        row.note = params[5] ?? null;
+        return result<T>([]);
+      }
       const row = this.readingRow(this.newId(), String(params[0]), String(params[1]), Number(params[2]), Number(params[3]), Number(params[4]), Number(params[5]), 'SUBMITTED');
       row.reported_by_user_id = params[6];
       row.note = params[7] ?? null;
@@ -439,6 +499,53 @@ class FakeDb {
         reading.rejection_reason = params[2];
       }
       return result<T>([]);
+    }
+
+    if (sql.startsWith('select t.* from contract_tenant ct join tenant t')) {
+      const rows = this.contractTenants
+        .filter((item) => item.contract_id === params[0] && !item.left_at)
+        .map((item) => this.tenants.find((tenant) => tenant.id === item.tenant_id)!)
+        .filter(Boolean);
+      return result<T>(rows as T[]);
+    }
+
+    if (sql.startsWith('select c.id from contract c join contract_tenant ct') && sql.includes('any($2::uuid[])')) {
+      const contractId = String(params[0]);
+      const tenantIds = params[1] as string[];
+      const conflict = this.contracts.find((contract) => contract.status === 'ACTIVE' && contract.id !== contractId && this.contractTenants.some((ct) => ct.contract_id === contract.id && !ct.left_at && tenantIds.includes(ct.tenant_id)));
+      return result<T>(conflict ? [{ id: conflict.id } as T] : []);
+    }
+
+    if (sql.startsWith('insert into room_month_extra(')) {
+      let row = this.roomMonthExtras.find((item) => item.room_id === params[0] && item.month === params[1]);
+      if (!row) {
+        row = { id: this.newId(), room_id: params[0], month: params[1], created_at: now, updated_at: now };
+        this.roomMonthExtras.push(row);
+      }
+      row.persons_count = params[2];
+      row.vehicles_count = params[3];
+      row.reported_by_user_id = params[4];
+      row.note = params[5] ?? null;
+      return result<T>([]);
+    }
+
+    if (sql.startsWith("update contract set status='active'")) {
+      const contract = this.contracts.find((item) => item.id === params[0]);
+      if (!contract) return result<T>([]);
+      contract.status = 'ACTIVE';
+      contract.start_date = params[1];
+      contract.move_in_date = params[1];
+      if (params[2]) contract.note = `${contract.note ?? ''}\n${params[2]}`;
+      return result<T>([contract as T]);
+    }
+
+    if (sql.startsWith("update contract set status='cancelled'")) {
+      const contract = this.contracts.find((item) => item.id === params[0]);
+      if (!contract) return result<T>([]);
+      contract.status = 'CANCELLED';
+      contract.move_out_date = params[1];
+      contract.note = `${contract.note ?? ''}\nCancel reason: ${params[2]}`;
+      return result<T>([contract as T]);
     }
 
     if (sql.startsWith('select ur.*,') || sql.startsWith('select distinct ur.*,')) {

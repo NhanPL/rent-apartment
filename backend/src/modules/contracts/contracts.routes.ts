@@ -8,6 +8,7 @@ import { parseBody } from '../../shared/utils/validation';
 import { validateStoredUpload } from '../uploads/uploads.service';
 import { assertRoomCanHostActiveContract, CURRENT_CONTRACT_STATUS, getContractRoomForManager } from './contracts.rules';
 import { assertTenantBelongsToManager } from '../tenants/tenants.repository';
+import { businessStageSql, getContractBusinessStage } from './business-stage';
 
 const router = Router();
 type DbRow = Record<string, any>;
@@ -257,6 +258,7 @@ router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const roomId = String(req.query.room_id ?? '').trim();
   const tenantId = String(req.query.tenant_id ?? '').trim();
   const status = String(req.query.status ?? '').trim();
+  const businessStage = String(req.query.business_stage ?? '').trim();
 
   const params: unknown[] = [req.auth!.userId];
   const conditions = ['b.manager_user_id=$1'];
@@ -282,10 +284,22 @@ router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
     params.push(status);
     conditions.push(`c.status=$${params.length}`);
   }
+  if (businessStage) {
+    params.push(businessStage);
+    conditions.push(`business_stage_filter.business_stage=$${params.length}`);
+  }
 
   const joins = `
     JOIN room r ON r.id=c.room_id
     JOIN building b ON b.id=r.building_id
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*)::int AS signed_document_count
+      FROM contract_document cd
+      WHERE cd.contract_id=c.id AND cd.doc_type='SIGNED_SCAN'
+    ) contract_docs ON true
+    LEFT JOIN LATERAL (
+      SELECT ${businessStageSql.replace(' AS business_stage', '')} AS business_stage
+    ) business_stage_filter ON true
     LEFT JOIN LATERAL (
       SELECT t.id, t.full_name
       FROM contract_tenant ct
@@ -316,7 +330,8 @@ router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
     `SELECT c.*, r.code AS room_code, b.id AS building_id, b.name AS building_name,
             primary_tenant.id AS tenant_id, primary_tenant.full_name AS tenant_name,
             COALESCE(tenant_names.names, '') AS tenant_names,
-            COALESCE(tenant_names.active_tenants_count, 0) AS active_tenants_count
+            COALESCE(tenant_names.active_tenants_count, 0) AS active_tenants_count,
+            business_stage_filter.business_stage
      FROM contract c
      ${joins}
      ${whereClause}
@@ -340,7 +355,14 @@ router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
       [req.params.id]
     )
   ]);
-  res.json({ ...contract, tenants, documents: documents.rows });
+  const signedDocumentCount = documents.rows.filter((document: DbRow) => document.doc_type === 'SIGNED_SCAN').length;
+  res.json({
+    ...contract,
+    signed_document_count: signedDocumentCount,
+    business_stage: getContractBusinessStage({ ...contract, signed_document_count: signedDocumentCount }),
+    tenants,
+    documents: documents.rows
+  });
 }));
 
 router.post('/:id/documents', requireRole('MANAGER'), asyncHandler(async (req, res) => {
