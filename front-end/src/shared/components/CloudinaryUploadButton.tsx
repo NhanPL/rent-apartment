@@ -1,7 +1,7 @@
 import { UploadOutlined } from '@ant-design/icons'
 import { Button, Upload, message } from 'antd'
 import type { UploadProps } from 'antd'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { uploadFileToCloudinary, type UploadedCloudinaryFile, type UploadContext } from '../../services/uploadService'
 
 interface CloudinaryUploadButtonProps {
@@ -13,7 +13,10 @@ interface CloudinaryUploadButtonProps {
 }
 
 export function CloudinaryUploadButton({ context, accept, disabled, children, onUploaded }: CloudinaryUploadButtonProps) {
+  const [uploading, setUploading] = useState(false)
+
   const customRequest: UploadProps['customRequest'] = async ({ file, onError, onSuccess }) => {
+    setUploading(true)
     try {
       const uploaded = await uploadFileToCloudinary(file as File, context)
       onUploaded(uploaded)
@@ -22,12 +25,14 @@ export function CloudinaryUploadButton({ context, accept, disabled, children, on
     } catch (error) {
       onError?.(error as Error)
       message.error(error instanceof Error ? error.message : 'Unable to upload file')
+    } finally {
+      setUploading(false)
     }
   }
 
   return (
-    <Upload accept={accept} customRequest={customRequest} disabled={disabled} maxCount={1} showUploadList={false}>
-      <Button icon={<UploadOutlined />} disabled={disabled}>
+    <Upload accept={accept} customRequest={customRequest} disabled={disabled || uploading} maxCount={1} showUploadList={false}>
+      <Button icon={<UploadOutlined />} disabled={disabled || uploading} loading={uploading}>
         {children ?? 'Upload file'}
       </Button>
     </Upload>
