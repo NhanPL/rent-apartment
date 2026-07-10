@@ -296,7 +296,9 @@ export function RentalRegistrationPage() {
       message.success('Da luu giay to hop dong')
     } catch (error: unknown) {
       const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
-      if (!formError.errorFields) message.error('Khong the luu giay to')
+      if (!formError.errorFields) {
+        message.error(error instanceof Error ? error.message : 'Khong the luu giay to')
+      }
     } finally {
       setDocumentSaving(false)
     }

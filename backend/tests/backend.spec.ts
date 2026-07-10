@@ -247,6 +247,26 @@ describe('backend API smoke tests', () => {
     expect(overCapacity.body.code).toBe('ROOM_MAX_OCCUPANTS_EXCEEDED');
   });
 
+  it('rejects document uploads when Cloudinary credentials are not configured', async () => {
+    const managerSession = await login('manager@example.com');
+
+    const response = await request(app)
+      .get('/api/uploads/signature')
+      .query({
+        context: 'CONTRACT_DOCUMENT',
+        mime_type: 'application/pdf',
+        file_size: 2048,
+        resource_type: 'raw'
+      })
+      .set(auth(managerSession.accessToken))
+      .expect(500);
+
+    expect(response.body).toMatchObject({
+      code: 'CLOUDINARY_NOT_CONFIGURED',
+      message: 'Cloudinary is not configured'
+    });
+  });
+
   it('runs the rental registration reserve, cancel, and handover workflow', async () => {
     const managerSession = await login('manager@example.com');
 
@@ -281,6 +301,25 @@ describe('backend API smoke tests', () => {
       room_id: ids.roomSmall,
       status: 'DRAFT',
       business_stage: 'RESERVED'
+    });
+
+    const document = await request(app)
+      .post(`/api/contracts/${reservedForCancel.body.id}/documents`)
+      .set(auth(managerSession.accessToken))
+      .send({
+        doc_type: 'SIGNED_SCAN',
+        file_name: 'signed-contract.pdf',
+        file_url: 'https://example.com/signed-contract.pdf',
+        mime_type: 'application/pdf',
+        file_size: 2048
+      })
+      .expect(201);
+
+    expect(document.body).toMatchObject({
+      contract_id: reservedForCancel.body.id,
+      doc_type: 'SIGNED_SCAN',
+      file_name: 'signed-contract.pdf',
+      uploaded_by_user_id: ids.managerAUser
     });
 
     await request(app)

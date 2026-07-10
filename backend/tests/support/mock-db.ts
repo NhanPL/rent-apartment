@@ -43,6 +43,7 @@ class FakeDb {
   rooms: Row[] = [];
   contracts: Row[] = [];
   contractTenants: Row[] = [];
+  contractDocuments: Row[] = [];
   utilityReadings: Row[] = [];
   utilityRates: Row[] = [];
   utilityEvidence: Row[] = [];
@@ -99,6 +100,7 @@ class FakeDb {
       { contract_id: ids.contractA, tenant_id: ids.tenantA, is_primary: true, joined_at: '2026-01-01', left_at: null },
       { contract_id: ids.contractB, tenant_id: ids.tenantB, is_primary: true, joined_at: '2026-01-01', left_at: null }
     ];
+    this.contractDocuments = [];
     this.utilityReadings = [
       this.readingRow(ids.readingSubmitted, ids.roomA, '2026-04-01', 80, 100, 40, 50, 'SUBMITTED'),
       this.readingRow(ids.readingToReject, ids.roomA, '2026-05-01', 100, 110, 50, 55, 'SUBMITTED'),
@@ -384,6 +386,28 @@ class FakeDb {
         left_at: usesLiteralPrimary ? null : params[4] ?? null
       });
       return result<T>([]);
+    }
+
+    if (sql.startsWith('select * from contract_document')) {
+      return result<T>(this.contractDocuments.filter((item) => item.contract_id === params[0]) as T[]);
+    }
+
+    if (sql.startsWith('insert into contract_document(')) {
+      const document = {
+        id: this.newId(),
+        contract_id: params[0],
+        doc_type: params[1],
+        file_name: params[2],
+        file_url: params[3],
+        mime_type: params[4],
+        file_size: params[5],
+        uploaded_by_user_id: params[6],
+        note: params[7],
+        uploaded_at: now,
+        created_at: now
+      };
+      this.contractDocuments.push(document);
+      return result<T>([document as T]);
     }
 
     if (sql.startsWith('select count(*)::int as occupants_count')) {

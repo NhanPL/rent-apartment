@@ -61,7 +61,15 @@ const contextConfig: Record<UploadContext, UploadContextConfig> = {
   }
 };
 
-const cloudinaryConfigured = () => Boolean(env.CLOUDINARY_CLOUD_NAME && env.CLOUDINARY_API_KEY && env.CLOUDINARY_API_SECRET);
+const hasUsableCredential = (value: string | undefined, minimumLength: number): boolean => (
+  Boolean(value && value.trim().length >= minimumLength)
+);
+
+const cloudinaryConfigured = () => (
+  hasUsableCredential(env.CLOUDINARY_CLOUD_NAME, 2)
+  && hasUsableCredential(env.CLOUDINARY_API_KEY, 6)
+  && hasUsableCredential(env.CLOUDINARY_API_SECRET, 8)
+);
 
 const inferResourceType = (mimeType: string): UploadResourceType => (
   mimeType.startsWith('image/') ? 'image' : 'raw'
