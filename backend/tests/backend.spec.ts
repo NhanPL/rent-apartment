@@ -300,6 +300,10 @@ describe('backend API smoke tests', () => {
       status: 'CANCELLED',
       business_stage: 'CANCELLED'
     });
+    expect(fakeDb.contractTenants.find((tenant) => tenant.contract_id === reservedForCancel.body.id)).toMatchObject({
+      joined_at: '2026-07-15',
+      left_at: '2026-07-15'
+    });
 
     const reservedForHandover = await request(app)
       .post('/api/rental-registration/reserve')

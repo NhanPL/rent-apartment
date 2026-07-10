@@ -14,10 +14,10 @@ export const getContractBusinessStage = (contract: ContractStageInput): Contract
   if (contract.status === 'ENDED') return 'ENDED';
 
   const marker = contract.note?.match(stageMarkerPattern)?.[1]?.toUpperCase() as ContractBusinessStage | undefined;
-  if (marker) return marker;
-
+  if (marker === 'WAITING_HANDOVER' || marker === 'WAITING_SIGNATURE') return marker;
   const signedDocumentCount = Number(contract.signed_document_count ?? 0);
-  return signedDocumentCount > 0 ? 'WAITING_HANDOVER' : 'RESERVED';
+  if (signedDocumentCount > 0) return 'WAITING_HANDOVER';
+  return marker ?? 'RESERVED';
 };
 
 export const businessStageSql = `
@@ -27,8 +27,8 @@ export const businessStageSql = `
     WHEN c.status='ENDED' THEN 'ENDED'
     WHEN COALESCE(c.note, '') ~* '\\[RR_STAGE=WAITING_HANDOVER\\]' THEN 'WAITING_HANDOVER'
     WHEN COALESCE(c.note, '') ~* '\\[RR_STAGE=WAITING_SIGNATURE\\]' THEN 'WAITING_SIGNATURE'
-    WHEN COALESCE(c.note, '') ~* '\\[RR_STAGE=RESERVED\\]' THEN 'RESERVED'
     WHEN COALESCE(contract_docs.signed_document_count, 0) > 0 THEN 'WAITING_HANDOVER'
+    WHEN COALESCE(c.note, '') ~* '\\[RR_STAGE=RESERVED\\]' THEN 'RESERVED'
     ELSE 'RESERVED'
   END AS business_stage
 `;

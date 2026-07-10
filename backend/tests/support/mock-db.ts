@@ -375,7 +375,14 @@ class FakeDb {
     }
 
     if (sql.startsWith('insert into contract_tenant(')) {
-      this.contractTenants.push({ contract_id: params[0], tenant_id: params[1], is_primary: params[2], joined_at: params[3], left_at: params[4] ?? null });
+      const usesLiteralPrimary = sql.includes('values($1,$2,true,$3,null)');
+      this.contractTenants.push({
+        contract_id: params[0],
+        tenant_id: params[1],
+        is_primary: usesLiteralPrimary ? true : params[2],
+        joined_at: usesLiteralPrimary ? params[2] : params[3],
+        left_at: usesLiteralPrimary ? null : params[4] ?? null
+      });
       return result<T>([]);
     }
 
@@ -412,7 +419,9 @@ class FakeDb {
 
     if (sql.startsWith('update contract_tenant set left_at=coalesce(left_at')) {
       this.contractTenants.filter((item) => item.contract_id === params[1] && !item.left_at).forEach((item) => {
-        item.left_at = params[0];
+        item.left_at = sql.includes('greatest(joined_at') && String(item.joined_at) > String(params[0])
+          ? item.joined_at
+          : params[0];
       });
       return result<T>([]);
     }

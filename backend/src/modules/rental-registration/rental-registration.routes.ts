@@ -330,7 +330,7 @@ router.post('/:contractId/cancel', requireRole('MANAGER'), asyncHandler(async (r
     );
     await client.query(
       `UPDATE contract_tenant
-       SET left_at=COALESCE(left_at, $1)
+       SET left_at=COALESCE(left_at, GREATEST(joined_at, $1::date))
        WHERE contract_id=$2 AND left_at IS NULL`,
       [closeDate, contract.id]
     );
