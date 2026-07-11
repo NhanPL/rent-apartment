@@ -15,7 +15,6 @@ import {
   Input,
   InputNumber,
   Modal,
-  Popconfirm,
   Select,
   Space,
   Steps,
@@ -135,12 +134,12 @@ export function RentalRegistrationPage() {
   const [queueLoading, setQueueLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [documentSaving, setDocumentSaving] = useState(false)
-  const [documentDeletingId, setDocumentDeletingId] = useState<string | null>(null)
   const [handoverSaving, setHandoverSaving] = useState(false)
   const [cancelSaving, setCancelSaving] = useState(false)
   const [documentContract, setDocumentContract] = useState<ContractDetail | null>(null)
   const [documentFiles, setDocumentFiles] = useState<File[]>([])
   const [uploadedDocuments, setUploadedDocuments] = useState<Record<string, UploadedCloudinaryFile>>({})
+  const [documentIdsToDelete, setDocumentIdsToDelete] = useState<string[]>([])
   const [handoverContractDetail, setHandoverContractDetail] = useState<ContractDetail | null>(null)
   const [cancelContractTarget, setCancelContractTarget] = useState<ContractListItem | ContractDetail | null>(null)
   const [lastReserved, setLastReserved] = useState<ContractListItem | null>(null)
@@ -267,6 +266,7 @@ export function RentalRegistrationPage() {
       documentForm.setFieldValue('doc_type', 'SIGNED_SCAN')
       setDocumentFiles([])
       setUploadedDocuments({})
+      setDocumentIdsToDelete([])
       setDocumentContract(detail)
     } catch {
       message.error('Khong tai duoc chi tiet hop dong')
@@ -277,11 +277,22 @@ export function RentalRegistrationPage() {
     if (!documentContract) return
     setDocumentSaving(true)
     let savedCount = 0
+    let deletedCount = 0
     try {
       const values = await documentForm.validateFields()
-      if (documentFiles.length === 0) {
-        message.warning('Vui long chon it nhat mot file')
+      if (documentFiles.length === 0 && documentIdsToDelete.length === 0) {
+        message.warning('Khong co thay doi de luu')
         return
+      }
+
+      for (const documentId of documentIdsToDelete) {
+        await deleteContractDocument(documentContract.id, documentId)
+        deletedCount += 1
+        setDocumentIdsToDelete((current) => current.filter((id) => id !== documentId))
+        setDocumentContract((current) => current ? {
+          ...current,
+          documents: current.documents.filter((document) => document.id !== documentId),
+        } : current)
       }
 
       for (const file of documentFiles) {
@@ -307,35 +318,18 @@ export function RentalRegistrationPage() {
 
       setDocumentContract(null)
       await loadWorkQueues()
-      message.success(`Da luu ${savedCount} giay to hop dong`)
+      message.success(`Da them ${savedCount} va xoa ${deletedCount} giay to`)
     } catch (error: unknown) {
       const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
       if (!formError.errorFields) {
         const reason = error instanceof Error ? error.message : 'Khong the luu giay to'
-        message.error(savedCount > 0 ? `Da luu ${savedCount} file. File con lai loi: ${reason}` : reason)
+        const completedCount = savedCount + deletedCount
+        message.error(completedCount > 0 ? `Da xu ly ${completedCount} thay doi. Phan con lai loi: ${reason}` : reason)
       }
     } finally {
       setDocumentSaving(false)
     }
-  }, [documentContract, documentFiles, documentForm, loadWorkQueues, uploadedDocuments])
-
-  const deleteDocument = useCallback(async (documentId: string) => {
-    if (!documentContract) return
-    setDocumentDeletingId(documentId)
-    try {
-      await deleteContractDocument(documentContract.id, documentId)
-      setDocumentContract((current) => current ? {
-        ...current,
-        documents: current.documents.filter((document) => document.id !== documentId),
-      } : current)
-      await loadWorkQueues()
-      message.success('Da xoa giay to')
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Khong the xoa giay to')
-    } finally {
-      setDocumentDeletingId(null)
-    }
-  }, [documentContract, loadWorkQueues])
+  }, [documentContract, documentFiles, documentForm, documentIdsToDelete, loadWorkQueues, uploadedDocuments])
 
   const openHandover = useCallback(async (contract: ContractListItem) => {
     try {
@@ -698,6 +692,7 @@ export function RentalRegistrationPage() {
           setDocumentContract(null)
           setDocumentFiles([])
           setUploadedDocuments({})
+          setDocumentIdsToDelete([])
         }}
         onOk={() => void submitDocument()}
         width={680}
@@ -765,7 +760,7 @@ export function RentalRegistrationPage() {
         </Form>
         <div className="registration-existing-documents">
           <Typography.Title level={5}>Giay to hien co</Typography.Title>
-          {documentContract?.documents.length ? documentContract.documents.map((document) => (
+          {documentContract?.documents.some((document) => !documentIdsToDelete.includes(document.id)) ? documentContract.documents.filter((document) => !documentIdsToDelete.includes(document.id)).map((document) => (
             <div className="registration-document-row" key={document.id}>
               <div>
                 {document.file_url ? (
@@ -775,23 +770,14 @@ export function RentalRegistrationPage() {
                 ) : <Typography.Text>{document.file_name || document.doc_type}</Typography.Text>}
                 <div><Tag>{document.doc_type}</Tag></div>
               </div>
-              <Popconfirm
-                title="Xoa giay to nay?"
-                description="File tren Cloudinary cung se bi xoa."
-                okText="Xoa"
-                cancelText="Khong"
-                okButtonProps={{ danger: true }}
-                onConfirm={() => void deleteDocument(document.id)}
-              >
-                <Button
-                  type="text"
-                  danger
-                  icon={<DeleteOutlined />}
-                  aria-label={`Xoa ${document.file_name || document.doc_type}`}
-                  loading={documentDeletingId === document.id}
-                  disabled={documentSaving || Boolean(documentDeletingId && documentDeletingId !== document.id)}
-                />
-              </Popconfirm>
+              <Button
+                type="text"
+                danger
+                icon={<DeleteOutlined />}
+                aria-label={`Xoa ${document.file_name || document.doc_type}`}
+                disabled={documentSaving}
+                onClick={() => setDocumentIdsToDelete((current) => current.includes(document.id) ? current : [...current, document.id])}
+              />
             </div>
           )) : <Typography.Text type="secondary">Chua co giay to</Typography.Text>}
         </div>

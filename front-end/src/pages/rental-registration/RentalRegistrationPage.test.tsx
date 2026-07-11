@@ -121,17 +121,18 @@ describe('RentalRegistrationPage', () => {
     await user.click(await screen.findByRole('button', { name: /Bo sung giay to/ }))
     expect(await screen.findByText('existing.pdf')).not.toBeNull()
     await user.click(screen.getByRole('button', { name: 'Xoa existing.pdf' }))
-    await user.click(await screen.findByRole('button', { name: 'Xoa' }))
-    await waitFor(() => expect(serviceMocks.deleteContractDocument).toHaveBeenCalledWith('contract-1', 'document-existing'))
     await waitFor(() => expect(screen.queryByText('existing.pdf')).toBeNull())
+    expect(serviceMocks.deleteContractDocument).not.toHaveBeenCalled()
 
     await user.click(await screen.findByRole('button', { name: 'Chon nhieu file' }))
 
     expect(serviceMocks.uploadFileToCloudinary).not.toHaveBeenCalled()
     expect(serviceMocks.addContractDocument).not.toHaveBeenCalled()
+    expect(serviceMocks.deleteContractDocument).not.toHaveBeenCalled()
 
     await user.click(screen.getByRole('button', { name: 'Luu giay to' }))
 
+    await waitFor(() => expect(serviceMocks.deleteContractDocument).toHaveBeenCalledWith('contract-1', 'document-existing'))
     await waitFor(() => expect(serviceMocks.uploadFileToCloudinary).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(serviceMocks.addContractDocument).toHaveBeenCalledTimes(2))
     expect(serviceMocks.addContractDocument).toHaveBeenNthCalledWith(1, 'contract-1', expect.objectContaining({
