@@ -4,22 +4,29 @@ import type { UploadProps } from 'antd'
 import { useState, type ReactNode } from 'react'
 import { uploadFileToCloudinary, type UploadedCloudinaryFile, type UploadContext } from '../../services/uploadService'
 
-interface CloudinaryUploadButtonProps {
+interface CloudinaryUploadButtonBaseProps {
   context: UploadContext
   accept?: string
   disabled?: boolean
+  multiple?: boolean
   children?: ReactNode
-  onUploaded: (file: UploadedCloudinaryFile) => void
 }
 
-export function CloudinaryUploadButton({ context, accept, disabled, children, onUploaded }: CloudinaryUploadButtonProps) {
+type CloudinaryUploadButtonProps = CloudinaryUploadButtonBaseProps & (
+  | { deferred: true; onSelected: (file: File) => void; onUploaded?: never }
+  | { deferred?: false; onUploaded: (file: UploadedCloudinaryFile) => void; onSelected?: never }
+)
+
+export function CloudinaryUploadButton(props: CloudinaryUploadButtonProps) {
+  const { context, accept, disabled, multiple = false, children } = props
   const [uploading, setUploading] = useState(false)
 
   const customRequest: UploadProps['customRequest'] = async ({ file, onError, onSuccess }) => {
+    if (props.deferred) return
     setUploading(true)
     try {
       const uploaded = await uploadFileToCloudinary(file as File, context)
-      onUploaded(uploaded)
+      props.onUploaded(uploaded)
       onSuccess?.(uploaded)
       message.success('File uploaded successfully')
     } catch (error) {
@@ -31,7 +38,18 @@ export function CloudinaryUploadButton({ context, accept, disabled, children, on
   }
 
   return (
-    <Upload accept={accept} customRequest={customRequest} disabled={disabled || uploading} maxCount={1} showUploadList={false}>
+    <Upload
+      accept={accept}
+      beforeUpload={props.deferred ? (file) => {
+        props.onSelected(file as File)
+        return false
+      } : undefined}
+      customRequest={customRequest}
+      disabled={disabled || uploading}
+      maxCount={multiple ? undefined : 1}
+      multiple={multiple}
+      showUploadList={false}
+    >
       <Button icon={<UploadOutlined />} disabled={disabled || uploading} loading={uploading}>
         {children ?? 'Upload file'}
       </Button>

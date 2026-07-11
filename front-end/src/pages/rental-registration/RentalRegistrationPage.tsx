@@ -3,6 +3,7 @@ import {
   FileTextOutlined,
   HomeOutlined,
   ReloadOutlined,
+  DeleteOutlined,
   StopOutlined,
 } from '@ant-design/icons'
 import {
@@ -51,7 +52,7 @@ import type {
   ReservePayload,
 } from '../../services/rentalRegistrationService'
 import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
-import type { UploadedCloudinaryFile } from '../../services/uploadService'
+import { uploadFileToCloudinary, type UploadedCloudinaryFile } from '../../services/uploadService'
 import './RentalRegistrationPage.css'
 
 interface ReserveFormValues {
@@ -74,10 +75,6 @@ interface ReserveFormValues {
 
 interface DocumentFormValues {
   doc_type: ContractDocumentType
-  file_name?: string
-  file_url?: string
-  mime_type?: string
-  file_size?: number
   note?: string
 }
 
@@ -118,12 +115,7 @@ const nullableText = (value: string | undefined): string | null => {
   return trimmed.length > 0 ? trimmed : null
 }
 
-const uploadedFileFields = (file: UploadedCloudinaryFile) => ({
-  file_name: file.file_name,
-  file_url: file.file_url,
-  mime_type: file.mime_type,
-  file_size: file.file_size,
-})
+const documentFileKey = (file: File): string => `${file.name}:${file.size}:${file.lastModified}`
 
 export function RentalRegistrationPage() {
   const screens = Grid.useBreakpoint()
@@ -144,6 +136,8 @@ export function RentalRegistrationPage() {
   const [handoverSaving, setHandoverSaving] = useState(false)
   const [cancelSaving, setCancelSaving] = useState(false)
   const [documentContract, setDocumentContract] = useState<ContractDetail | null>(null)
+  const [documentFiles, setDocumentFiles] = useState<File[]>([])
+  const [uploadedDocuments, setUploadedDocuments] = useState<Record<string, UploadedCloudinaryFile>>({})
   const [handoverContractDetail, setHandoverContractDetail] = useState<ContractDetail | null>(null)
   const [cancelContractTarget, setCancelContractTarget] = useState<ContractListItem | ContractDetail | null>(null)
   const [lastReserved, setLastReserved] = useState<ContractListItem | null>(null)
@@ -268,6 +262,8 @@ export function RentalRegistrationPage() {
       const detail = await getContract(contract.id)
       documentForm.resetFields()
       documentForm.setFieldValue('doc_type', 'SIGNED_SCAN')
+      setDocumentFiles([])
+      setUploadedDocuments({})
       setDocumentContract(detail)
     } catch {
       message.error('Khong tai duoc chi tiet hop dong')
@@ -277,32 +273,48 @@ export function RentalRegistrationPage() {
   const submitDocument = useCallback(async () => {
     if (!documentContract) return
     setDocumentSaving(true)
+    let savedCount = 0
     try {
       const values = await documentForm.validateFields()
-      if (!values.file_url || !values.mime_type || !values.file_size) {
-        message.warning('Vui long upload file truoc')
+      if (documentFiles.length === 0) {
+        message.warning('Vui long chon it nhat mot file')
         return
       }
-      await addContractDocument(documentContract.id, {
-        doc_type: values.doc_type,
-        file_name: nullableText(values.file_name),
-        file_url: values.file_url,
-        mime_type: values.mime_type,
-        file_size: values.file_size,
-        note: nullableText(values.note),
-      })
+
+      for (const file of documentFiles) {
+        const key = documentFileKey(file)
+        const uploaded = uploadedDocuments[key] ?? await uploadFileToCloudinary(file, 'CONTRACT_DOCUMENT')
+        setUploadedDocuments((current) => ({ ...current, [key]: uploaded }))
+        await addContractDocument(documentContract.id, {
+          doc_type: values.doc_type,
+          file_name: nullableText(uploaded.file_name),
+          file_url: uploaded.file_url,
+          mime_type: uploaded.mime_type,
+          file_size: uploaded.file_size,
+          note: nullableText(values.note),
+        })
+        savedCount += 1
+        setDocumentFiles((current) => current.filter((item) => documentFileKey(item) !== key))
+        setUploadedDocuments((current) => {
+          const next = { ...current }
+          delete next[key]
+          return next
+        })
+      }
+
       setDocumentContract(null)
       await loadWorkQueues()
-      message.success('Da luu giay to hop dong')
+      message.success(`Da luu ${savedCount} giay to hop dong`)
     } catch (error: unknown) {
       const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
       if (!formError.errorFields) {
-        message.error(error instanceof Error ? error.message : 'Khong the luu giay to')
+        const reason = error instanceof Error ? error.message : 'Khong the luu giay to'
+        message.error(savedCount > 0 ? `Da luu ${savedCount} file. File con lai loi: ${reason}` : reason)
       }
     } finally {
       setDocumentSaving(false)
     }
-  }, [documentContract, documentForm, loadWorkQueues])
+  }, [documentContract, documentFiles, documentForm, loadWorkQueues, uploadedDocuments])
 
   const openHandover = useCallback(async (contract: ContractListItem) => {
     try {
@@ -661,10 +673,14 @@ export function RentalRegistrationPage() {
         title={`Bo sung giay to - ${documentContract?.contract_code ?? ''}`}
         okText="Luu giay to"
         confirmLoading={documentSaving}
-        onCancel={() => setDocumentContract(null)}
+        onCancel={() => {
+          setDocumentContract(null)
+          setDocumentFiles([])
+          setUploadedDocuments({})
+        }}
         onOk={() => void submitDocument()}
         width={680}
-        destroyOnClose
+        destroyOnHidden
       >
         {documentContract ? (
           <Alert
@@ -679,27 +695,50 @@ export function RentalRegistrationPage() {
           <div className="registration-form-grid">
             <Form.Item name="doc_type" label="Loai giay to" rules={[{ required: true, message: 'Vui long chon loai giay to' }]}><Select options={documentTypeOptions} /></Form.Item>
             <Form.Item name="note" label="Ghi chu"><Input /></Form.Item>
-            <Form.Item name="file_url" hidden rules={[{ required: true, message: 'Vui long upload file' }]}><Input /></Form.Item>
-            <Form.Item name="file_name" hidden><Input /></Form.Item>
-            <Form.Item name="mime_type" hidden><Input /></Form.Item>
-            <Form.Item name="file_size" hidden><InputNumber /></Form.Item>
             <Form.Item label="File" required className="registration-form-full">
               <Space wrap>
                 <CloudinaryUploadButton
                   accept={documentAccept}
                   context="CONTRACT_DOCUMENT"
-                  onUploaded={(file) => documentForm.setFieldsValue(uploadedFileFields(file))}
-                >
-                  Upload file
-                </CloudinaryUploadButton>
-                <Form.Item noStyle shouldUpdate={(prev, next) => prev.file_url !== next.file_url || prev.file_name !== next.file_name}>
-                  {({ getFieldValue }) => {
-                    const fileUrl = getFieldValue('file_url') as string | undefined
-                    const fileName = getFieldValue('file_name') as string | undefined
-                    return fileUrl ? <Typography.Link href={fileUrl} target="_blank" rel="noreferrer">{fileName || 'File da upload'}</Typography.Link> : <Typography.Text type="secondary">Chua co file</Typography.Text>
+                  deferred
+                  disabled={documentSaving}
+                  multiple
+                  onSelected={(file) => {
+                    const key = documentFileKey(file)
+                    setDocumentFiles((current) => current.some((item) => documentFileKey(item) === key) ? current : [...current, file])
                   }}
-                </Form.Item>
+                >
+                  Chon nhieu file
+                </CloudinaryUploadButton>
+                {documentFiles.length === 0 ? <Typography.Text type="secondary">Chua chon file</Typography.Text> : null}
               </Space>
+              {documentFiles.length > 0 ? (
+                <div className="registration-file-list">
+                  {documentFiles.map((file) => {
+                    const key = documentFileKey(file)
+                    return (
+                      <div className="registration-file-row" key={key}>
+                        <Typography.Text ellipsis title={file.name}>{file.name}</Typography.Text>
+                        <Button
+                          type="text"
+                          danger
+                          icon={<DeleteOutlined />}
+                          aria-label={`Xoa ${file.name}`}
+                          disabled={documentSaving}
+                          onClick={() => {
+                            setDocumentFiles((current) => current.filter((item) => documentFileKey(item) !== key))
+                            setUploadedDocuments((current) => {
+                              const next = { ...current }
+                              delete next[key]
+                              return next
+                            })
+                          }}
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : null}
             </Form.Item>
           </div>
         </Form>
@@ -714,7 +753,7 @@ export function RentalRegistrationPage() {
         onCancel={() => setHandoverContractDetail(null)}
         onOk={() => void submitHandover()}
         width={720}
-        destroyOnClose
+        destroyOnHidden
       >
         {handoverContractDetail ? (
           <Alert
@@ -745,7 +784,7 @@ export function RentalRegistrationPage() {
         confirmLoading={cancelSaving}
         onCancel={() => setCancelContractTarget(null)}
         onOk={() => void submitCancel()}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={cancelForm} layout="vertical">
           <Form.Item name="cancel_date" label="Ngay huy"><Input type="date" /></Form.Item>
