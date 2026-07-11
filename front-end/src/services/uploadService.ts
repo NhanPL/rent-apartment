@@ -37,14 +37,30 @@ const inferResourceType = (mimeType: string): UploadResourceType => (mimeType.st
 
 const getFileName = (file: File): string => file.name || 'upload'
 
-const getMimeType = (file: File): string => file.type || 'application/octet-stream'
+const mimeTypeByExtension: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  pdf: 'application/pdf',
+}
+
+const getMimeType = (file: File): string => {
+  const browserMimeType = file.type.trim().toLowerCase()
+  if (browserMimeType === 'application/x-pdf') return 'application/pdf'
+  if (browserMimeType && browserMimeType !== 'application/octet-stream') return browserMimeType
+
+  const extension = getFileName(file).split('.').pop()?.toLowerCase() ?? ''
+  return mimeTypeByExtension[extension] ?? 'application/octet-stream'
+}
 
 async function getUploadSignature(file: File, context: UploadContext): Promise<UploadSignature> {
+  const mimeType = getMimeType(file)
   const searchParams = new URLSearchParams({
     context,
     file_size: String(file.size),
-    mime_type: getMimeType(file),
-    resource_type: inferResourceType(getMimeType(file)),
+    mime_type: mimeType,
+    resource_type: inferResourceType(mimeType),
   })
 
   return apiRequest<UploadSignature>(`${API_ROUTES.uploads.signature}?${searchParams.toString()}`)
@@ -56,6 +72,7 @@ async function parseCloudinaryError(response: Response): Promise<string> {
 }
 
 export async function uploadFileToCloudinary(file: File, context: UploadContext): Promise<UploadedCloudinaryFile> {
+  const mimeType = getMimeType(file)
   const signature = await getUploadSignature(file, context)
   const formData = new FormData()
   formData.append('file', file)
@@ -77,7 +94,7 @@ export async function uploadFileToCloudinary(file: File, context: UploadContext)
   return {
     file_name: getFileName(file),
     file_url: uploaded.secure_url,
-    mime_type: getMimeType(file),
+    mime_type: mimeType,
     file_size: uploaded.bytes || file.size,
     resource_type: uploaded.resource_type,
     public_id: uploaded.public_id,

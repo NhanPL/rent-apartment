@@ -17,6 +17,10 @@ export interface UploadFileMetadata {
   resource_type?: UploadResourceType;
 }
 
+export interface CloudinaryAssetMetadata {
+  file_url: string;
+}
+
 interface UploadContextConfig {
   folder: string;
   maxBytes: number;
@@ -61,7 +65,15 @@ const contextConfig: Record<UploadContext, UploadContextConfig> = {
   }
 };
 
-const cloudinaryConfigured = () => Boolean(env.CLOUDINARY_CLOUD_NAME && env.CLOUDINARY_API_KEY && env.CLOUDINARY_API_SECRET);
+const hasUsableCredential = (value: string | undefined, minimumLength: number): boolean => (
+  Boolean(value && value.trim().length >= minimumLength)
+);
+
+const cloudinaryConfigured = () => (
+  hasUsableCredential(env.CLOUDINARY_CLOUD_NAME, 2)
+  && hasUsableCredential(env.CLOUDINARY_API_KEY, 6)
+  && hasUsableCredential(env.CLOUDINARY_API_SECRET, 8)
+);
 
 const inferResourceType = (mimeType: string): UploadResourceType => (
   mimeType.startsWith('image/') ? 'image' : 'raw'
@@ -162,4 +174,50 @@ export const createCloudinaryUploadSignature = (
     allowed_mime_types: config.allowedMimeTypes,
     max_file_size: config.maxBytes
   };
+};
+
+export const resolveCloudinaryAsset = (metadata: CloudinaryAssetMetadata): { publicId: string; resourceType: UploadResourceType } => {
+  assertCloudinaryUrl(metadata.file_url);
+  try {
+    const url = new URL(metadata.file_url);
+    const segments = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+    const uploadIndex = segments.indexOf('upload');
+    const resourceType = segments[uploadIndex - 1] as UploadResourceType | undefined;
+    const assetSegments = segments.slice(uploadIndex + 1).filter((segment, index) => !(index === 0 && /^v\d+$/.test(segment)));
+    if (uploadIndex < 2 || !uploadResourceTypeValues.includes(resourceType as UploadResourceType) || assetSegments.length === 0) {
+      throw new Error('Invalid Cloudinary asset URL');
+    }
+
+    const validatedResourceType = resourceType as UploadResourceType;
+    let publicId = assetSegments.join('/');
+    if (validatedResourceType === 'image') publicId = publicId.replace(/\.[^/.]+$/, '');
+    return { publicId, resourceType: validatedResourceType };
+  } catch {
+    throw new AppError(409, 'Cloudinary asset metadata is missing', 'CLOUDINARY_ASSET_METADATA_MISSING');
+  }
+};
+
+export const deleteCloudinaryUpload = async (metadata: CloudinaryAssetMetadata): Promise<void> => {
+  if (!cloudinaryConfigured()) {
+    throw new AppError(500, 'Cloudinary is not configured', 'CLOUDINARY_NOT_CONFIGURED');
+  }
+
+  const { publicId, resourceType } = resolveCloudinaryAsset(metadata);
+  const timestamp = Math.floor(Date.now() / 1000);
+  const signature = signParams({ invalidate: 'true', public_id: publicId, timestamp }, env.CLOUDINARY_API_SECRET!);
+  const formData = new FormData();
+  formData.append('api_key', env.CLOUDINARY_API_KEY!);
+  formData.append('timestamp', String(timestamp));
+  formData.append('public_id', publicId);
+  formData.append('invalidate', 'true');
+  formData.append('signature', signature);
+
+  const response = await fetch(`https://api.cloudinary.com/v1_1/${env.CLOUDINARY_CLOUD_NAME}/${resourceType}/destroy`, {
+    method: 'POST',
+    body: formData
+  });
+  const payload = await response.json().catch(() => null) as { result?: string; error?: { message?: string } } | null;
+  if (!response.ok || !payload || !['ok', 'not found'].includes(payload.result ?? '')) {
+    throw new AppError(502, payload?.error?.message ?? 'Unable to delete file from Cloudinary', 'CLOUDINARY_DELETE_FAILED');
+  }
 };

@@ -1,4 +1,5 @@
 export type ContractStatus = 'DRAFT' | 'ACTIVE' | 'ENDED' | 'CANCELLED'
+export type ContractBusinessStage = 'RESERVED' | 'WAITING_SIGNATURE' | 'WAITING_HANDOVER' | 'ACTIVE' | 'CANCELLED' | 'ENDED'
 
 export interface BuildingOption {
   id: string
@@ -19,6 +20,8 @@ export interface TenantOption {
   full_name: string
   phone: string | null
   email: string | null
+  identity_number?: string | null
+  status?: string | null
 }
 
 export interface ContractTenant {
@@ -57,6 +60,7 @@ export interface ContractListItem {
   building_name: string
   contract_code: string | null
   status: ContractStatus
+  business_stage?: ContractBusinessStage
   start_date: string
   end_date: string | null
   move_in_date: string | null
@@ -94,6 +98,7 @@ export interface ContractListParams {
   room_id?: string
   tenant_id?: string
   status?: ContractStatus
+  business_stage?: ContractBusinessStage
   page?: number
   pageSize?: number
 }

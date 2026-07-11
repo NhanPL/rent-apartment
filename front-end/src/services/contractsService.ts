@@ -84,6 +84,7 @@ const toQueryString = (params: ContractListParams): string => {
   if (params.room_id) searchParams.set('room_id', params.room_id)
   if (params.tenant_id) searchParams.set('tenant_id', params.tenant_id)
   if (params.status) searchParams.set('status', params.status)
+  if (params.business_stage) searchParams.set('business_stage', params.business_stage)
   if (params.page) searchParams.set('page', String(params.page))
   if (params.pageSize) searchParams.set('pageSize', String(params.pageSize))
 
@@ -143,6 +144,10 @@ export function addContractDocument(id: string, payload: ContractDocumentPayload
   return apiRequest<ContractDocument>(API_ROUTES.contracts.documents(id), { method: 'POST', body: payload })
 }
 
+export function deleteContractDocument(id: string, documentId: string): Promise<void> {
+  return apiRequest<void>(API_ROUTES.contracts.documentDetail(id, documentId), { method: 'DELETE' })
+}
+
 export function listBuildings(): Promise<BuildingOption[]> {
   return apiRequest<BuildingOption[]>(API_ROUTES.buildings.list)
 }
@@ -172,5 +177,7 @@ export async function listTenants(): Promise<TenantOption[]> {
     full_name: tenant.full_name,
     phone: tenant.phone ?? null,
     email: tenant.email ?? null,
+    identity_number: tenant.identity_number ?? null,
+    status: tenant.status ?? null,
   })))
 }

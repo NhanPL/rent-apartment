@@ -1,5 +1,5 @@
 import { LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, UserOutlined } from '@ant-design/icons'
-import { Button, Drawer, Dropdown, Grid, Layout, Menu, Space, Typography } from 'antd'
+import { Button, Drawer, Dropdown, Grid, Layout, Menu, Typography } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { SidebarRouteItem } from '../routes/routeConfig'
@@ -67,7 +67,7 @@ export function AppLayout({ pathname, onNavigate, items, pageTitle, content, cur
 
       <Layout>
         <Header className="app-header">
-          <Space className="header-space" size={12}>
+          <div className="header-main">
             <Button
               type="text"
               icon={isDesktop ? (collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />) : <MenuUnfoldOutlined />}
@@ -81,26 +81,26 @@ export function AppLayout({ pathname, onNavigate, items, pageTitle, content, cur
                 Rent Apartment Management
               </Typography.Text>
             </div>
-            <Dropdown
-              trigger={['click']}
-              menu={{
-                items: [
-                  {
-                    key: 'logout',
-                    label: 'Logout',
-                    icon: <LogoutOutlined />,
-                    onClick: () => {
-                      void onLogout()
-                    },
+          </div>
+          <Dropdown
+            trigger={['click']}
+            menu={{
+              items: [
+                {
+                  key: 'logout',
+                  label: 'Logout',
+                  icon: <LogoutOutlined />,
+                  onClick: () => {
+                    void onLogout()
                   },
-                ],
-              }}
-            >
-              <Button type="text" icon={<UserOutlined />} className="user-menu-button">
-                {currentUserName}
-              </Button>
-            </Dropdown>
-          </Space>
+                },
+              ],
+            }}
+          >
+            <Button type="text" icon={<UserOutlined />} className="user-menu-button">
+              {currentUserName}
+            </Button>
+          </Dropdown>
         </Header>
         <Content className="app-content">{content}</Content>
         <Footer className="app-footer">© {new Date().getFullYear()} Rent Apartment Management</Footer>

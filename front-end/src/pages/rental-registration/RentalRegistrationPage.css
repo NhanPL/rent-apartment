@@ -1,0 +1,94 @@
+.rental-registration-page {
+  width: 100%;
+}
+
+.registration-page-header {
+  margin-bottom: 8px;
+}
+
+.registration-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.registration-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+  gap: 16px;
+}
+
+.registration-panel {
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fff;
+}
+
+.registration-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+}
+
+.registration-form-full {
+  grid-column: 1 / -1;
+}
+
+.registration-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.registration-modal-alert {
+  margin-bottom: 16px;
+}
+
+.registration-file-list {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.registration-file-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding-left: 8px;
+  border: 1px solid #f0f0f0;
+  border-radius: 6px;
+}
+
+.registration-existing-documents {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.registration-document-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 6px 0 6px 8px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+@media (max-width: 960px) {
+  .registration-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .registration-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
