@@ -14,6 +14,15 @@ vi.mock('../src/modules/fixed-charges/fixed-charges.service', async (importOrigi
   };
 });
 
+const uploadServiceMocks = vi.hoisted(() => ({
+  deleteCloudinaryUpload: vi.fn().mockResolvedValue(undefined)
+}));
+
+vi.mock('../src/modules/uploads/uploads.service', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/modules/uploads/uploads.service')>();
+  return { ...actual, deleteCloudinaryUpload: uploadServiceMocks.deleteCloudinaryUpload };
+});
+
 import { app } from '../src/app';
 import { fakeDb, ids } from './support/mock-db';
 
@@ -321,6 +330,16 @@ describe('backend API smoke tests', () => {
       file_name: 'signed-contract.pdf',
       uploaded_by_user_id: ids.managerAUser
     });
+
+    await request(app)
+      .delete(`/api/contracts/${reservedForCancel.body.id}/documents/${document.body.id}`)
+      .set(auth(managerSession.accessToken))
+      .expect(204);
+
+    expect(uploadServiceMocks.deleteCloudinaryUpload).toHaveBeenCalledWith({
+      file_url: 'https://example.com/signed-contract.pdf'
+    });
+    expect(fakeDb.contractDocuments).toHaveLength(0);
 
     await request(app)
       .post(`/api/rental-registration/${reservedForCancel.body.id}/cancel`)

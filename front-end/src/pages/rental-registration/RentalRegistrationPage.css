@@ -65,6 +65,22 @@
   border-radius: 6px;
 }
 
+.registration-existing-documents {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.registration-document-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 6px 0 6px 8px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
 @media (max-width: 960px) {
   .registration-grid {
     grid-template-columns: 1fr;

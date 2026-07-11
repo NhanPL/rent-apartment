@@ -144,6 +144,10 @@ export function addContractDocument(id: string, payload: ContractDocumentPayload
   return apiRequest<ContractDocument>(API_ROUTES.contracts.documents(id), { method: 'POST', body: payload })
 }
 
+export function deleteContractDocument(id: string, documentId: string): Promise<void> {
+  return apiRequest<void>(API_ROUTES.contracts.documentDetail(id, documentId), { method: 'DELETE' })
+}
+
 export function listBuildings(): Promise<BuildingOption[]> {
   return apiRequest<BuildingOption[]>(API_ROUTES.buildings.list)
 }

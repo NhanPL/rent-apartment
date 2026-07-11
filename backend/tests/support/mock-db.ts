@@ -388,6 +388,11 @@ class FakeDb {
       return result<T>([]);
     }
 
+    if (sql.startsWith('select * from contract_document where id=$1')) {
+      const document = this.contractDocuments.find((item) => item.id === params[0] && item.contract_id === params[1]);
+      return result<T>(document ? [document as T] : []);
+    }
+
     if (sql.startsWith('select * from contract_document')) {
       return result<T>(this.contractDocuments.filter((item) => item.contract_id === params[0]) as T[]);
     }
@@ -408,6 +413,11 @@ class FakeDb {
       };
       this.contractDocuments.push(document);
       return result<T>([document as T]);
+    }
+
+    if (sql.startsWith('delete from contract_document')) {
+      this.contractDocuments = this.contractDocuments.filter((item) => !(item.id === params[0] && item.contract_id === params[1]));
+      return result<T>([]);
     }
 
     if (sql.startsWith('select count(*)::int as occupants_count')) {

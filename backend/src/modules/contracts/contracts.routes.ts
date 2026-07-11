@@ -5,7 +5,7 @@ import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
 import { parseBody } from '../../shared/utils/validation';
-import { validateStoredUpload } from '../uploads/uploads.service';
+import { deleteCloudinaryUpload, validateStoredUpload } from '../uploads/uploads.service';
 import { assertRoomCanHostActiveContract, CURRENT_CONTRACT_STATUS, getContractRoomForManager } from './contracts.rules';
 import { assertTenantBelongsToManager } from '../tenants/tenants.repository';
 import { businessStageSql, getContractBusinessStage } from './business-stage';
@@ -387,6 +387,24 @@ router.post('/:id/documents', requireRole('MANAGER'), asyncHandler(async (req, r
   );
 
   res.status(201).json(rows[0]);
+}));
+
+router.delete('/:id/documents/:documentId', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  await getScopedContract({ query }, req.params.id, req.auth!.userId);
+  const document = (await query<DbRow>(
+    `SELECT *
+     FROM contract_document
+     WHERE id=$1 AND contract_id=$2
+     LIMIT 1`,
+    [req.params.documentId, req.params.id]
+  )).rows[0];
+  if (!document) throw new AppError(404, 'Contract document not found', 'CONTRACT_DOCUMENT_NOT_FOUND');
+
+  await deleteCloudinaryUpload({
+    file_url: document.file_url
+  });
+  await query('DELETE FROM contract_document WHERE id=$1 AND contract_id=$2', [req.params.documentId, req.params.id]);
+  res.status(204).send();
 }));
 
 router.post('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {

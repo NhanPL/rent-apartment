@@ -15,6 +15,7 @@ import {
   Input,
   InputNumber,
   Modal,
+  Popconfirm,
   Select,
   Space,
   Steps,
@@ -28,6 +29,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   addContractDocument,
+  deleteContractDocument,
   getContract,
   listBuildings,
   listContracts,
@@ -133,6 +135,7 @@ export function RentalRegistrationPage() {
   const [queueLoading, setQueueLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [documentSaving, setDocumentSaving] = useState(false)
+  const [documentDeletingId, setDocumentDeletingId] = useState<string | null>(null)
   const [handoverSaving, setHandoverSaving] = useState(false)
   const [cancelSaving, setCancelSaving] = useState(false)
   const [documentContract, setDocumentContract] = useState<ContractDetail | null>(null)
@@ -315,6 +318,24 @@ export function RentalRegistrationPage() {
       setDocumentSaving(false)
     }
   }, [documentContract, documentFiles, documentForm, loadWorkQueues, uploadedDocuments])
+
+  const deleteDocument = useCallback(async (documentId: string) => {
+    if (!documentContract) return
+    setDocumentDeletingId(documentId)
+    try {
+      await deleteContractDocument(documentContract.id, documentId)
+      setDocumentContract((current) => current ? {
+        ...current,
+        documents: current.documents.filter((document) => document.id !== documentId),
+      } : current)
+      await loadWorkQueues()
+      message.success('Da xoa giay to')
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : 'Khong the xoa giay to')
+    } finally {
+      setDocumentDeletingId(null)
+    }
+  }, [documentContract, loadWorkQueues])
 
   const openHandover = useCallback(async (contract: ContractListItem) => {
     try {
@@ -742,6 +763,38 @@ export function RentalRegistrationPage() {
             </Form.Item>
           </div>
         </Form>
+        <div className="registration-existing-documents">
+          <Typography.Title level={5}>Giay to hien co</Typography.Title>
+          {documentContract?.documents.length ? documentContract.documents.map((document) => (
+            <div className="registration-document-row" key={document.id}>
+              <div>
+                {document.file_url ? (
+                  <Typography.Link href={document.file_url} target="_blank" rel="noreferrer">
+                    {document.file_name || document.doc_type}
+                  </Typography.Link>
+                ) : <Typography.Text>{document.file_name || document.doc_type}</Typography.Text>}
+                <div><Tag>{document.doc_type}</Tag></div>
+              </div>
+              <Popconfirm
+                title="Xoa giay to nay?"
+                description="File tren Cloudinary cung se bi xoa."
+                okText="Xoa"
+                cancelText="Khong"
+                okButtonProps={{ danger: true }}
+                onConfirm={() => void deleteDocument(document.id)}
+              >
+                <Button
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  aria-label={`Xoa ${document.file_name || document.doc_type}`}
+                  loading={documentDeletingId === document.id}
+                  disabled={documentSaving || Boolean(documentDeletingId && documentDeletingId !== document.id)}
+                />
+              </Popconfirm>
+            </div>
+          )) : <Typography.Text type="secondary">Chua co giay to</Typography.Text>}
+        </div>
       </Modal>
 
       <Modal

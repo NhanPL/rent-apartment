@@ -6,6 +6,7 @@ import { RentalRegistrationPage } from './RentalRegistrationPage'
 
 const serviceMocks = vi.hoisted(() => ({
   addContractDocument: vi.fn(),
+  deleteContractDocument: vi.fn(),
   getContract: vi.fn(),
   listBuildings: vi.fn(),
   listContracts: vi.fn(),
@@ -19,6 +20,7 @@ const serviceMocks = vi.hoisted(() => ({
 
 vi.mock('../../services/contractsService', () => ({
   addContractDocument: serviceMocks.addContractDocument,
+  deleteContractDocument: serviceMocks.deleteContractDocument,
   getContract: serviceMocks.getContract,
   listBuildings: serviceMocks.listBuildings,
   listContracts: serviceMocks.listContracts,
@@ -85,9 +87,22 @@ describe('RentalRegistrationPage', () => {
       ...draftContract,
       max_occupants: 2,
       tenants: [],
-      documents: [],
+      documents: [{
+        id: 'document-existing',
+        contract_id: 'contract-1',
+        doc_type: 'SIGNED_SCAN',
+        file_name: 'existing.pdf',
+        file_url: 'https://example.com/existing.pdf',
+        mime_type: 'application/pdf',
+        file_size: 1024,
+        uploaded_by_user_id: 'manager-1',
+        uploaded_at: '2026-07-01T00:00:00.000Z',
+        note: null,
+        created_at: '2026-07-01T00:00:00.000Z',
+      }],
     })
     serviceMocks.addContractDocument.mockResolvedValue({ id: 'document-1' })
+    serviceMocks.deleteContractDocument.mockResolvedValue(undefined)
     serviceMocks.uploadFileToCloudinary.mockImplementation(async (file: File) => ({
       file_name: file.name,
       file_url: `https://example.com/${file.name}`,
@@ -104,6 +119,12 @@ describe('RentalRegistrationPage', () => {
 
     await user.click(await screen.findByRole('tab', { name: /Bo sung giay to/ }))
     await user.click(await screen.findByRole('button', { name: /Bo sung giay to/ }))
+    expect(await screen.findByText('existing.pdf')).not.toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Xoa existing.pdf' }))
+    await user.click(await screen.findByRole('button', { name: 'Xoa' }))
+    await waitFor(() => expect(serviceMocks.deleteContractDocument).toHaveBeenCalledWith('contract-1', 'document-existing'))
+    await waitFor(() => expect(screen.queryByText('existing.pdf')).toBeNull())
+
     await user.click(await screen.findByRole('button', { name: 'Chon nhieu file' }))
 
     expect(serviceMocks.uploadFileToCloudinary).not.toHaveBeenCalled()
@@ -123,5 +144,5 @@ describe('RentalRegistrationPage', () => {
       file_name: 'identity.pdf',
       file_url: 'https://example.com/identity.pdf',
     }))
-  }, 10_000)
+  }, 20_000)
 })
