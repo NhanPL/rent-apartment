@@ -3,6 +3,7 @@ import { Alert, Button, Card, Descriptions, Result, Skeleton, Space, Tag, Typogr
 import dayjs from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
 import { verifyVnpayReturn, type VnpayPaymentResult } from '../../services/paymentsService'
+import { getUserErrorMessage } from '../../services/errorMessage'
 
 const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
 
@@ -33,7 +34,7 @@ export function PaymentResultPage() {
         }
         setResult(await verifyVnpayReturn(queryParams))
       } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : 'Unable to verify VNPAY result.')
+        setError(getUserErrorMessage(loadError, 'Khong the xac minh ket qua VNPAY.'))
       } finally {
         setLoading(false)
       }

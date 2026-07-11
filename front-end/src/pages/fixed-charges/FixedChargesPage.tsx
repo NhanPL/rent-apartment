@@ -53,6 +53,7 @@ import {
   updateRoomChargeOverride,
   updateRoomMonthExtra,
 } from '../../services/fixedChargesService'
+import { getUserErrorMessage } from '../../services/errorMessage'
 import type {
   BuildingCharge,
   BuildingChargePayload,
@@ -205,8 +206,8 @@ export function FixedChargesPage() {
       setRoomOverrides(roomRows)
       setContractOverrides(contractRows)
       setExtras(extraRows)
-    } catch {
-      setError('Unable to load fixed charges.')
+    } catch (error) {
+      setError(getUserErrorMessage(error, 'Khong tai duoc danh sach khoan phi.'))
     } finally {
       setLoading(false)
     }
@@ -497,7 +498,7 @@ export function FixedChargesPage() {
     } catch (error: unknown) {
       const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
       if (!formError.errorFields) {
-        message.error(error instanceof Error ? error.message : 'Unable to save fixed charge')
+        message.error(getUserErrorMessage(error, 'Khong the luu khoan phi.'))
       }
     } finally {
       setSaving(false)
@@ -511,13 +512,18 @@ export function FixedChargesPage() {
       okText: kind === 'catalog' ? 'Deactivate' : 'Delete',
       okButtonProps: { danger: true },
       onOk: async () => {
-        if (kind === 'catalog') await deleteChargeCatalog(id)
-        if (kind === 'building') await deleteBuildingCharge(id)
-        if (kind === 'room') await deleteRoomChargeOverride(id)
-        if (kind === 'contract') await deleteContractChargeOverride(id)
-        if (kind === 'extra') await deleteRoomMonthExtra(id)
-        message.success(kind === 'catalog' ? 'Catalog item deactivated' : 'Fixed charge deleted')
-        await loadTables()
+        try {
+          if (kind === 'catalog') await deleteChargeCatalog(id)
+          if (kind === 'building') await deleteBuildingCharge(id)
+          if (kind === 'room') await deleteRoomChargeOverride(id)
+          if (kind === 'contract') await deleteContractChargeOverride(id)
+          if (kind === 'extra') await deleteRoomMonthExtra(id)
+          message.success(kind === 'catalog' ? 'Catalog item deactivated' : 'Fixed charge deleted')
+          await loadTables()
+        } catch (error) {
+          message.error(getUserErrorMessage(error, 'Khong the xoa khoan phi.'))
+          throw error
+        }
       },
     })
   }, [loadTables])
@@ -530,7 +536,7 @@ export function FixedChargesPage() {
     try {
       setPreview(await resolveFixedCharges(values.contract_id, monthToDate(values.month)))
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Unable to resolve fixed charges')
+      message.error(getUserErrorMessage(error, 'Khong the tinh cac khoan phi.'))
     } finally {
       setPreviewLoading(false)
     }

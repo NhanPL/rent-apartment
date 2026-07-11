@@ -3,6 +3,7 @@ import { Button, Upload, message } from 'antd'
 import type { UploadProps } from 'antd'
 import { useState, type ReactNode } from 'react'
 import { uploadFileToCloudinary, type UploadedCloudinaryFile, type UploadContext } from '../../services/uploadService'
+import { getUserErrorMessage } from '../../services/errorMessage'
 
 interface CloudinaryUploadButtonBaseProps {
   context: UploadContext
@@ -31,7 +32,7 @@ export function CloudinaryUploadButton(props: CloudinaryUploadButtonProps) {
       message.success('File uploaded successfully')
     } catch (error) {
       onError?.(error as Error)
-      message.error(error instanceof Error ? error.message : 'Unable to upload file')
+      message.error(getUserErrorMessage(error, 'Khong the tai file len.'))
     } finally {
       setUploading(false)
     }

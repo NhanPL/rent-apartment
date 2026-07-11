@@ -3,6 +3,7 @@ import { Button, DatePicker, Select, Space, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useCallback, useEffect, useState } from 'react'
 import { dashboardFormatters, getDashboardData, listDashboardBuildings } from '../../services/dashboardService'
+import { getUserErrorMessage } from '../../services/errorMessage'
 import { DashboardCharts } from './components/DashboardCharts'
 import { DashboardRecentActivity } from './components/DashboardRecentActivity'
 import { DashboardSummaryCards } from './components/DashboardSummaryCards'
@@ -32,7 +33,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
       })
       setData(result)
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Please try again in a moment.')
+      setError(getUserErrorMessage(requestError, 'Khong tai duoc du lieu tong quan.'))
     } finally {
       setLoading(false)
     }

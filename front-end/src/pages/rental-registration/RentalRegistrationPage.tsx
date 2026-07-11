@@ -54,6 +54,7 @@ import type {
 } from '../../services/rentalRegistrationService'
 import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
 import { uploadFileToCloudinary, type UploadedCloudinaryFile } from '../../services/uploadService'
+import { getUserErrorMessage } from '../../services/errorMessage'
 import './RentalRegistrationPage.css'
 
 interface ReserveFormValues {
@@ -161,8 +162,8 @@ export function RentalRegistrationPage() {
       setBuildings(buildingRows)
       setRooms(roomRows)
       setTenants(tenantRows)
-    } catch {
-      message.error('Khong tai duoc du lieu dang ky')
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Khong tai duoc du lieu dang ky.'))
     } finally {
       setLoading(false)
     }
@@ -173,8 +174,8 @@ export function RentalRegistrationPage() {
     try {
       const response = await listContracts({ status: 'DRAFT', page: 1, pageSize: 100 })
       setDraftContracts(response.items)
-    } catch {
-      message.error('Khong tai duoc ho so dang cho xu ly')
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Khong tai duoc ho so dang cho xu ly.'))
     } finally {
       setQueueLoading(false)
     }
@@ -252,7 +253,7 @@ export function RentalRegistrationPage() {
     } catch (error: unknown) {
       const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
       if (!formError.errorFields) {
-        message.error(error instanceof Error ? error.message : 'Khong the giu phong')
+        message.error(getUserErrorMessage(error, 'Khong the giu phong.'))
       }
     } finally {
       setSaving(false)
@@ -268,8 +269,8 @@ export function RentalRegistrationPage() {
       setUploadedDocuments({})
       setDocumentIdsToDelete([])
       setDocumentContract(detail)
-    } catch {
-      message.error('Khong tai duoc chi tiet hop dong')
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Khong tai duoc chi tiet hop dong.'))
     }
   }, [documentForm])
 
@@ -322,7 +323,7 @@ export function RentalRegistrationPage() {
     } catch (error: unknown) {
       const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
       if (!formError.errorFields) {
-        const reason = error instanceof Error ? error.message : 'Khong the luu giay to'
+        const reason = getUserErrorMessage(error, 'Khong the luu giay to.')
         const completedCount = savedCount + deletedCount
         message.error(completedCount > 0 ? `Da xu ly ${completedCount} thay doi. Phan con lai loi: ${reason}` : reason)
       }
@@ -341,8 +342,8 @@ export function RentalRegistrationPage() {
         vehicles_count: 0,
       })
       setHandoverContractDetail(detail)
-    } catch {
-      message.error('Khong tai duoc chi tiet hop dong')
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Khong tai duoc chi tiet hop dong.'))
     }
   }, [handoverForm])
 
@@ -367,7 +368,7 @@ export function RentalRegistrationPage() {
       await Promise.all([loadOptions(), loadWorkQueues()])
       message.success('Da kich hoat hop dong va ghi chi so dau ky')
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Khong the ban giao phong')
+      message.error(getUserErrorMessage(error, 'Khong the ban giao phong.'))
     } finally {
       setHandoverSaving(false)
     }
@@ -393,7 +394,7 @@ export function RentalRegistrationPage() {
       await Promise.all([loadOptions(), loadWorkQueues()])
       message.success('Da huy dang ky thue phong')
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Khong the huy dang ky')
+      message.error(getUserErrorMessage(error, 'Khong the huy dang ky.'))
     } finally {
       setCancelSaving(false)
     }

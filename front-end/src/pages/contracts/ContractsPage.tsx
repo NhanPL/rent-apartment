@@ -61,6 +61,7 @@ import type {
 } from './types'
 import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
 import type { UploadedCloudinaryFile } from '../../services/uploadService'
+import { getUserErrorMessage } from '../../services/errorMessage'
 import './ContractsPage.css'
 
 interface ContractFormValues {
@@ -280,8 +281,8 @@ export function ContractsPage() {
       setBuildings(buildingRows)
       setRooms(roomRows)
       setTenants(tenantRows)
-    } catch {
-      message.error('Unable to load contract filters')
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Khong tai duoc bo loc hop dong.'))
     }
   }, [])
 
@@ -302,8 +303,8 @@ export function ContractsPage() {
       })
       setItems(response.items)
       setTotal(response.total)
-    } catch {
-      setError('Unable to load contracts. Please retry.')
+    } catch (error) {
+      setError(getUserErrorMessage(error, 'Khong tai duoc danh sach hop dong.'))
     } finally {
       setLoading(false)
     }
@@ -328,8 +329,8 @@ export function ContractsPage() {
     try {
       const detail = await getContract(id)
       setDetailItem(detail)
-    } catch {
-      message.error('Unable to load contract detail')
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Khong tai duoc chi tiet hop dong.'))
       setDetailOpen(false)
     } finally {
       setDetailLoading(false)
@@ -434,8 +435,8 @@ export function ContractsPage() {
         billing_day: detail.billing_day,
         note: detail.note ?? undefined,
       })
-    } catch {
-      message.error('Unable to load contract for editing')
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Khong tai duoc hop dong de chinh sua.'))
       setFormDrawerOpen(false)
     } finally {
       setFormDrawerLoading(false)
@@ -464,7 +465,7 @@ export function ContractsPage() {
     } catch (error: unknown) {
       const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
       if (!formError.errorFields) {
-        message.error(error instanceof Error ? error.message : 'Unable to save contract')
+        message.error(getUserErrorMessage(error, 'Khong the luu hop dong.'))
       }
     } finally {
       setSaveLoading(false)
@@ -479,7 +480,7 @@ export function ContractsPage() {
       message.success('Contract activated')
       await refreshDetailAndList(id)
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Unable to activate contract')
+      message.error(getUserErrorMessage(error, 'Khong the kich hoat hop dong.'))
     } finally {
       setActionLoading(null)
     }
@@ -519,7 +520,7 @@ export function ContractsPage() {
     } catch (error: unknown) {
       const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
       if (!formError.errorFields) {
-        message.error(error instanceof Error ? error.message : 'Unable to close contract')
+        message.error(getUserErrorMessage(error, 'Khong the dong hop dong.'))
       }
     } finally {
       setCloseLoading(false)
@@ -546,7 +547,7 @@ export function ContractsPage() {
     } catch (error: unknown) {
       const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
       if (!formError.errorFields) {
-        message.error(error instanceof Error ? error.message : 'Unable to add tenant')
+        message.error(getUserErrorMessage(error, 'Khong the them nguoi thue vao hop dong.'))
       }
     } finally {
       setActionLoading(null)
@@ -565,7 +566,7 @@ export function ContractsPage() {
       message.success('Primary tenant updated')
       await refreshDetailAndList(detailItem.id)
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Unable to update primary tenant')
+      message.error(getUserErrorMessage(error, 'Khong the cap nhat nguoi thue chinh.'))
     } finally {
       setActionLoading(null)
     }
@@ -583,7 +584,7 @@ export function ContractsPage() {
       message.success('Tenant removed from contract')
       await refreshDetailAndList(detailItem.id)
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Unable to remove tenant')
+      message.error(getUserErrorMessage(error, 'Khong the xoa nguoi thue khoi hop dong.'))
     } finally {
       setActionLoading(null)
     }
@@ -618,7 +619,7 @@ export function ContractsPage() {
     } catch (error: unknown) {
       const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
       if (!formError.errorFields) {
-        message.error(error instanceof Error ? error.message : 'Unable to upload contract document')
+        message.error(getUserErrorMessage(error, 'Khong the luu giay to hop dong.'))
       }
     } finally {
       setDocumentSaving(false)

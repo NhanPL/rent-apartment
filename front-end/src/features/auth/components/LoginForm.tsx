@@ -2,6 +2,7 @@ import { Alert, Button, Card, Checkbox, Form, Input, Typography } from 'antd'
 import { useState } from 'react'
 import { useAuth } from '../useAuth'
 import type { LoginFormValues } from '../types/auth'
+import { getUserErrorMessage } from '../../../services/errorMessage'
 import './LoginForm.css'
 
 const { Title, Text } = Typography
@@ -29,7 +30,7 @@ export function LoginForm() {
       window.history.replaceState(null, '', targetPath)
       window.dispatchEvent(new PopStateEvent('popstate'))
     } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : 'Unable to sign in. Please try again.')
+      setError(getUserErrorMessage(loginError, 'Khong the dang nhap. Vui long kiem tra tai khoan.'))
     } finally {
       setLoading(false)
     }

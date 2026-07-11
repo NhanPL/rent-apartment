@@ -28,6 +28,7 @@ import {
 import type { PaymentRequest, PaymentRequestStatus } from '../../services/paymentsService'
 import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
 import type { UploadedCloudinaryFile } from '../../services/uploadService'
+import { getUserErrorMessage } from '../../services/errorMessage'
 import {
   calculateReadingUsage,
   isTenantUtilityReadingLocked,
@@ -257,7 +258,7 @@ export function TenantRoomPage() {
       await hydrateFormByMonth(context.room.id, validation.formMonth)
       message.success('Đã ghi nhận chỉ số điện nước thành công')
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Không thể lưu chỉ số điện nước')
+      message.error(getUserErrorMessage(error, 'Khong the luu chi so dien nuoc.'))
     } finally {
       setSubmitting(false)
     }
@@ -289,7 +290,7 @@ export function TenantRoomPage() {
       await hydrateFormByMonth(context.room.id, form.getFieldValue('month'))
       message.success('Evidence metadata uploaded')
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Unable to upload evidence metadata')
+      message.error(getUserErrorMessage(error, 'Khong the luu minh chung chi so.'))
     } finally {
       setEvidenceSubmitting(false)
     }
@@ -320,7 +321,7 @@ export function TenantRoomPage() {
       await refresh()
       message.success('Payment proof submitted for manager review.')
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Unable to submit payment proof.')
+      message.error(getUserErrorMessage(error, 'Khong the gui chung tu thanh toan.'))
     } finally {
       setPaymentProofSubmitting(false)
     }
@@ -336,7 +337,7 @@ export function TenantRoomPage() {
       const checkout = await createMyVnpayPayment(currentBill.id)
       window.location.assign(checkout.redirect_url)
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Unable to create VNPAY payment.')
+      message.error(getUserErrorMessage(error, 'Khong the tao giao dich VNPAY.'))
     } finally {
       setVnpaySubmitting(false)
     }
@@ -363,7 +364,7 @@ export function TenantRoomPage() {
       setTenantDocuments(await listMyDocuments())
       message.success('Document uploaded')
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Unable to save document.')
+      message.error(getUserErrorMessage(error, 'Khong the luu giay to.'))
     } finally {
       setTenantDocumentSubmitting(false)
     }
@@ -376,7 +377,7 @@ export function TenantRoomPage() {
     try {
       setBillDetail(await getMyInvoiceDetail(invoiceId))
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Unable to load invoice detail.')
+      message.error(getUserErrorMessage(error, 'Khong tai duoc chi tiet hoa don.'))
       setBillDetailOpen(false)
     } finally {
       setBillDetailLoading(false)
