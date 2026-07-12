@@ -45,6 +45,7 @@ import {
   cancelRegistration,
   handoverContract,
   listAvailableRooms,
+  listAvailableTenants,
   reserveRoom,
 } from '../../services/rentalRegistrationService'
 import type {
@@ -130,6 +131,7 @@ export function RentalRegistrationPage() {
   const [buildings, setBuildings] = useState<BuildingOption[]>([])
   const [rooms, setRooms] = useState<AvailableRoom[]>([])
   const [tenants, setTenants] = useState<TenantOption[]>([])
+  const [allTenants, setAllTenants] = useState<TenantOption[]>([])
   const [draftContracts, setDraftContracts] = useState<ContractListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [queueLoading, setQueueLoading] = useState(true)
@@ -154,14 +156,16 @@ export function RentalRegistrationPage() {
   const loadOptions = useCallback(async (buildingId?: string) => {
     setLoading(true)
     try {
-      const [buildingRows, roomRows, tenantRows] = await Promise.all([
+      const [buildingRows, roomRows, tenantRows, allTenantRows] = await Promise.all([
         listBuildings(),
         listAvailableRooms(buildingId),
+        listAvailableTenants(),
         listTenants(),
       ])
       setBuildings(buildingRows)
       setRooms(roomRows)
       setTenants(tenantRows)
+      setAllTenants(allTenantRows)
     } catch (error) {
       message.error(getUserErrorMessage(error, 'Khong tai duoc du lieu dang ky.'))
     } finally {
@@ -195,10 +199,10 @@ export function RentalRegistrationPage() {
     const phone = phoneValue?.trim()
     const identity = identityValue?.trim()
     if (!phone && !identity) return []
-    return tenants.filter((tenant) => (
+    return allTenants.filter((tenant) => (
       (phone && tenant.phone === phone) || (identity && tenant.identity_number === identity)
     ))
-  }, [identityValue, phoneValue, tenants])
+  }, [allTenants, identityValue, phoneValue])
 
   const handoverContracts = useMemo(
     () => draftContracts.filter((contract) => contract.business_stage === 'WAITING_HANDOVER'),

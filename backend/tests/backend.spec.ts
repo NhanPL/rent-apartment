@@ -279,6 +279,21 @@ describe('backend API smoke tests', () => {
   it('runs the rental registration reserve, cancel, and handover workflow', async () => {
     const managerSession = await login('manager@example.com');
 
+    fakeDb.contracts.push({
+      id: '00000000-0000-4000-8000-000000000499',
+      room_id: ids.roomSmall,
+      contract_code: 'CONTRACT-WITHOUT-OCCUPANT',
+      status: 'ACTIVE',
+      start_date: '2026-01-01',
+      end_date: null,
+      move_in_date: '2026-01-01',
+      move_out_date: null,
+      rent_price: 800,
+      deposit_amount: 800,
+      billing_day: 5,
+      note: null
+    });
+
     const available = await request(app)
       .get('/api/rental-registration/available-rooms')
       .set(auth(managerSession.accessToken))
@@ -286,6 +301,14 @@ describe('backend API smoke tests', () => {
 
     expect(available.body.map((room: { id: string }) => room.id)).toContain(ids.roomSmall);
     expect(available.body.map((room: { id: string }) => room.id)).not.toContain(ids.roomA);
+
+    const availableTenants = await request(app)
+      .get('/api/rental-registration/available-tenants')
+      .set(auth(managerSession.accessToken))
+      .expect(200);
+
+    expect(availableTenants.body.map((tenant: { id: string }) => tenant.id)).toContain(ids.tenantFree);
+    expect(availableTenants.body.map((tenant: { id: string }) => tenant.id)).not.toContain(ids.tenantA);
 
     const reservedForCancel = await request(app)
       .post('/api/rental-registration/reserve')
@@ -433,32 +456,33 @@ describe('backend API smoke tests', () => {
         deposit_amount: 800,
         billing_day: 5
       })
-      .expect(201);
-
-    const duplicateActive = await request(app)
-      .post(`/api/rental-registration/${duplicateTenantReservation.body.id}/handover`)
-      .set(auth(managerSession.accessToken))
-      .send({
-        move_in_date: '2026-07-15',
-        electricity_curr: 1,
-        water_curr: 1,
-        persons_count: 1,
-        vehicles_count: 0
-      })
       .expect(409);
 
-    expect(duplicateActive.body.code).toBe('TENANT_HAS_ACTIVE_CONTRACT');
+    expect(duplicateTenantReservation.body.code).toBe('TENANT_NOT_AVAILABLE');
+
+    const validReservation = await request(app)
+      .post('/api/rental-registration/reserve')
+      .set(auth(managerSession.accessToken))
+      .send({
+        room_id: ids.roomSmall,
+        tenant_id: ids.tenantFree,
+        start_date: '2026-07-15',
+        rent_price: 800,
+        deposit_amount: 800,
+        billing_day: 5
+      })
+      .expect(201);
 
     fakeDb.contractTenants.push({
-      contract_id: duplicateTenantReservation.body.id,
-      tenant_id: ids.tenantFree,
+      contract_id: validReservation.body.id,
+      tenant_id: ids.tenantA,
       is_primary: false,
       joined_at: '2026-07-15',
       left_at: null
     });
 
     const overCapacity = await request(app)
-      .post(`/api/rental-registration/${duplicateTenantReservation.body.id}/handover`)
+      .post(`/api/rental-registration/${validReservation.body.id}/handover`)
       .set(auth(managerSession.accessToken))
       .send({
         move_in_date: '2026-07-15',

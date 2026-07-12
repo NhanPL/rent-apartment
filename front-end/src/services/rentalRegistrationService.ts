@@ -1,6 +1,6 @@
 import { API_ROUTES } from './apiRoutes'
 import { apiRequest } from './apiClient'
-import type { ContractListItem } from '../pages/contracts/types'
+import type { ContractListItem, TenantOption } from '../pages/contracts/types'
 
 export interface AvailableRoom {
   id: string
@@ -74,6 +74,10 @@ export async function listAvailableRooms(buildingId?: string): Promise<Available
     deposit_default: toNumber(room.deposit_default),
     max_occupants: toNumber(room.max_occupants, 1),
   }))
+}
+
+export async function listAvailableTenants(): Promise<TenantOption[]> {
+  return apiRequest<TenantOption[]>(API_ROUTES.rentalRegistration.availableTenants)
 }
 
 export function reserveRoom(payload: ReservePayload): Promise<ContractListItem> {

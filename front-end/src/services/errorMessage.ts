@@ -16,6 +16,7 @@ const errorMessages: Record<string, string> = {
   TENANT_ALREADY_EXISTS: 'Nguoi thue nay da ton tai trong he thong.',
   TENANT_BLACKLISTED: 'Nguoi thue dang nam trong danh sach han che.',
   TENANT_HAS_ACTIVE_CONTRACT: 'Nguoi thue dang co mot hop dong hoat dong khac.',
+  TENANT_NOT_AVAILABLE: 'Nguoi thue da co dang ky thue hien tai hoac trong tuong lai.',
   TENANT_HAS_UNPAID_INVOICE: 'Nguoi thue con hoa don chua thanh toan.',
   CONTRACT_NOT_FOUND: 'Khong tim thay hop dong hoac ban khong co quyen truy cap.',
   CONTRACT_DOCUMENT_NOT_FOUND: 'Khong tim thay giay to hop dong.',
