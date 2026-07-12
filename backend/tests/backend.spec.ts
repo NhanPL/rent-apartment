@@ -520,6 +520,18 @@ describe('backend API smoke tests', () => {
       status: 'SUBMITTED'
     });
 
+    const missingEvidence = await request(app)
+      .post(`/api/utility-readings/${ids.readingSubmitted}/approve`)
+      .set(auth(managerSession.accessToken))
+      .expect(409);
+
+    expect(missingEvidence.body.code).toBe('UTILITY_READING_EVIDENCE_REQUIRED');
+
+    fakeDb.utilityEvidence.push(
+      { id: 'evidence-electric', utility_reading_id: ids.readingSubmitted, evidence_type: 'ELECTRIC', file_url: 'https://example.com/electric.jpg' },
+      { id: 'evidence-water', utility_reading_id: ids.readingSubmitted, evidence_type: 'WATER', file_url: 'https://example.com/water.jpg' }
+    );
+
     const approved = await request(app)
       .post(`/api/utility-readings/${ids.readingSubmitted}/approve`)
       .set(auth(managerSession.accessToken))

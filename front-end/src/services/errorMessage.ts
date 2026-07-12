@@ -38,6 +38,7 @@ const errorMessages: Record<string, string> = {
   UTILITY_READING_NOT_SUBMITTED: 'The utility reading is not awaiting review.',
   UTILITY_READING_NOT_APPROVED: 'The utility reading has not been approved.',
   UTILITY_READING_LOCKED: 'The utility reading is locked and cannot be changed.',
+  UTILITY_READING_EVIDENCE_REQUIRED: 'Electricity and water meter images are required before approval.',
   UTILITY_RATE_REQUIRED: 'Utility rates have not been configured for this period.',
   UTILITY_RATE_ALREADY_EXISTS: 'A utility rate already exists for this date range.',
   PAYMENT_FAILED: 'Payment failed. Please review the details and try again.',

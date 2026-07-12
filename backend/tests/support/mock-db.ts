@@ -569,6 +569,13 @@ class FakeDb {
       return result<T>([]);
     }
 
+    if (sql.startsWith('select distinct evidence_type from utility_reading_evidence')) {
+      const rows = this.utilityEvidence
+        .filter((item) => item.utility_reading_id === params[0] && ['ELECTRIC', 'WATER'].includes(item.evidence_type))
+        .map((item) => ({ evidence_type: item.evidence_type }));
+      return result<T>(rows as T[]);
+    }
+
     if (sql.startsWith('select t.* from contract_tenant ct join tenant t')) {
       const rows = this.contractTenants
         .filter((item) => item.contract_id === params[0] && !item.left_at)

@@ -28,6 +28,7 @@ import {
 import type { PaymentRequest, PaymentRequestStatus } from '../../services/paymentsService'
 import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
 import type { UploadedCloudinaryFile } from '../../services/uploadService'
+import { uploadFileToCloudinary } from '../../services/uploadService'
 import { getUserErrorMessage } from '../../services/errorMessage'
 import {
   calculateReadingUsage,
@@ -137,6 +138,8 @@ export function TenantRoomPage() {
   const [paymentProofSubmitting, setPaymentProofSubmitting] = useState(false)
   const [tenantDocuments, setTenantDocuments] = useState<TenantDocument[]>([])
   const [tenantDocumentSubmitting, setTenantDocumentSubmitting] = useState(false)
+  const [electricityImage, setElectricityImage] = useState<File | null>(null)
+  const [waterImage, setWaterImage] = useState<File | null>(null)
 
   const [form] = Form.useForm<TenantUtilityReadingFormValues>()
   const [evidenceForm] = Form.useForm<EvidenceFormValues>()
@@ -251,11 +254,34 @@ export function TenantRoomPage() {
       return
     }
 
+    if (!electricityImage || !waterImage) {
+      message.error('Please select both electricity and water meter images.')
+      return
+    }
+
     setSubmitting(true)
     try {
-      await upsertMyUtilityReading(context.room.id, validation.payload)
+      const reading = await upsertMyUtilityReading(context.room.id, validation.payload)
+      const [electricityUpload, waterUpload] = await Promise.all([
+        uploadFileToCloudinary(electricityImage, 'UTILITY_EVIDENCE'),
+        uploadFileToCloudinary(waterImage, 'UTILITY_EVIDENCE'),
+      ])
+      await Promise.all([
+        attachMyUtilityReadingEvidence(reading.id, {
+          evidence_type: 'ELECTRIC',
+          ...uploadedFileFields(electricityUpload),
+          note: 'Electricity meter image submitted with reading',
+        }),
+        attachMyUtilityReadingEvidence(reading.id, {
+          evidence_type: 'WATER',
+          ...uploadedFileFields(waterUpload),
+          note: 'Water meter image submitted with reading',
+        }),
+      ])
 
       await hydrateFormByMonth(context.room.id, validation.formMonth)
+      setElectricityImage(null)
+      setWaterImage(null)
       message.success('Đã ghi nhận chỉ số điện nước thành công')
     } catch (error) {
       message.error(getUserErrorMessage(error, 'Khong the luu chi so dien nuoc.'))
@@ -781,6 +807,31 @@ export function TenantRoomPage() {
           <Form.Item name="note" label="Ghi chú" style={{ marginTop: 16 }}>
             <Input.TextArea rows={3} maxLength={500} showCount placeholder="Ghi chú (không bắt buộc)" />
           </Form.Item>
+
+          <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+            <Col xs={24} md={12}>
+              <Card size="small" title="Electricity meter image">
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <CloudinaryUploadButton accept={imageAccept} context="UTILITY_EVIDENCE" deferred disabled={readingLocked || submitting} onSelected={setElectricityImage}>
+                    Select electricity image
+                  </CloudinaryUploadButton>
+                  <Typography.Text type={electricityImage ? undefined : 'secondary'} ellipsis title={electricityImage?.name}>{electricityImage?.name ?? 'No image selected'}</Typography.Text>
+                  {electricityImage ? <Button size="small" danger onClick={() => setElectricityImage(null)}>Remove</Button> : null}
+                </Space>
+              </Card>
+            </Col>
+            <Col xs={24} md={12}>
+              <Card size="small" title="Water meter image">
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <CloudinaryUploadButton accept={imageAccept} context="UTILITY_EVIDENCE" deferred disabled={readingLocked || submitting} onSelected={setWaterImage}>
+                    Select water image
+                  </CloudinaryUploadButton>
+                  <Typography.Text type={waterImage ? undefined : 'secondary'} ellipsis title={waterImage?.name}>{waterImage?.name ?? 'No image selected'}</Typography.Text>
+                  {waterImage ? <Button size="small" danger onClick={() => setWaterImage(null)}>Remove</Button> : null}
+                </Space>
+              </Card>
+            </Col>
+          </Row>
 
           {readingLocked ? (
             <Alert

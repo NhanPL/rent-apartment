@@ -15,6 +15,7 @@ import {
   Form,
   Grid,
   Input,
+  Image,
   InputNumber,
   List,
   Modal,
@@ -605,7 +606,7 @@ export function UtilitiesPage() {
                 {statusTag(detailItem.status)}
                 <Button
                   type="primary"
-                  disabled={detailItem.status !== 'SUBMITTED'}
+                  disabled={detailItem.status !== 'SUBMITTED' || !detailItem.evidence.some((item) => item.evidence_type === 'ELECTRIC') || !detailItem.evidence.some((item) => item.evidence_type === 'WATER')}
                   loading={actionLoading === `approve-${detailItem.id}`}
                   onClick={() => void handleApprove(detailItem.id)}
                 >
@@ -634,6 +635,9 @@ export function UtilitiesPage() {
             </Descriptions>
 
             <Card size="small" title="Evidence">
+              {detailItem.status === 'SUBMITTED' && (!detailItem.evidence.some((item) => item.evidence_type === 'ELECTRIC') || !detailItem.evidence.some((item) => item.evidence_type === 'WATER')) ? (
+                <Alert showIcon type="warning" message="Both electricity and water meter images are required before approval." style={{ marginBottom: 12 }} />
+              ) : null}
               {detailItem.evidence.length === 0 ? (
                 <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No evidence uploaded" />
               ) : (
@@ -642,6 +646,7 @@ export function UtilitiesPage() {
                   renderItem={(item) => (
                     <List.Item>
                       <List.Item.Meta
+                        avatar={item.mime_type?.startsWith('image/') ? <Image width={96} height={72} style={{ objectFit: 'cover' }} src={item.file_url} alt={`${item.evidence_type} meter evidence`} /> : undefined}
                         title={<a href={item.file_url} target="_blank" rel="noreferrer">{item.file_name ?? item.file_url}</a>}
                         description={`${item.evidence_type} • ${item.mime_type ?? 'unknown'} • ${dayjs(item.uploaded_at).format('DD/MM/YYYY HH:mm')}`}
                       />

@@ -229,6 +229,17 @@ export const approveUtilityReading = async (id: string, managerId: string) => {
       throw new AppError(409, 'Only submitted readings can be approved', 'UTILITY_READING_NOT_SUBMITTED');
     }
 
+    const evidence = await client.query<{ evidence_type: string }>(
+      `SELECT DISTINCT evidence_type
+       FROM utility_reading_evidence
+       WHERE utility_reading_id=$1 AND evidence_type IN ('ELECTRIC','WATER')`,
+      [id]
+    );
+    const evidenceTypes = new Set(evidence.rows.map((item) => item.evidence_type));
+    if (!evidenceTypes.has('ELECTRIC') || !evidenceTypes.has('WATER')) {
+      throw new AppError(409, 'Electricity and water meter images are required before approval', 'UTILITY_READING_EVIDENCE_REQUIRED');
+    }
+
     await client.query(
       `UPDATE utility_reading
        SET status='APPROVED',
