@@ -242,7 +242,7 @@ export function TenantRoomPage() {
     const validation = validateTenantUtilityReading(values, readingLocked)
     if (!validation.ok) {
       if (validation.reason === 'locked') {
-        message.warning('Reading for this month is already approved or invoiced.')
+        message.warning('This month has already been submitted. You can update it only after the manager rejects it for correction.')
       } else if (validation.reason === 'missing-month') {
         message.error('Vui lòng chọn tháng ghi chỉ số')
       } else {
@@ -787,7 +787,7 @@ export function TenantRoomPage() {
               type="warning"
               showIcon
               style={{ marginBottom: 16 }}
-              message="Reading for this month is already approved or invoiced, so it can no longer be changed."
+              message="This month has already been submitted. The saved readings are shown above and can only be updated after the manager rejects them for correction."
             />
           ) : null}
 
