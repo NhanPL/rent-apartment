@@ -32,7 +32,7 @@ export function CloudinaryUploadButton(props: CloudinaryUploadButtonProps) {
       message.success('File uploaded successfully')
     } catch (error) {
       onError?.(error as Error)
-      message.error(getUserErrorMessage(error, 'Khong the tai file len.'))
+      message.error(getUserErrorMessage(error, 'Unable to upload the file.'))
     } finally {
       setUploading(false)
     }

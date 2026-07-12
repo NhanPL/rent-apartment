@@ -101,15 +101,15 @@ const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: '
 const documentAccept = 'image/jpeg,image/png,image/webp,application/pdf'
 
 const documentTypeOptions: Array<{ label: string; value: ContractDocumentType }> = [
-  { label: 'Hop dong scan/PDF', value: 'SIGNED_SCAN' },
-  { label: 'Phu luc', value: 'ADDENDUM' },
-  { label: 'Giay to khac', value: 'OTHER' },
+  { label: 'Signed contract scan/PDF', value: 'SIGNED_SCAN' },
+  { label: 'Addendum', value: 'ADDENDUM' },
+  { label: 'Other document', value: 'OTHER' },
 ]
 
 const stageLabels: Record<string, string> = {
-  RESERVED: 'Da giu phong',
-  WAITING_SIGNATURE: 'Cho ky',
-  WAITING_HANDOVER: 'Cho ban giao',
+  RESERVED: 'Reserved',
+  WAITING_SIGNATURE: 'Awaiting signature',
+  WAITING_HANDOVER: 'Awaiting handover',
 }
 
 const today = () => new Date().toISOString().slice(0, 10)
@@ -167,7 +167,7 @@ export function RentalRegistrationPage() {
       setTenants(tenantRows)
       setAllTenants(allTenantRows)
     } catch (error) {
-      message.error(getUserErrorMessage(error, 'Khong tai duoc du lieu dang ky.'))
+      message.error(getUserErrorMessage(error, 'Unable to load rental registration data.'))
     } finally {
       setLoading(false)
     }
@@ -179,7 +179,7 @@ export function RentalRegistrationPage() {
       const response = await listContracts({ status: 'DRAFT', page: 1, pageSize: 100 })
       setDraftContracts(response.items)
     } catch (error) {
-      message.error(getUserErrorMessage(error, 'Khong tai duoc ho so dang cho xu ly.'))
+      message.error(getUserErrorMessage(error, 'Unable to load pending registrations.'))
     } finally {
       setQueueLoading(false)
     }
@@ -234,7 +234,7 @@ export function RentalRegistrationPage() {
 
       if (values.tenant_mode === 'new') {
         if (!values.full_name || !values.phone || !values.identity_number) {
-          throw new Error('Vui long nhap du thong tin tenant moi')
+          throw new Error('Please complete all required new tenant fields.')
         }
         payload.tenant = {
           full_name: values.full_name,
@@ -246,18 +246,18 @@ export function RentalRegistrationPage() {
       } else if (values.tenant_id) {
         payload.tenant_id = values.tenant_id
       } else {
-        throw new Error('Vui long chon tenant')
+        throw new Error('Please select a tenant.')
       }
 
       const reserved = await reserveRoom(payload)
       setLastReserved(reserved)
       resetReserveForm()
       await Promise.all([loadOptions(), loadWorkQueues()])
-      message.success('Da giu phong. Co the bo sung giay to va ban giao sau.')
+      message.success('Room reserved. Documents and handover can be completed later.')
     } catch (error: unknown) {
       const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
       if (!formError.errorFields) {
-        message.error(getUserErrorMessage(error, 'Khong the giu phong.'))
+        message.error(getUserErrorMessage(error, 'Unable to reserve the room.'))
       }
     } finally {
       setSaving(false)
@@ -274,7 +274,7 @@ export function RentalRegistrationPage() {
       setDocumentIdsToDelete([])
       setDocumentContract(detail)
     } catch (error) {
-      message.error(getUserErrorMessage(error, 'Khong tai duoc chi tiet hop dong.'))
+      message.error(getUserErrorMessage(error, 'Unable to load contract details.'))
     }
   }, [documentForm])
 
@@ -286,7 +286,7 @@ export function RentalRegistrationPage() {
     try {
       const values = await documentForm.validateFields()
       if (documentFiles.length === 0 && documentIdsToDelete.length === 0) {
-        message.warning('Khong co thay doi de luu')
+        message.warning('There are no changes to save.')
         return
       }
 
@@ -323,13 +323,13 @@ export function RentalRegistrationPage() {
 
       setDocumentContract(null)
       await loadWorkQueues()
-      message.success(`Da them ${savedCount} va xoa ${deletedCount} giay to`)
+      message.success(`Added ${savedCount} and removed ${deletedCount} document(s).`)
     } catch (error: unknown) {
       const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
       if (!formError.errorFields) {
-        const reason = getUserErrorMessage(error, 'Khong the luu giay to.')
+        const reason = getUserErrorMessage(error, 'Unable to save documents.')
         const completedCount = savedCount + deletedCount
-        message.error(completedCount > 0 ? `Da xu ly ${completedCount} thay doi. Phan con lai loi: ${reason}` : reason)
+        message.error(completedCount > 0 ? `Completed ${completedCount} change(s). The remaining changes failed: ${reason}` : reason)
       }
     } finally {
       setDocumentSaving(false)
@@ -347,7 +347,7 @@ export function RentalRegistrationPage() {
       })
       setHandoverContractDetail(detail)
     } catch (error) {
-      message.error(getUserErrorMessage(error, 'Khong tai duoc chi tiet hop dong.'))
+      message.error(getUserErrorMessage(error, 'Unable to load contract details.'))
     }
   }, [handoverForm])
 
@@ -357,7 +357,7 @@ export function RentalRegistrationPage() {
     try {
       const values = await handoverForm.validateFields()
       if (!values.move_in_date || values.electricity_curr === undefined || values.water_curr === undefined || values.persons_count === undefined || values.vehicles_count === undefined) {
-        throw new Error('Vui long nhap du thong tin ban giao')
+        throw new Error('Please complete all required handover fields.')
       }
       const payload: HandoverPayload = {
         move_in_date: values.move_in_date,
@@ -370,9 +370,9 @@ export function RentalRegistrationPage() {
       await handoverContract(handoverContractDetail.id, payload)
       setHandoverContractDetail(null)
       await Promise.all([loadOptions(), loadWorkQueues()])
-      message.success('Da kich hoat hop dong va ghi chi so dau ky')
+      message.success('Contract activated and initial utility readings recorded.')
     } catch (error) {
-      message.error(getUserErrorMessage(error, 'Khong the ban giao phong.'))
+      message.error(getUserErrorMessage(error, 'Unable to complete the room handover.'))
     } finally {
       setHandoverSaving(false)
     }
@@ -389,16 +389,16 @@ export function RentalRegistrationPage() {
     setCancelSaving(true)
     try {
       const values = await cancelForm.validateFields()
-      if (!values.reason) throw new Error('Vui long nhap ly do huy')
+      if (!values.reason) throw new Error('Please enter a cancellation reason.')
       await cancelRegistration(cancelContractTarget.id, {
         reason: values.reason,
         cancel_date: values.cancel_date,
       })
       setCancelContractTarget(null)
       await Promise.all([loadOptions(), loadWorkQueues()])
-      message.success('Da huy dang ky thue phong')
+      message.success('Rental registration cancelled.')
     } catch (error) {
-      message.error(getUserErrorMessage(error, 'Khong the huy dang ky.'))
+      message.error(getUserErrorMessage(error, 'Unable to cancel the rental registration.'))
     } finally {
       setCancelSaving(false)
     }
@@ -406,7 +406,7 @@ export function RentalRegistrationPage() {
 
   const roomColumns: ColumnsType<AvailableRoom> = [
     {
-      title: 'Phong',
+      title: 'Room',
       dataIndex: 'code',
       render: (value: string, room) => (
         <Space direction="vertical" size={0}>
@@ -415,9 +415,9 @@ export function RentalRegistrationPage() {
         </Space>
       ),
     },
-    { title: 'Tang', dataIndex: 'floor', responsive: ['md'], render: (value: number | null) => value ?? '-' },
-    { title: 'Suc chua', dataIndex: 'max_occupants', responsive: ['sm'] },
-    { title: 'Gia goi y', dataIndex: 'base_rent', render: (value: number) => currency.format(value) },
+    { title: 'Floor', dataIndex: 'floor', responsive: ['md'], render: (value: number | null) => value ?? '-' },
+    { title: 'Capacity', dataIndex: 'max_occupants', responsive: ['sm'] },
+    { title: 'Suggested rent', dataIndex: 'base_rent', render: (value: number) => currency.format(value) },
     {
       title: '',
       key: 'action',
@@ -434,7 +434,7 @@ export function RentalRegistrationPage() {
             })
           }}
         >
-          Chon
+          Select
         </Button>
       ),
     },
@@ -442,7 +442,7 @@ export function RentalRegistrationPage() {
 
   const queueBaseColumns: ColumnsType<ContractListItem> = [
     {
-      title: 'Hop dong',
+      title: 'Contract',
       key: 'contract',
       render: (_, contract) => (
         <Space direction="vertical" size={0}>
@@ -452,17 +452,17 @@ export function RentalRegistrationPage() {
       ),
     },
     {
-      title: 'Phong',
+      title: 'Room',
       key: 'room',
       render: (_, contract) => `${contract.building_name} / ${contract.room_code}`,
     },
     {
-      title: 'Du kien vao o',
+      title: 'Expected move-in',
       dataIndex: 'start_date',
       responsive: ['md'],
     },
     {
-      title: 'Trang thai',
+      title: 'Status',
       dataIndex: 'business_stage',
       render: (stage: string | undefined) => <Tag color={stage === 'WAITING_HANDOVER' ? 'cyan' : 'gold'}>{stageLabels[stage ?? ''] ?? stage ?? 'DRAFT'}</Tag>,
     },
@@ -477,10 +477,10 @@ export function RentalRegistrationPage() {
       render: (_, contract) => (
         <Space wrap>
           <Button type="primary" icon={<FileTextOutlined />} onClick={() => void openDocument(contract)}>
-            Bo sung giay to
+            Add documents
           </Button>
           <Button danger icon={<StopOutlined />} onClick={() => openCancel(contract)}>
-            Huy
+            Cancel
           </Button>
         </Space>
       ),
@@ -496,10 +496,10 @@ export function RentalRegistrationPage() {
       render: (_, contract) => (
         <Space wrap>
           <Button type="primary" icon={<HomeOutlined />} onClick={() => void openHandover(contract)}>
-            Ban giao
+            Handover
           </Button>
           <Button danger icon={<StopOutlined />} onClick={() => openCancel(contract)}>
-            Huy
+            Cancel
           </Button>
         </Space>
       ),
@@ -512,9 +512,9 @@ export function RentalRegistrationPage() {
         size={screens.md ? 'default' : 'small'}
         direction={screens.md ? 'horizontal' : 'vertical'}
         items={[
-          { title: 'Phong kha dung', status: selectedRoomId ? 'finish' : 'process' },
-          { title: 'Nguoi thue', status: selectedRoomId ? 'process' : 'wait' },
-          { title: 'Giu phong', status: 'wait' },
+          { title: 'Available room', status: selectedRoomId ? 'finish' : 'process' },
+          { title: 'Tenant', status: selectedRoomId ? 'process' : 'wait' },
+          { title: 'Reserve room', status: 'wait' },
         ]}
       />
 
@@ -524,21 +524,21 @@ export function RentalRegistrationPage() {
           showIcon
           closable
           onClose={() => setLastReserved(null)}
-          message={`Da giu phong cho ${lastReserved.tenant_names || lastReserved.tenant_name || 'nguoi thue'}`}
-          description="Ho so da duoc luu. Ban co the bo sung giay to va ban giao phong vao thoi diem phu hop."
-          action={<Button onClick={() => setActiveTab('documents')}>Mo hang doi giay to</Button>}
+          message={`Room reserved for ${lastReserved.tenant_names || lastReserved.tenant_name || 'tenant'}`}
+          description="The registration has been saved. Documents and room handover can be completed when ready."
+          action={<Button onClick={() => setActiveTab('documents')}>Open document queue</Button>}
         />
       ) : null}
 
       <div className="registration-grid">
         <section className="registration-panel">
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
-            <Typography.Title level={5}>1. Chon phong kha dung</Typography.Title>
+            <Typography.Title level={5}>1. Select an available room</Typography.Title>
             <Form form={reserveForm} layout="vertical">
-              <Form.Item name="building_id" label="Toa nha">
+              <Form.Item name="building_id" label="Building">
                 <Select allowClear options={buildings.map((building) => ({ label: building.name, value: building.id }))} />
               </Form.Item>
-              <Form.Item name="room_id" hidden rules={[{ required: true, message: 'Vui long chon phong' }]}>
+              <Form.Item name="room_id" hidden rules={[{ required: true, message: 'Please select a room.' }]}>
                 <Input />
               </Form.Item>
             </Form>
@@ -548,41 +548,41 @@ export function RentalRegistrationPage() {
               columns={roomColumns}
               dataSource={rooms}
               pagination={{ pageSize: 6 }}
-              locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Khong co phong kha dung" /> }}
+              locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No available rooms" /> }}
             />
           </Space>
         </section>
 
         <section className="registration-panel">
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
-            <Typography.Title level={5}>2. Ho so nguoi thue va giu phong</Typography.Title>
+            <Typography.Title level={5}>2. Tenant details and reservation</Typography.Title>
             {selectedRoom ? (
               <Alert
                 type="info"
                 showIcon
-                message={`Phong ${selectedRoom.code} - ${selectedRoom.building_name}`}
-                description={`Gia goi y ${currency.format(selectedRoom.base_rent)}, coc ${currency.format(selectedRoom.deposit_default)}, suc chua ${selectedRoom.max_occupants} nguoi.`}
+                message={`Room ${selectedRoom.code} - ${selectedRoom.building_name}`}
+                description={`Suggested rent ${currency.format(selectedRoom.base_rent)}, deposit ${currency.format(selectedRoom.deposit_default)}, capacity ${selectedRoom.max_occupants}.`}
               />
             ) : null}
             {duplicateTenants.length > 0 && tenantMode === 'new' ? (
               <Alert
                 type="warning"
                 showIcon
-                message="Co the bi trung tenant"
+                message="Possible duplicate tenant"
                 description={duplicateTenants.map((tenant) => `${tenant.full_name} (${tenant.phone ?? '-'} / ${tenant.identity_number ?? '-'})`).join(', ')}
               />
             ) : null}
 
             <Form form={reserveForm} layout="vertical">
-              <Form.Item name="tenant_mode" label="Nguoi thue">
+              <Form.Item name="tenant_mode" label="Tenant">
                 <Select options={[
-                  { label: 'Chon tenant da co', value: 'existing' },
-                  { label: 'Tao tenant moi', value: 'new' },
+                  { label: 'Select existing tenant', value: 'existing' },
+                  { label: 'Create new tenant', value: 'new' },
                 ]} />
               </Form.Item>
 
               {tenantMode === 'existing' ? (
-                <Form.Item name="tenant_id" label="Tenant" rules={[{ required: true, message: 'Vui long chon tenant' }]}>
+                <Form.Item name="tenant_id" label="Tenant" rules={[{ required: true, message: 'Please select a tenant.' }]}>
                   <Select
                     showSearch
                     optionFilterProp="label"
@@ -595,26 +595,26 @@ export function RentalRegistrationPage() {
                 </Form.Item>
               ) : (
                 <div className="registration-form-grid">
-                  <Form.Item name="full_name" label="Ho ten" rules={[{ required: true, message: 'Vui long nhap ho ten' }]}><Input /></Form.Item>
-                  <Form.Item name="phone" label="So dien thoai" rules={[{ required: true, message: 'Vui long nhap so dien thoai' }]}><Input /></Form.Item>
-                  <Form.Item name="identity_number" label="CCCD/Ho chieu" rules={[{ required: true, message: 'Vui long nhap CCCD' }]}><Input /></Form.Item>
+                  <Form.Item name="full_name" label="Full name" rules={[{ required: true, message: 'Please enter the full name.' }]}><Input /></Form.Item>
+                  <Form.Item name="phone" label="Phone number" rules={[{ required: true, message: 'Please enter the phone number.' }]}><Input /></Form.Item>
+                  <Form.Item name="identity_number" label="ID/Passport number" rules={[{ required: true, message: 'Please enter the ID or passport number.' }]}><Input /></Form.Item>
                   <Form.Item name="email" label="Email"><Input /></Form.Item>
-                  <Form.Item name="permanent_address" label="Dia chi thuong tru" className="registration-form-full"><Input /></Form.Item>
+                  <Form.Item name="permanent_address" label="Permanent address" className="registration-form-full"><Input /></Form.Item>
                 </div>
               )}
 
               <div className="registration-form-grid">
-                <Form.Item name="start_date" label="Ngay du kien vao o" rules={[{ required: true, message: 'Vui long chon ngay' }]}><Input type="date" /></Form.Item>
-                <Form.Item name="end_date" label="Ngay ket thuc du kien"><Input type="date" /></Form.Item>
-                <Form.Item name="rent_price" label="Gia thue du kien" rules={[{ required: true, message: 'Vui long nhap gia thue' }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item>
-                <Form.Item name="deposit_amount" label="Tien coc" rules={[{ required: true, message: 'Vui long nhap tien coc' }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item>
-                <Form.Item name="billing_day" label="Ngay chot tien" rules={[{ required: true, message: 'Vui long nhap ngay chot' }]}><InputNumber min={1} max={28} precision={0} style={{ width: '100%' }} /></Form.Item>
-                <Form.Item name="note" label="Dieu kien giu phong" className="registration-form-full"><Input.TextArea rows={3} /></Form.Item>
+                <Form.Item name="start_date" label="Expected move-in date" rules={[{ required: true, message: 'Please select a date.' }]}><Input type="date" /></Form.Item>
+                <Form.Item name="end_date" label="Expected end date"><Input type="date" /></Form.Item>
+                <Form.Item name="rent_price" label="Expected rent" rules={[{ required: true, message: 'Please enter the rent.' }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item>
+                <Form.Item name="deposit_amount" label="Deposit" rules={[{ required: true, message: 'Please enter the deposit.' }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item>
+                <Form.Item name="billing_day" label="Billing day" rules={[{ required: true, message: 'Please enter the billing day.' }]}><InputNumber min={1} max={28} precision={0} style={{ width: '100%' }} /></Form.Item>
+                <Form.Item name="note" label="Reservation terms" className="registration-form-full"><Input.TextArea rows={3} /></Form.Item>
               </div>
             </Form>
             <div className="registration-actions">
               <Button type="primary" icon={<FileDoneOutlined />} loading={saving} onClick={() => void submitReserve()}>
-                Tao DRAFT giu phong
+                Create draft reservation
               </Button>
             </div>
           </Space>
@@ -630,7 +630,7 @@ export function RentalRegistrationPage() {
         <Typography.Text type="secondary">{description}</Typography.Text>
       </div>
       <Button icon={<ReloadOutlined />} loading={queueLoading} onClick={() => void loadWorkQueues()}>
-        Tai lai
+        Reload
       </Button>
     </div>
   )
@@ -639,8 +639,8 @@ export function RentalRegistrationPage() {
     <div className="rental-registration-page">
       <div className="registration-toolbar registration-page-header">
         <div>
-          <Typography.Title level={4} style={{ margin: 0 }}>Dang ky thue phong</Typography.Title>
-          <Typography.Text type="secondary">Giu phong, bo sung ho so va ban giao theo tung thoi diem thuc te.</Typography.Text>
+          <Typography.Title level={4} style={{ margin: 0 }}>Rental registration</Typography.Title>
+          <Typography.Text type="secondary">Reserve rooms, add documents, and complete handovers when each step is ready.</Typography.Text>
         </div>
       </div>
 
@@ -648,13 +648,13 @@ export function RentalRegistrationPage() {
         activeKey={activeTab}
         onChange={(key) => setActiveTab(key as WorkspaceTab)}
         items={[
-          { key: 'reserve', label: 'Giu phong', children: reserveContent },
+          { key: 'reserve', label: 'Reserve room', children: reserveContent },
           {
             key: 'documents',
-            label: `Bo sung giay to (${draftContracts.length})`,
+            label: `Add documents (${draftContracts.length})`,
             children: (
               <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                {queueHeader('Ho so dang cho xu ly', 'Chon mot hop dong DRAFT de bo sung giay to khi nguoi thue cung cap.')}
+                {queueHeader('Pending registrations', 'Select a draft contract to add documents when the tenant provides them.')}
                 <Table<ContractListItem>
                   rowKey="id"
                   loading={queueLoading}
@@ -662,17 +662,17 @@ export function RentalRegistrationPage() {
                   dataSource={draftContracts}
                   pagination={{ pageSize: 10 }}
                   scroll={{ x: 820 }}
-                  locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Khong co ho so cho giay to" /> }}
+                  locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No registrations awaiting documents" /> }}
                 />
               </Space>
             ),
           },
           {
             key: 'handover',
-            label: `Ban giao phong (${handoverContracts.length})`,
+            label: `Room handover (${handoverContracts.length})`,
             children: (
               <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                {queueHeader('Ho so cho ban giao', 'Chi hien cac hop dong da co ban scan/PDF da ky.')}
+                {queueHeader('Ready for handover', 'Only contracts with a signed scan or PDF are shown.')}
                 <Table<ContractListItem>
                   rowKey="id"
                   loading={queueLoading}
@@ -680,7 +680,7 @@ export function RentalRegistrationPage() {
                   dataSource={handoverContracts}
                   pagination={{ pageSize: 10 }}
                   scroll={{ x: 820 }}
-                  locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Khong co ho so cho ban giao" /> }}
+                  locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No registrations ready for handover" /> }}
                 />
               </Space>
             ),
@@ -690,8 +690,8 @@ export function RentalRegistrationPage() {
 
       <Modal
         open={Boolean(documentContract)}
-        title={`Bo sung giay to - ${documentContract?.contract_code ?? ''}`}
-        okText="Luu giay to"
+        title={`Add documents - ${documentContract?.contract_code ?? ''}`}
+        okText="Save documents"
         confirmLoading={documentSaving}
         onCancel={() => {
           setDocumentContract(null)
@@ -714,8 +714,8 @@ export function RentalRegistrationPage() {
         ) : null}
         <Form form={documentForm} layout="vertical">
           <div className="registration-form-grid">
-            <Form.Item name="doc_type" label="Loai giay to" rules={[{ required: true, message: 'Vui long chon loai giay to' }]}><Select options={documentTypeOptions} /></Form.Item>
-            <Form.Item name="note" label="Ghi chu"><Input /></Form.Item>
+            <Form.Item name="doc_type" label="Document type" rules={[{ required: true, message: 'Please select a document type.' }]}><Select options={documentTypeOptions} /></Form.Item>
+            <Form.Item name="note" label="Note"><Input /></Form.Item>
             <Form.Item label="File" required className="registration-form-full">
               <Space wrap>
                 <CloudinaryUploadButton
@@ -729,9 +729,9 @@ export function RentalRegistrationPage() {
                     setDocumentFiles((current) => current.some((item) => documentFileKey(item) === key) ? current : [...current, file])
                   }}
                 >
-                  Chon nhieu file
+                  Select files
                 </CloudinaryUploadButton>
-                {documentFiles.length === 0 ? <Typography.Text type="secondary">Chua chon file</Typography.Text> : null}
+                {documentFiles.length === 0 ? <Typography.Text type="secondary">No files selected</Typography.Text> : null}
               </Space>
               {documentFiles.length > 0 ? (
                 <div className="registration-file-list">
@@ -744,7 +744,7 @@ export function RentalRegistrationPage() {
                           type="text"
                           danger
                           icon={<DeleteOutlined />}
-                          aria-label={`Xoa ${file.name}`}
+                          aria-label={`Remove ${file.name}`}
                           disabled={documentSaving}
                           onClick={() => {
                             setDocumentFiles((current) => current.filter((item) => documentFileKey(item) !== key))
@@ -764,7 +764,7 @@ export function RentalRegistrationPage() {
           </div>
         </Form>
         <div className="registration-existing-documents">
-          <Typography.Title level={5}>Giay to hien co</Typography.Title>
+          <Typography.Title level={5}>Existing documents</Typography.Title>
           {documentContract?.documents.some((document) => !documentIdsToDelete.includes(document.id)) ? documentContract.documents.filter((document) => !documentIdsToDelete.includes(document.id)).map((document) => (
             <div className="registration-document-row" key={document.id}>
               <div>
@@ -779,19 +779,19 @@ export function RentalRegistrationPage() {
                 type="text"
                 danger
                 icon={<DeleteOutlined />}
-                aria-label={`Xoa ${document.file_name || document.doc_type}`}
+                aria-label={`Remove ${document.file_name || document.doc_type}`}
                 disabled={documentSaving}
                 onClick={() => setDocumentIdsToDelete((current) => current.includes(document.id) ? current : [...current, document.id])}
               />
             </div>
-          )) : <Typography.Text type="secondary">Chua co giay to</Typography.Text>}
+          )) : <Typography.Text type="secondary">No documents added</Typography.Text>}
         </div>
       </Modal>
 
       <Modal
         open={Boolean(handoverContractDetail)}
-        title={`Ban giao phong - ${handoverContractDetail?.contract_code ?? ''}`}
-        okText="Ban giao va kich hoat"
+        title={`Room handover - ${handoverContractDetail?.contract_code ?? ''}`}
+        okText="Handover and activate"
         okButtonProps={{ icon: <HomeOutlined /> }}
         confirmLoading={handoverSaving}
         onCancel={() => setHandoverContractDetail(null)}
@@ -810,20 +810,20 @@ export function RentalRegistrationPage() {
         ) : null}
         <Form form={handoverForm} layout="vertical">
           <div className="registration-form-grid">
-            <Form.Item name="move_in_date" label="Ngay nhan phong thuc te" rules={[{ required: true, message: 'Vui long chon ngay' }]}><Input type="date" /></Form.Item>
-            <Form.Item name="persons_count" label="So nguoi" rules={[{ required: true, message: 'Vui long nhap so nguoi' }]}><InputNumber min={1} precision={0} style={{ width: '100%' }} /></Form.Item>
-            <Form.Item name="vehicles_count" label="So xe" rules={[{ required: true, message: 'Vui long nhap so xe' }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item>
-            <Form.Item name="electricity_curr" label="Chi so dien dau ky" rules={[{ required: true, message: 'Vui long nhap chi so dien' }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item>
-            <Form.Item name="water_curr" label="Chi so nuoc dau ky" rules={[{ required: true, message: 'Vui long nhap chi so nuoc' }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item>
-            <Form.Item name="note" label="Tinh trang phong/ghi chu" className="registration-form-full"><Input.TextArea rows={3} /></Form.Item>
+            <Form.Item name="move_in_date" label="Actual move-in date" rules={[{ required: true, message: 'Please select a date.' }]}><Input type="date" /></Form.Item>
+            <Form.Item name="persons_count" label="Occupants" rules={[{ required: true, message: 'Please enter the number of occupants.' }]}><InputNumber min={1} precision={0} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="vehicles_count" label="Vehicles" rules={[{ required: true, message: 'Please enter the number of vehicles.' }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="electricity_curr" label="Initial electricity reading" rules={[{ required: true, message: 'Please enter the electricity reading.' }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="water_curr" label="Initial water reading" rules={[{ required: true, message: 'Please enter the water reading.' }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="note" label="Room condition / notes" className="registration-form-full"><Input.TextArea rows={3} /></Form.Item>
           </div>
         </Form>
       </Modal>
 
       <Modal
         open={Boolean(cancelContractTarget)}
-        title={`Huy dang ky - ${cancelContractTarget?.contract_code ?? ''}`}
-        okText="Huy dang ky"
+        title={`Cancel registration - ${cancelContractTarget?.contract_code ?? ''}`}
+        okText="Cancel registration"
         okButtonProps={{ danger: true }}
         confirmLoading={cancelSaving}
         onCancel={() => setCancelContractTarget(null)}
@@ -831,8 +831,8 @@ export function RentalRegistrationPage() {
         destroyOnHidden
       >
         <Form form={cancelForm} layout="vertical">
-          <Form.Item name="cancel_date" label="Ngay huy"><Input type="date" /></Form.Item>
-          <Form.Item name="reason" label="Ly do huy" rules={[{ required: true, message: 'Bat buoc nhap ly do huy' }]}><Input.TextArea rows={3} /></Form.Item>
+          <Form.Item name="cancel_date" label="Cancellation date"><Input type="date" /></Form.Item>
+          <Form.Item name="reason" label="Cancellation reason" rules={[{ required: true, message: 'Please enter a cancellation reason.' }]}><Input.TextArea rows={3} /></Form.Item>
         </Form>
       </Modal>
     </div>
