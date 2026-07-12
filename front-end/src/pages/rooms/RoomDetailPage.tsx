@@ -13,6 +13,7 @@ import {
 } from '../buildings/components/roomService'
 import { RoomsUpsertDrawer } from '../buildings/components/RoomsUpsertDrawer'
 import type { MonthlyBill, Room, TenantSummary } from '../buildings/components/roomTypes'
+import { getUserErrorMessage } from '../../services/errorMessage'
 
 interface RoomDetailPageProps {
   roomId: string
@@ -61,7 +62,7 @@ export function RoomDetailPage({ roomId }: RoomDetailPageProps) {
       setTenants(tenantsData)
       setBills(billsData)
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Unable to load room detail')
+      message.error(getUserErrorMessage(error, 'Khong tai duoc chi tiet phong.'))
       setRoom(null)
       setTenants([])
       setBills([])
@@ -102,7 +103,7 @@ export function RoomDetailPage({ roomId }: RoomDetailPageProps) {
       }
       await refresh()
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Unable to generate invoice')
+      message.error(getUserErrorMessage(error, 'Khong the tao hoa don.'))
     } finally {
       setQuickActionLoading(null)
     }
@@ -117,7 +118,7 @@ export function RoomDetailPage({ roomId }: RoomDetailPageProps) {
       message.success(`Payment request created for ${dayjs(latestPayableBill.month).format('MM/YYYY')}`)
       await refresh()
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Unable to create payment request')
+      message.error(getUserErrorMessage(error, 'Khong the tao yeu cau thanh toan.'))
     } finally {
       setQuickActionLoading(null)
     }
@@ -259,7 +260,7 @@ export function RoomDetailPage({ roomId }: RoomDetailPageProps) {
               await refresh()
               message.success('Room updated successfully')
             } catch (error) {
-              message.error(error instanceof Error ? error.message : 'Unable to update room')
+              message.error(getUserErrorMessage(error, 'Khong the cap nhat phong.'))
               throw error
             } finally {
               setRoomSaving(false)
@@ -281,7 +282,7 @@ export function RoomDetailPage({ roomId }: RoomDetailPageProps) {
             window.history.pushState(null, '', destination)
             window.dispatchEvent(new PopStateEvent('popstate'))
           } catch (error) {
-            message.error(error instanceof Error ? error.message : 'Unable to delete room')
+            message.error(getUserErrorMessage(error, 'Khong the xoa phong.'))
           }
         }}
         okText="Delete"

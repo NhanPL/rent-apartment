@@ -40,6 +40,7 @@ import {
   listTenants,
   updateTenant,
 } from '../../services/tenantsService'
+import { getUserErrorMessage } from '../../services/errorMessage'
 import type {
   BuildingOption,
   ContractStatus,
@@ -177,8 +178,8 @@ export function TenantsPage() {
       })
       setItems(data.items)
       setTotal(data.total)
-    } catch {
-      setError('Unable to load tenants. Please try again.')
+    } catch (error) {
+      setError(getUserErrorMessage(error, 'Khong tai duoc danh sach nguoi thue.'))
     } finally {
       setLoading(false)
     }
@@ -274,8 +275,8 @@ export function TenantsPage() {
 
       didInitFormRef.current = false
       setDrawerInitialValues(values)
-    } catch {
-      message.error('Failed to load tenant data')
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Khong tai duoc du lieu nguoi thue.'))
       setDrawerOpen(false)
     } finally {
       setDrawerLoading(false)
@@ -343,7 +344,7 @@ export function TenantsPage() {
       if (firstError?.name) {
         showFirstValidationError(firstError.name)
       } else {
-        message.error('Failed to save tenant')
+        message.error(getUserErrorMessage(error, 'Khong the luu nguoi thue.'))
       }
     } finally {
       setSaveLoading(false)
@@ -373,8 +374,7 @@ export function TenantsPage() {
       message.success('Xóa người thuê thành công')
       await loadTenants()
     } catch (error) {
-      const detail = error instanceof Error ? error.message : 'Không thể xóa người thuê'
-      message.error(detail)
+      message.error(getUserErrorMessage(error, 'Khong the xoa nguoi thue.'))
     } finally {
       setDeletingTenantId(null)
     }
@@ -387,8 +387,8 @@ export function TenantsPage() {
     try {
       const tenant = await getTenant(id)
       setSelectedTenant(tenant)
-    } catch {
-      message.error('Failed to load tenant details')
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Khong tai duoc chi tiet nguoi thue.'))
     } finally {
       setDetailLoading(false)
     }
@@ -402,8 +402,7 @@ export function TenantsPage() {
       await exportRentalContractDocx(exportData)
       message.success('Contract exported successfully')
     } catch (error) {
-      const detail = error instanceof Error ? error.message : 'Cannot export contract for this tenant.'
-      message.warning(detail)
+      message.warning(getUserErrorMessage(error, 'Khong the xuat hop dong cua nguoi thue nay.'))
     } finally {
       setExportingTenantId(null)
     }

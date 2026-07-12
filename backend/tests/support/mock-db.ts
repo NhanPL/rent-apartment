@@ -27,6 +27,8 @@ const now = '2026-06-14T00:00:00.000Z';
 const passwordHash = '$2b$04$RZ/Pem/zCCtR4hslSVW4f.XIAVqnbx0rMyLPB5Anboo./Y1bt3cVu';
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 const normalizeSql = (sql: string) => sql.replace(/\s+/g, ' ').trim().toLowerCase();
+const today = now.slice(0, 10);
+const isCurrentOrFutureDate = (value: unknown): boolean => !value || String(value).slice(0, 10) >= today;
 const result = <T extends Row>(rows: T[]) => ({
   rows: clone(rows),
   rowCount: rows.length,
@@ -304,8 +306,10 @@ class FakeDb {
       const buildingId = params[1] ? String(params[1]) : null;
       const rows = this.rooms.filter((room) => {
         const building = this.buildings.find((item) => item.id === room.building_id);
-        const active = this.contracts.find((contract) => contract.room_id === room.id && contract.status === 'ACTIVE');
-        return building?.manager_user_id === managerId && room.status === 'ACTIVE' && !active && (!buildingId || building.id === buildingId);
+        const occupied = this.contracts.some((contract) => this.isCurrentOrFutureContract(contract)
+          && contract.room_id === room.id
+          && this.contractTenants.some((assignment) => assignment.contract_id === contract.id && isCurrentOrFutureDate(assignment.left_at)));
+        return building?.manager_user_id === managerId && room.status === 'ACTIVE' && !occupied && (!buildingId || building.id === buildingId);
       }).map((room) => {
         const building = this.buildings.find((item) => item.id === room.building_id)!;
         return { ...room, building_name: building.name };
@@ -318,9 +322,30 @@ class FakeDb {
       return result<T>(active ? [{ id: active.id } as T] : []);
     }
 
-    if (sql.startsWith("select id from contract where room_id=$1 and status='active'")) {
-      const active = this.contracts.find((item) => item.room_id === params[0] && item.status === 'ACTIVE');
-      return result<T>(active ? [{ id: active.id } as T] : []);
+    if (sql.startsWith('select c.id from contract c join contract_tenant ct') && sql.includes('where c.room_id=$1')) {
+      const occupied = this.contracts.find((contract) => contract.room_id === params[0]
+        && contract.id !== params[1]
+        && this.isCurrentOrFutureContract(contract)
+        && this.contractTenants.some((assignment) => assignment.contract_id === contract.id && isCurrentOrFutureDate(assignment.left_at)));
+      return result<T>(occupied ? [{ id: occupied.id } as T] : []);
+    }
+
+    if (sql.startsWith('select t.id, t.full_name, t.phone')) {
+      const rows = this.tenants.filter((tenant) => tenant.manager_user_id === params[0]
+        && tenant.status === 'ACTIVE'
+        && !this.contracts.some((contract) => this.isCurrentOrFutureContract(contract)
+          && this.contractTenants.some((assignment) => assignment.contract_id === contract.id
+            && assignment.tenant_id === tenant.id
+            && isCurrentOrFutureDate(assignment.left_at))));
+      return result<T>(rows as T[]);
+    }
+
+    if (sql.startsWith('select c.id from contract c join contract_tenant ct') && sql.includes('where ct.tenant_id=$1')) {
+      const occupied = this.contracts.find((contract) => this.isCurrentOrFutureContract(contract)
+        && this.contractTenants.some((assignment) => assignment.contract_id === contract.id
+          && assignment.tenant_id === params[0]
+          && isCurrentOrFutureDate(assignment.left_at)));
+      return result<T>(occupied ? [{ id: occupied.id } as T] : []);
     }
 
     if (sql.startsWith('select 1 from contract where contract_code')) {
@@ -827,6 +852,12 @@ class FakeDb {
     }
 
     throw new Error(`Unhandled test query: ${sql}\nParams: ${JSON.stringify(params)}`);
+  }
+
+  private isCurrentOrFutureContract(contract: Row): boolean {
+    return ['DRAFT', 'ACTIVE'].includes(contract.status)
+      && isCurrentOrFutureDate(contract.end_date)
+      && isCurrentOrFutureDate(contract.move_out_date);
   }
 
   async withTransaction<T>(fn: (client: typeof this.client) => Promise<T>): Promise<T> {

@@ -90,7 +90,7 @@ const getScopedContract = async (client: Queryable, contractId: string, managerI
   return contract;
 };
 
-const assertRoomAvailable = async (client: Queryable, roomId: string, managerId: string) => {
+const assertRoomAvailable = async (client: Queryable, roomId: string, managerId: string, excludeContractId?: string) => {
   const { rows } = await client.query<DbRow>(
     `SELECT r.*
      FROM room r
@@ -103,14 +103,20 @@ const assertRoomAvailable = async (client: Queryable, roomId: string, managerId:
   if (!room) throw new AppError(404, 'Room not found', 'ROOM_NOT_FOUND');
   if (room.status !== 'ACTIVE') throw new AppError(409, 'Room is not available for reservation', 'ROOM_NOT_AVAILABLE');
 
-  const active = await client.query<{ id: string }>(
-    `SELECT id
-     FROM contract
-     WHERE room_id=$1 AND status='ACTIVE'
+  const occupied = await client.query<{ id: string }>(
+    `SELECT c.id
+     FROM contract c
+     JOIN contract_tenant ct ON ct.contract_id=c.id
+     WHERE c.room_id=$1
+       AND c.status IN ('DRAFT', 'ACTIVE')
+       AND ($2::uuid IS NULL OR c.id<>$2)
+       AND (c.end_date IS NULL OR c.end_date >= CURRENT_DATE)
+       AND (c.move_out_date IS NULL OR c.move_out_date >= CURRENT_DATE)
+       AND (ct.left_at IS NULL OR ct.left_at >= CURRENT_DATE)
      LIMIT 1`,
-    [roomId]
+    [roomId, excludeContractId ?? null]
   );
-  if (active.rows[0]) throw new AppError(409, 'Selected room already has an active contract', 'ROOM_ALREADY_OCCUPIED');
+  if (occupied.rows[0]) throw new AppError(409, 'Selected room has a current or future occupant', 'ROOM_ALREADY_OCCUPIED');
 
   return room;
 };
@@ -131,10 +137,26 @@ const assertTenantCanBeUsed = async (client: Queryable, tenantId: string, manage
   return tenant;
 };
 
+const assertTenantAvailable = async (client: Queryable, tenantId: string) => {
+  const { rows } = await client.query<{ id: string }>(
+    `SELECT c.id
+     FROM contract c
+     JOIN contract_tenant ct ON ct.contract_id=c.id
+     WHERE ct.tenant_id=$1
+       AND c.status IN ('DRAFT', 'ACTIVE')
+       AND (c.end_date IS NULL OR c.end_date >= CURRENT_DATE)
+       AND (c.move_out_date IS NULL OR c.move_out_date >= CURRENT_DATE)
+       AND (ct.left_at IS NULL OR ct.left_at >= CURRENT_DATE)
+     LIMIT 1`,
+    [tenantId]
+  );
+  if (rows[0]) throw new AppError(409, 'Tenant has a current or future rental registration', 'TENANT_NOT_AVAILABLE');
+};
+
 router.get('/available-rooms', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const buildingId = String(req.query.building_id ?? '').trim();
   const params: unknown[] = [req.auth!.userId];
-  const conditions = ['b.manager_user_id=$1', "r.status='ACTIVE'", 'active_contract.id IS NULL'];
+  const conditions = ['b.manager_user_id=$1', "r.status='ACTIVE'", 'occupancy.id IS NULL'];
 
   if (buildingId) {
     params.push(buildingId);
@@ -148,14 +170,42 @@ router.get('/available-rooms', requireRole('MANAGER'), asyncHandler(async (req, 
      FROM room r
      JOIN building b ON b.id=r.building_id
      LEFT JOIN LATERAL (
-       SELECT id
+       SELECT c.id
        FROM contract c
-       WHERE c.room_id=r.id AND c.status='ACTIVE'
+       JOIN contract_tenant ct ON ct.contract_id=c.id
+       WHERE c.room_id=r.id
+         AND c.status IN ('DRAFT', 'ACTIVE')
+         AND (c.end_date IS NULL OR c.end_date >= CURRENT_DATE)
+         AND (c.move_out_date IS NULL OR c.move_out_date >= CURRENT_DATE)
+         AND (ct.left_at IS NULL OR ct.left_at >= CURRENT_DATE)
        LIMIT 1
-     ) active_contract ON true
+     ) occupancy ON true
      WHERE ${conditions.join(' AND ')}
      ORDER BY b.name, r.code`,
     params
+  );
+
+  res.json(rows);
+}));
+
+router.get('/available-tenants', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  const { rows } = await query<DbRow>(
+    `SELECT t.id, t.full_name, t.phone, t.email, t.identity_number, t.status
+     FROM tenant t
+     WHERE t.manager_user_id=$1
+       AND t.status='ACTIVE'
+       AND NOT EXISTS (
+         SELECT 1
+         FROM contract_tenant ct
+         JOIN contract c ON c.id=ct.contract_id
+         WHERE ct.tenant_id=t.id
+           AND c.status IN ('DRAFT', 'ACTIVE')
+           AND (c.end_date IS NULL OR c.end_date >= CURRENT_DATE)
+           AND (c.move_out_date IS NULL OR c.move_out_date >= CURRENT_DATE)
+           AND (ct.left_at IS NULL OR ct.left_at >= CURRENT_DATE)
+       )
+     ORDER BY t.full_name`,
+    [req.auth!.userId]
   );
 
   res.json(rows);
@@ -169,6 +219,7 @@ router.post('/reserve', requireRole('MANAGER'), asyncHandler(async (req, res) =>
     let tenantId = body.tenant_id;
     if (tenantId) {
       await assertTenantCanBeUsed(client, tenantId, req.auth!.userId, { allowBlacklistForDraft: true });
+      await assertTenantAvailable(client, tenantId);
     } else if (body.tenant) {
       const duplicate = await client.query<{ id: string }>(
         `SELECT id
@@ -232,7 +283,7 @@ router.post('/:contractId/handover', requireRole('MANAGER'), asyncHandler(async 
     if (contract.status === 'ACTIVE') return { ...contract, business_stage: 'ACTIVE' };
     if (contract.status !== 'DRAFT') throw new AppError(409, 'Only draft contracts can be handed over', 'CONTRACT_NOT_DRAFT');
 
-    await assertRoomAvailable(client, contract.room_id, req.auth!.userId);
+    await assertRoomAvailable(client, contract.room_id, req.auth!.userId, contract.id);
 
     const tenants = await client.query<DbRow>(
       `SELECT t.*

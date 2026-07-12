@@ -48,6 +48,7 @@ import {
   updateInvoice,
   voidInvoice,
 } from '../../services/invoicesService'
+import { getUserErrorMessage } from '../../services/errorMessage'
 import {
   cancelPaymentRequest,
   createPaymentRequest,
@@ -194,8 +195,8 @@ export function InvoicesPage() {
 
       setItems(paymentRows)
       setSummary(summaryRows)
-    } catch {
-      setError('Unable to load invoices. Please retry.')
+    } catch (error) {
+      setError(getUserErrorMessage(error, 'Khong tai duoc danh sach hoa don.'))
     } finally {
       setLoading(false)
     }
@@ -286,7 +287,7 @@ export function InvoicesPage() {
       setDetailItem(row)
       setDetailPaymentRequest(paymentRequest)
     } catch {
-      message.error('Unable to load invoice detail.')
+      message.error('Khong tai duoc chi tiet hoa don. Vui long thu lai.')
       setDetailOpen(false)
     } finally {
       setDetailLoading(false)
@@ -348,8 +349,8 @@ export function InvoicesPage() {
 
       setDrawerOpen(false)
       void loadData()
-    } catch {
-      message.error('Unable to save invoice.')
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Khong the luu hoa don. Vui long kiem tra du lieu.'))
     } finally {
       setSaveLoading(false)
     }
@@ -362,9 +363,14 @@ export function InvoicesPage() {
       okText: 'Delete',
       okButtonProps: { danger: true },
       onOk: async () => {
-        await deleteInvoice(id)
-        message.success('Invoice deleted.')
-        void loadData()
+        try {
+          await deleteInvoice(id)
+          message.success('Invoice deleted.')
+          await loadData()
+        } catch (error) {
+          message.error(getUserErrorMessage(error, 'Khong the xoa hoa don.'))
+          throw error
+        }
       },
     })
   }, [loadData])
@@ -392,7 +398,7 @@ export function InvoicesPage() {
       message.success(`Generated ${result.generated.length} invoice(s).`)
       await loadData()
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Unable to generate invoices.')
+      message.error(getUserErrorMessage(error, 'Khong the tao hoa don.'))
     } finally {
       setGenerateLoading(false)
     }
@@ -412,7 +418,7 @@ export function InvoicesPage() {
       await loadData()
       message.success('Invoice status updated.')
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Unable to update invoice status.')
+      message.error(getUserErrorMessage(error, 'Khong the cap nhat trang thai hoa don.'))
     } finally {
       setStatusActionLoading(null)
     }
@@ -467,7 +473,7 @@ export function InvoicesPage() {
       setPaymentRequestOpen(false)
       message.success('Payment request created.')
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Unable to create payment request.')
+      message.error(getUserErrorMessage(error, 'Khong the tao yeu cau thanh toan.'))
     } finally {
       setPaymentRequestLoading(false)
     }
@@ -485,7 +491,7 @@ export function InvoicesPage() {
       await refreshDetailPaymentRequest()
       message.success('Payment request updated.')
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Unable to update payment request.')
+      message.error(getUserErrorMessage(error, 'Khong the cap nhat yeu cau thanh toan.'))
     } finally {
       setPaymentActionLoading(null)
     }

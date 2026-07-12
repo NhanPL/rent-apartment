@@ -6,6 +6,7 @@ import { MasterListPanel } from './components/MasterListPanel'
 import { UpsertDrawer } from './components/UpsertDrawer'
 import type { BuildingEntity, BuildingFormValues } from './components/types'
 import { createBuilding, deleteBuilding, listBuildings, updateBuilding } from './components/roomService'
+import { getUserErrorMessage } from '../../services/errorMessage'
 import './EntitySplitPage.css'
 
 
@@ -36,7 +37,7 @@ export function EntitySplitPage() {
       setSelectedId(exists ? candidateId : buildings[0]?.id)
       return buildings
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Unable to load buildings')
+      message.error(getUserErrorMessage(error, 'Khong tai duoc danh sach toa nha.'))
       setItems([])
       setSelectedId(undefined)
       return []
@@ -102,7 +103,7 @@ export function EntitySplitPage() {
       }
       message.success('Building deleted successfully')
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Unable to delete building')
+      message.error(getUserErrorMessage(error, 'Khong the xoa toa nha.'))
       throw error
     }
   }
@@ -127,7 +128,7 @@ export function EntitySplitPage() {
       }
       setDrawerOpen(false)
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Unable to save building')
+      message.error(getUserErrorMessage(error, 'Khong the luu toa nha.'))
     } finally {
       setSaving(false)
     }

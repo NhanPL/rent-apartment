@@ -12,6 +12,7 @@ const serviceMocks = vi.hoisted(() => ({
   listContracts: vi.fn(),
   listTenants: vi.fn(),
   listAvailableRooms: vi.fn(),
+  listAvailableTenants: vi.fn(),
   reserveRoom: vi.fn(),
   handoverContract: vi.fn(),
   cancelRegistration: vi.fn(),
@@ -29,6 +30,7 @@ vi.mock('../../services/contractsService', () => ({
 
 vi.mock('../../services/rentalRegistrationService', () => ({
   listAvailableRooms: serviceMocks.listAvailableRooms,
+  listAvailableTenants: serviceMocks.listAvailableTenants,
   reserveRoom: serviceMocks.reserveRoom,
   handoverContract: serviceMocks.handoverContract,
   cancelRegistration: serviceMocks.cancelRegistration,
@@ -81,6 +83,7 @@ describe('RentalRegistrationPage', () => {
   beforeEach(() => {
     serviceMocks.listBuildings.mockResolvedValue([])
     serviceMocks.listAvailableRooms.mockResolvedValue([])
+    serviceMocks.listAvailableTenants.mockResolvedValue([])
     serviceMocks.listTenants.mockResolvedValue([])
     serviceMocks.listContracts.mockResolvedValue({ items: [draftContract], page: 1, pageSize: 100, total: 1 })
     serviceMocks.getContract.mockResolvedValue({
@@ -117,20 +120,20 @@ describe('RentalRegistrationPage', () => {
     const user = userEvent.setup()
     render(<RentalRegistrationPage />)
 
-    await user.click(await screen.findByRole('tab', { name: /Bo sung giay to/ }))
-    await user.click(await screen.findByRole('button', { name: /Bo sung giay to/ }))
+    await user.click(await screen.findByRole('tab', { name: /Add documents/ }))
+    await user.click(await screen.findByRole('button', { name: /Add documents/ }))
     expect(await screen.findByText('existing.pdf')).not.toBeNull()
-    await user.click(screen.getByRole('button', { name: 'Xoa existing.pdf' }))
+    await user.click(screen.getByRole('button', { name: 'Remove existing.pdf' }))
     await waitFor(() => expect(screen.queryByText('existing.pdf')).toBeNull())
     expect(serviceMocks.deleteContractDocument).not.toHaveBeenCalled()
 
-    await user.click(await screen.findByRole('button', { name: 'Chon nhieu file' }))
+    await user.click(await screen.findByRole('button', { name: 'Select files' }))
 
     expect(serviceMocks.uploadFileToCloudinary).not.toHaveBeenCalled()
     expect(serviceMocks.addContractDocument).not.toHaveBeenCalled()
     expect(serviceMocks.deleteContractDocument).not.toHaveBeenCalled()
 
-    await user.click(screen.getByRole('button', { name: 'Luu giay to' }))
+    await user.click(screen.getByRole('button', { name: 'Save documents' }))
 
     await waitFor(() => expect(serviceMocks.deleteContractDocument).toHaveBeenCalledWith('contract-1', 'document-existing'))
     await waitFor(() => expect(serviceMocks.uploadFileToCloudinary).toHaveBeenCalledTimes(2))

@@ -43,6 +43,7 @@ import {
   rejectUtilityReading,
   updateUtilityRate,
 } from '../../services/utilitiesService'
+import { getUserErrorMessage } from '../../services/errorMessage'
 import type {
   BuildingOption,
   RoomOption,
@@ -153,8 +154,8 @@ export function UtilitiesPage() {
         month: readingMonthFilter || undefined,
         status: readingStatusFilter,
       }))
-    } catch {
-      setReadingsError('Unable to load utility readings.')
+    } catch (error) {
+      setReadingsError(getUserErrorMessage(error, 'Khong tai duoc chi so dien nuoc.'))
     } finally {
       setReadingsLoading(false)
     }
@@ -166,8 +167,8 @@ export function UtilitiesPage() {
 
     try {
       setRates(await listUtilityRates(rateBuildingFilter))
-    } catch {
-      setRatesError('Unable to load utility rates.')
+    } catch (error) {
+      setRatesError(getUserErrorMessage(error, 'Khong tai duoc don gia dien nuoc.'))
     } finally {
       setRatesLoading(false)
     }
@@ -201,8 +202,8 @@ export function UtilitiesPage() {
 
     try {
       setDetailItem(await getUtilityReading(id))
-    } catch {
-      message.error('Unable to load reading detail')
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Khong tai duoc chi tiet chi so.'))
       setDetailOpen(false)
     } finally {
       setDetailLoading(false)
@@ -221,7 +222,7 @@ export function UtilitiesPage() {
       message.success('Reading approved')
       await refreshReadingDetailAndList(id)
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Unable to approve reading')
+      message.error(getUserErrorMessage(error, 'Khong the duyet chi so.'))
     } finally {
       setActionLoading(null)
     }
@@ -246,7 +247,7 @@ export function UtilitiesPage() {
     } catch (error: unknown) {
       const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
       if (!formError.errorFields) {
-        message.error(error instanceof Error ? error.message : 'Unable to reject reading')
+        message.error(getUserErrorMessage(error, 'Khong the tu choi chi so.'))
       }
     } finally {
       setRejectLoading(false)
@@ -281,8 +282,8 @@ export function UtilitiesPage() {
         water_unit_price: rate.water_unit_price,
         note: rate.note ?? undefined,
       })
-    } catch {
-      message.error('Unable to load utility rate')
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Khong tai duoc don gia dien nuoc.'))
       setRateDrawerOpen(false)
     } finally {
       setRateDrawerLoading(false)
@@ -309,7 +310,7 @@ export function UtilitiesPage() {
     } catch (error: unknown) {
       const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
       if (!formError.errorFields) {
-        message.error(error instanceof Error ? error.message : 'Unable to save utility rate')
+        message.error(getUserErrorMessage(error, 'Khong the luu don gia dien nuoc.'))
       }
     } finally {
       setRateSaving(false)

@@ -22,6 +22,7 @@ import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { exportReportsCsv, getReportsData, listReportBuildings } from '../../services/reportsService'
+import { getUserErrorMessage } from '../../services/errorMessage'
 import type {
   DebtReportRow,
   OccupancyReportRow,
@@ -88,7 +89,7 @@ export function ReportsPage() {
     try {
       setData(await getReportsData(filters))
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Unable to load reports.')
+      setError(getUserErrorMessage(requestError, 'Khong tai duoc bao cao.'))
     } finally {
       setLoading(false)
     }
@@ -129,7 +130,7 @@ export function ReportsPage() {
       document.body.removeChild(link)
       window.URL.revokeObjectURL(url)
     } catch (requestError) {
-      message.error(requestError instanceof Error ? requestError.message : 'Unable to export CSV.')
+      message.error(getUserErrorMessage(requestError, 'Khong the xuat bao cao CSV.'))
     } finally {
       setExporting(false)
     }

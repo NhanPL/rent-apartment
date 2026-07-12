@@ -6,6 +6,7 @@ import { RoomsTable } from './RoomsTable'
 import { RoomsUpsertDrawer } from './RoomsUpsertDrawer'
 import type { Room } from './roomTypes'
 import type { BuildingEntity } from './types'
+import { getUserErrorMessage } from '../../../services/errorMessage'
 
 interface DetailPanelProps {
   loading: boolean
@@ -44,7 +45,7 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
       const rooms = await listRoomsByBuildingId({ building_id: buildingId, search: roomsSearch, status: roomsFilter })
       setRoomsData(rooms)
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Unable to load rooms')
+      message.error(getUserErrorMessage(error, 'Khong tai duoc danh sach phong.'))
       setRoomsData([])
     } finally {
       setRoomsLoading(false)
@@ -219,7 +220,7 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
               }
               await loadRooms(item.id)
             } catch (error) {
-              message.error(error instanceof Error ? error.message : 'Unable to save room')
+              message.error(getUserErrorMessage(error, 'Khong the luu phong.'))
               throw error
             } finally {
               setSavingRoom(false)
@@ -257,7 +258,7 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
             await loadRooms(item.id)
             message.success('Room deleted successfully')
           } catch (error) {
-            message.error(error instanceof Error ? error.message : 'Unable to delete room')
+            message.error(getUserErrorMessage(error, 'Khong the xoa phong.'))
           }
         }}
         okText="Delete"

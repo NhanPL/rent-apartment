@@ -12,6 +12,7 @@ import {
   type PaymentRequest,
   type PaymentRequestStatus,
 } from '../../services/paymentsService'
+import { getUserErrorMessage } from '../../services/errorMessage'
 
 const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
 
@@ -47,8 +48,8 @@ export function PaymentsPage() {
     setLoading(true)
     try {
       setItems(await listPaymentRequests())
-    } catch {
-      message.error('Unable to load payment requests.')
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Khong tai duoc danh sach thanh toan.'))
     } finally {
       setLoading(false)
     }
@@ -63,8 +64,8 @@ export function PaymentsPage() {
     setDetailLoading(true)
     try {
       setDetailItem(await getPaymentRequest(id))
-    } catch {
-      message.error('Unable to load payment request detail.')
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Khong tai duoc chi tiet thanh toan.'))
       setDetailOpen(false)
     } finally {
       setDetailLoading(false)
@@ -85,7 +86,7 @@ export function PaymentsPage() {
       await refreshDetail()
       message.success('Payment proof approved.')
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Unable to approve proof.')
+      message.error(getUserErrorMessage(error, 'Khong the duyet chung tu thanh toan.'))
     } finally {
       setReviewLoading(null)
     }
@@ -102,7 +103,7 @@ export function PaymentsPage() {
       await refreshDetail()
       message.success('Payment proof rejected.')
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Unable to reject proof.')
+      message.error(getUserErrorMessage(error, 'Khong the tu choi chung tu thanh toan.'))
     } finally {
       setReviewLoading(null)
     }

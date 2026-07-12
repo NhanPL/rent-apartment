@@ -33,6 +33,7 @@ export const API_ROUTES = {
   },
   rentalRegistration: {
     availableRooms: '/rental-registration/available-rooms',
+    availableTenants: '/rental-registration/available-tenants',
     reserve: '/rental-registration/reserve',
     handover: (contractId: string) => `/rental-registration/${contractId}/handover`,
     cancel: (contractId: string) => `/rental-registration/${contractId}/cancel`,
