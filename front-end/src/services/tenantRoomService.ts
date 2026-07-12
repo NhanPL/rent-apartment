@@ -374,10 +374,25 @@ export async function getMyInvoiceDetail(invoiceId: string): Promise<InvoiceDeta
 }
 
 export async function getCurrentAndPreviousUtilityReadings(roomId: string, month: string): Promise<UtilityReadingSnapshot> {
-  const rows = await apiRequest<UtilityReading[]>(API_ROUTES.utilityReadings.list)
-  const ordered = [...rows].sort((left, right) => dayjs(right.month).valueOf() - dayjs(left.month).valueOf())
-  const current = ordered.find((row) => row.room_id === roomId && row.month === month) ?? null
-  const previous = ordered.find((row) => row.room_id === roomId && dayjs(row.month).isBefore(dayjs(month))) ?? null
+  const rows = await apiRequest<Array<Omit<UtilityReading, 'electricity_prev' | 'electricity_curr' | 'water_prev' | 'water_curr' | 'evidence_count'> & {
+    electricity_prev: number | string | null
+    electricity_curr: number | string | null
+    water_prev: number | string | null
+    water_curr: number | string | null
+    evidence_count: number | string | null
+  }>>(API_ROUTES.utilityReadings.list)
+  const normalizedRows: UtilityReading[] = rows.map((row) => ({
+    ...row,
+    electricity_prev: row.electricity_prev === null ? null : Number(row.electricity_prev),
+    electricity_curr: row.electricity_curr === null ? null : Number(row.electricity_curr),
+    water_prev: row.water_prev === null ? null : Number(row.water_prev),
+    water_curr: row.water_curr === null ? null : Number(row.water_curr),
+    evidence_count: Number(row.evidence_count ?? 0),
+  }))
+  const selectedMonth = dayjs(month)
+  const ordered = [...normalizedRows].sort((left, right) => dayjs(right.month).valueOf() - dayjs(left.month).valueOf())
+  const current = ordered.find((row) => row.room_id === roomId && dayjs(row.month).isSame(selectedMonth, 'month')) ?? null
+  const previous = ordered.find((row) => row.room_id === roomId && dayjs(row.month).isBefore(selectedMonth, 'month')) ?? null
 
   return {
     month,
