@@ -268,6 +268,32 @@ export const rejectUtilityReading = async (id: string, managerId: string, reason
   return getUtilityReadingById(id, { userId: managerId, role: 'MANAGER' });
 };
 
+export const requestUtilityReadingCorrection = async (id: string, managerId: string, reason: string) => {
+  await withTransaction(async (client) => {
+    const reading = await getScopedReadingForManager(client, id, managerId);
+    if (reading.status === 'INVOICED') {
+      throw new AppError(409, 'Void the invoice before requesting a reading correction', 'UTILITY_READING_LOCKED');
+    }
+    if (reading.status !== 'APPROVED') {
+      throw new AppError(409, 'Only approved readings can be returned for correction', 'UTILITY_READING_NOT_APPROVED');
+    }
+    const invoice = await client.query(
+      `SELECT id FROM invoice WHERE utility_reading_id=$1 AND status<>'VOID' LIMIT 1`,
+      [id]
+    );
+    if (invoice.rows[0]) throw new AppError(409, 'Void the invoice before requesting a reading correction', 'UTILITY_READING_LOCKED');
+
+    await client.query(
+      `UPDATE utility_reading
+       SET status='REJECTED', rejected_by_user_id=$2, rejected_at=now(), rejection_reason=$3,
+           approved_by_user_id=NULL, approved_at=NULL
+       WHERE id=$1`,
+      [id, managerId, reason]
+    );
+  });
+  return getUtilityReadingById(id, { userId: managerId, role: 'MANAGER' });
+};
+
 export const attachUtilityReadingEvidence = async (readingId: string, payload: UtilityEvidencePayload, scope: AuthScope) => {
   const reading = await getUtilityReadingById(readingId, scope);
   if (scope.role === 'TENANT' && reading.status === 'INVOICED') {

@@ -228,6 +228,11 @@ export async function issueInvoice(id: string): Promise<InvoiceDetail> {
   return toInvoiceDetail(row)
 }
 
+export async function addInvoiceAdjustment(id: string, amount: number, reason: string): Promise<InvoiceDetail> {
+  const row = await apiRequest<InvoiceDetailApiRow>(API_ROUTES.invoices.adjustments(id), { method: 'POST', body: { amount, reason } })
+  return toInvoiceDetail(row)
+}
+
 export async function voidInvoice(id: string): Promise<InvoiceDetail> {
   const row = await apiRequest<InvoiceDetailApiRow>(API_ROUTES.invoices.void(id), { method: 'POST' })
   return toInvoiceDetail(row)

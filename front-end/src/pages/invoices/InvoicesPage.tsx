@@ -34,6 +34,7 @@ import dayjs from 'dayjs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   createInvoice,
+  addInvoiceAdjustment,
   deleteInvoice,
   getInvoice,
   getInvoicesSummary,
@@ -113,12 +114,15 @@ interface PaymentRequestFormValues {
   expires_at?: string
 }
 
+interface AdjustmentFormValues { amount: number; reason: string }
+
 export function InvoicesPage() {
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
   const [form] = Form.useForm<InvoiceFormValues>()
   const [generateForm] = Form.useForm<{ scope: InvoiceGenerateScope; month: string; building_id?: string; room_id?: string }>()
   const [paymentRequestForm] = Form.useForm<PaymentRequestFormValues>()
+  const [adjustmentForm] = Form.useForm<AdjustmentFormValues>()
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -155,6 +159,8 @@ export function InvoicesPage() {
   const [paymentRequestOpen, setPaymentRequestOpen] = useState(false)
   const [paymentRequestLoading, setPaymentRequestLoading] = useState(false)
   const [paymentActionLoading, setPaymentActionLoading] = useState<string | null>(null)
+  const [adjustmentOpen, setAdjustmentOpen] = useState(false)
+  const [adjustmentLoading, setAdjustmentLoading] = useState(false)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearch(searchInput), 300)
@@ -424,6 +430,23 @@ export function InvoicesPage() {
     }
   }, [detailItem, loadData])
 
+  const submitAdjustment = useCallback(async () => {
+    if (!detailItem) return
+    setAdjustmentLoading(true)
+    try {
+      const values = await adjustmentForm.validateFields()
+      const updated = await addInvoiceAdjustment(detailItem.id, values.amount, values.reason)
+      setDetailItem(updated)
+      setAdjustmentOpen(false)
+      adjustmentForm.resetFields()
+      await loadData()
+      message.success('Adjustment added to the draft invoice.')
+    } catch (error) {
+      const formError = error as { errorFields?: unknown[] }
+      if (!formError.errorFields) message.error(getUserErrorMessage(error, 'Unable to add the adjustment.'))
+    } finally { setAdjustmentLoading(false) }
+  }, [adjustmentForm, detailItem, loadData])
+
   const paymentRemainingAmount = useMemo(() => {
     if (!detailItem) return 0
     return Math.max(0, detailItem.total - detailItem.paid_amount)
@@ -630,7 +653,8 @@ export function InvoicesPage() {
                 <Typography.Text type="secondary">{dayjs(detailItem.month).format('MM/YYYY')}</Typography.Text>
               </Space>
               <Space wrap>
-                <Button loading={statusActionLoading === 'issue'} disabled={detailItem.status === 'PAID' || detailItem.status === 'VOID'} onClick={() => void runStatusAction('issue')}>Issue</Button>
+                {detailItem.status === 'DRAFT' ? <Button type="primary" loading={statusActionLoading === 'issue'} onClick={() => void runStatusAction('issue')}>Issue and create QR</Button> : null}
+                {detailItem.status === 'DRAFT' ? <Button icon={<PlusOutlined />} onClick={() => setAdjustmentOpen(true)}>Adjustment</Button> : null}
                 <Button loading={statusActionLoading === 'overdue'} disabled={detailItem.status !== 'ISSUED'} onClick={() => void runStatusAction('overdue')}>Mark overdue</Button>
                 <Button danger loading={statusActionLoading === 'void'} disabled={detailItem.status === 'PAID' || detailItem.status === 'VOID'} onClick={() => void runStatusAction('void')}>Void</Button>
               </Space>
@@ -678,7 +702,7 @@ export function InvoicesPage() {
               size="small"
               title="Bank transfer payment"
               extra={
-                paymentRequestIsClosed && detailItem.status !== 'PAID' && detailItem.status !== 'VOID' ? (
+                paymentRequestIsClosed && ['ISSUED', 'OVERDUE'].includes(detailItem.status) ? (
                   <Button size="small" type="primary" icon={<BankOutlined />} onClick={openPaymentRequestModal}>
                     Create payment request
                   </Button>
@@ -737,6 +761,23 @@ export function InvoicesPage() {
           </Space>
         )}
       </Drawer>
+
+      <Modal
+        open={adjustmentOpen}
+        title="Add draft adjustment"
+        okText="Add adjustment"
+        confirmLoading={adjustmentLoading}
+        onOk={() => void submitAdjustment()}
+        onCancel={() => setAdjustmentOpen(false)}
+        destroyOnClose
+      >
+        <Form form={adjustmentForm} layout="vertical">
+          <Form.Item name="amount" label="Amount" extra="Use a negative amount for a discount." rules={[{ required: true, type: 'number', message: 'Please enter a non-zero amount.' }]}>
+            <InputNumber style={{ width: '100%' }} precision={0} />
+          </Form.Item>
+          <Form.Item name="reason" label="Reason" rules={[{ required: true, whitespace: true, message: 'Please enter a reason.' }]}><Input.TextArea rows={3} /></Form.Item>
+        </Form>
+      </Modal>
 
       <Modal
         open={paymentRequestOpen}

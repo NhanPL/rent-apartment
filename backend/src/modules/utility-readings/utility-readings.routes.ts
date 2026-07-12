@@ -10,7 +10,8 @@ import {
   createUtilityReading,
   getUtilityReadingById,
   listUtilityReadings,
-  rejectUtilityReading
+  rejectUtilityReading,
+  requestUtilityReadingCorrection
 } from './utility-readings.service';
 
 const router = Router();
@@ -75,6 +76,11 @@ router.post('/:id/approve', requireRole('MANAGER'), asyncHandler(async (req, res
 router.post('/:id/reject', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const { reason } = parseBody(utilityRejectSchema, req.body);
   res.json(await rejectUtilityReading(req.params.id, req.auth!.userId, reason));
+}));
+
+router.post('/:id/request-correction', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  const { reason } = parseBody(utilityRejectSchema, req.body);
+  res.json(await requestUtilityReadingCorrection(req.params.id, req.auth!.userId, reason));
 }));
 
 export default router;

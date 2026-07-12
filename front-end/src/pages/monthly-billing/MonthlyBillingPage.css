@@ -1,0 +1,6 @@
+.monthly-billing-page { width: 100%; }
+.monthly-billing-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.monthly-billing-toolbar h3 { margin: 0; }
+.monthly-billing-filters { display: grid; grid-template-columns: minmax(220px, 360px) 180px; gap: 12px; }
+.monthly-billing-filters input { min-height: 32px; padding: 4px 11px; border: 1px solid #d9d9d9; border-radius: 6px; font: inherit; }
+@media (max-width: 640px) { .monthly-billing-toolbar { align-items: stretch; flex-direction: column; } .monthly-billing-filters { grid-template-columns: 1fr; } }

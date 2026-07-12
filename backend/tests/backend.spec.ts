@@ -562,16 +562,29 @@ describe('backend API smoke tests', () => {
     expect(generated.body.generated[0]).toMatchObject({
       contract_id: ids.contractA,
       room_id: ids.roomA,
+      status: 'DRAFT',
+      issued_at: null,
       total: 1120
     });
     expect(fakeDb.utilityReadings.find((reading) => reading.id === ids.readingApproved)).toMatchObject({
-      status: 'INVOICED'
+      status: 'APPROVED'
     });
     expect(fakeDb.invoiceItems.filter((item) => item.invoice_id === generated.body.generated[0].id).map((item) => item.code)).toEqual([
       'ROOM_RENT',
       'ELECTRICITY',
       'WATER'
     ]);
+
+    const issued = await request(app)
+      .post(`/api/invoices/${generated.body.generated[0].id}/issue`)
+      .set(auth(managerSession.accessToken));
+    expect(issued.status, JSON.stringify(issued.body)).toBe(200);
+
+    expect(fakeDb.utilityReadings.find((reading) => reading.id === ids.readingApproved)).toMatchObject({ status: 'INVOICED' });
+    expect(fakeDb.paymentRequests.find((item) => item.invoice_id === generated.body.generated[0].id)).toMatchObject({
+      status: 'WAITING_TRANSFER',
+      amount: 1120
+    });
   });
 
   it('creates payment requests and reviews submitted payment proofs', async () => {

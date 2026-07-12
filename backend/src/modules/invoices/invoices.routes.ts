@@ -40,7 +40,7 @@ const invoiceUpsertSchema = z.object({
 });
 
 const invoiceAdjustmentSchema = z.object({
-  amount: z.coerce.number(),
+  amount: z.coerce.number().refine((value) => value !== 0, 'Amount must not be zero'),
   reason: z.string().trim().min(1)
 });
 

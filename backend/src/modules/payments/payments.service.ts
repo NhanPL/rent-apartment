@@ -83,7 +83,7 @@ export const createPaymentRequest = async (invoiceId: string, managerId: string,
     );
     const inv = invRs.rows[0];
     if (!inv) throw new AppError(404, 'Invoice not found');
-    if (inv.status === 'PAID' || inv.status === 'VOID') throw new AppError(409, 'Cannot request payment for closed invoice');
+    if (!['ISSUED', 'OVERDUE'].includes(inv.status)) throw new AppError(409, 'Payment requests require an issued invoice', 'INVOICE_NOT_ISSUED');
 
     const paidAmount = await getInvoicePaidAmount(client, invoiceId);
     const remainingAmount = toNumber(inv.total) - paidAmount;

@@ -38,6 +38,9 @@ export const API_ROUTES = {
     handover: (contractId: string) => `/rental-registration/${contractId}/handover`,
     cancel: (contractId: string) => `/rental-registration/${contractId}/cancel`,
   },
+  monthlyBilling: {
+    summary: '/monthly-billing',
+  },
   invoices: {
     list: '/invoices',
     detail: (id: string) => `/invoices/${id}`,
@@ -83,6 +86,7 @@ export const API_ROUTES = {
     evidence: (id: string) => `/utility-readings/${id}/evidence`,
     approve: (id: string) => `/utility-readings/${id}/approve`,
     reject: (id: string) => `/utility-readings/${id}/reject`,
+    requestCorrection: (id: string) => `/utility-readings/${id}/request-correction`,
   },
   utilityRates: {
     list: '/utility-rates',

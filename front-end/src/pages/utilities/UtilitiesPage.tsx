@@ -41,6 +41,7 @@ import {
   listUtilityRates,
   listUtilityReadings,
   rejectUtilityReading,
+  requestUtilityReadingCorrection,
   updateUtilityRate,
 } from '../../services/utilitiesService'
 import { getUserErrorMessage } from '../../services/errorMessage'
@@ -240,14 +241,15 @@ export function UtilitiesPage() {
 
     try {
       const values = await rejectForm.validateFields()
-      await rejectUtilityReading(rejectTarget.id, values.reason)
-      message.success('Reading rejected')
+      const isCorrection = rejectTarget.status === 'APPROVED'
+      await (isCorrection ? requestUtilityReadingCorrection(rejectTarget.id, values.reason) : rejectUtilityReading(rejectTarget.id, values.reason))
+      message.success(isCorrection ? 'Reading returned for correction' : 'Reading rejected')
       setRejectTarget(null)
       await refreshReadingDetailAndList(rejectTarget.id)
     } catch (error: unknown) {
       const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
       if (!formError.errorFields) {
-        message.error(getUserErrorMessage(error, 'Khong the tu choi chi so.'))
+        message.error(getUserErrorMessage(error, 'Unable to update the utility reading.'))
       }
     } finally {
       setRejectLoading(false)
@@ -408,6 +410,9 @@ export function UtilitiesPage() {
             </Button>
             <Button danger type="link" disabled={item.status !== 'SUBMITTED'} onClick={() => openReject(item)}>
               Reject
+            </Button>
+            <Button type="link" disabled={item.status !== 'APPROVED'} onClick={() => openReject(item)}>
+              Request correction
             </Button>
           </Space>
         ),
@@ -609,6 +614,9 @@ export function UtilitiesPage() {
                 <Button danger disabled={detailItem.status !== 'SUBMITTED'} onClick={() => openReject(detailItem)}>
                   Reject
                 </Button>
+                <Button disabled={detailItem.status !== 'APPROVED'} onClick={() => openReject(detailItem)}>
+                  Request correction
+                </Button>
               </Space>
             </div>
 
@@ -690,8 +698,8 @@ export function UtilitiesPage() {
 
       <Modal
         open={Boolean(rejectTarget)}
-        title="Reject utility reading"
-        okText="Reject"
+        title={rejectTarget?.status === 'APPROVED' ? 'Request reading correction' : 'Reject utility reading'}
+        okText={rejectTarget?.status === 'APPROVED' ? 'Request correction' : 'Reject'}
         okButtonProps={{ danger: true }}
         confirmLoading={rejectLoading}
         onCancel={() => setRejectTarget(null)}
