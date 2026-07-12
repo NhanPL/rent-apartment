@@ -187,8 +187,8 @@ export const createUtilityReading = async (payload: UtilityReadingCreatePayload,
     );
 
     if (existing.rows[0]) {
-      if (existing.rows[0].status === 'APPROVED' || existing.rows[0].status === 'INVOICED') {
-        throw new AppError(409, 'Approved or invoiced readings cannot be resubmitted', 'UTILITY_READING_LOCKED');
+      if (existing.rows[0].status !== 'REJECTED') {
+        throw new AppError(409, 'Submitted readings can only be updated after manager rejection', 'UTILITY_READING_LOCKED');
       }
 
       const updated = await client.query<DbRow>(

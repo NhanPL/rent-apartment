@@ -520,6 +520,19 @@ describe('backend API smoke tests', () => {
       status: 'SUBMITTED'
     });
 
+    const duplicateSubmission = await request(app)
+      .post('/api/utility-readings')
+      .set(auth(tenantSession.accessToken))
+      .send({
+        room_id: ids.roomA,
+        month: '2026-07',
+        electricity_curr: 151,
+        water_curr: 76
+      })
+      .expect(409);
+
+    expect(duplicateSubmission.body.code).toBe('UTILITY_READING_LOCKED');
+
     const missingEvidence = await request(app)
       .post(`/api/utility-readings/${ids.readingSubmitted}/approve`)
       .set(auth(managerSession.accessToken))
