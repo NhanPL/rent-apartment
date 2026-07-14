@@ -19,6 +19,17 @@ export interface UtilityReadingCreatePayload {
   electricity_curr: number;
   water_curr: number;
   note?: string | null;
+  evidence?: {
+    electricity: UtilityEvidenceFilePayload;
+    water: UtilityEvidenceFilePayload;
+  };
+}
+
+interface UtilityEvidenceFilePayload {
+  file_name?: string | null;
+  file_url: string;
+  mime_type: string;
+  file_size: number;
 }
 
 export interface UtilityEvidencePayload {
@@ -186,6 +197,7 @@ export const createUtilityReading = async (payload: UtilityReadingCreatePayload,
       [payload.room_id, month]
     );
 
+    let reading: DbRow;
     if (existing.rows[0]) {
       if (existing.rows[0].status !== 'REJECTED') {
         throw new AppError(409, 'Submitted readings can only be updated after manager rejection', 'UTILITY_READING_LOCKED');
@@ -209,16 +221,39 @@ export const createUtilityReading = async (payload: UtilityReadingCreatePayload,
          RETURNING *`,
         [electricityPrev, payload.electricity_curr, waterPrev, payload.water_curr, userId, payload.note ?? null, existing.rows[0].id]
       );
-      return updated.rows[0];
+      reading = updated.rows[0];
+    } else {
+      const created = await client.query<DbRow>(
+        `INSERT INTO utility_reading(room_id, month, electricity_prev, electricity_curr, water_prev, water_curr, status, reported_by_user_id, reported_at, submitted_at, note)
+         VALUES($1,$2,$3,$4,$5,$6,'SUBMITTED',$7,now(),now(),$8)
+         RETURNING *`,
+        [payload.room_id, month, electricityPrev, payload.electricity_curr, waterPrev, payload.water_curr, userId, payload.note ?? null]
+      );
+      reading = created.rows[0];
     }
 
-    const created = await client.query<DbRow>(
-      `INSERT INTO utility_reading(room_id, month, electricity_prev, electricity_curr, water_prev, water_curr, status, reported_by_user_id, reported_at, submitted_at, note)
-       VALUES($1,$2,$3,$4,$5,$6,'SUBMITTED',$7,now(),now(),$8)
-       RETURNING *`,
-      [payload.room_id, month, electricityPrev, payload.electricity_curr, waterPrev, payload.water_curr, userId, payload.note ?? null]
-    );
-    return created.rows[0];
+    if (payload.evidence) {
+      await client.query(
+        `INSERT INTO utility_reading_evidence(utility_reading_id,evidence_type,file_name,file_url,mime_type,file_size,uploaded_by_user_id)
+         VALUES
+           ($1,'ELECTRIC',$2,$3,$4,$5,$10),
+           ($1,'WATER',$6,$7,$8,$9,$10)`,
+        [
+          reading.id,
+          payload.evidence.electricity.file_name ?? null,
+          payload.evidence.electricity.file_url,
+          payload.evidence.electricity.mime_type,
+          payload.evidence.electricity.file_size,
+          payload.evidence.water.file_name ?? null,
+          payload.evidence.water.file_url,
+          payload.evidence.water.mime_type,
+          payload.evidence.water.file_size,
+          userId
+        ]
+      );
+    }
+
+    return reading;
   });
 };
 

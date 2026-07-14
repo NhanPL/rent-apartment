@@ -3,7 +3,6 @@ import { Alert, Button, Card, Col, Descriptions, Drawer, Empty, Form, Grid, Inpu
 import dayjs from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
 import {
-  attachMyUtilityReadingEvidence,
   createMyVnpayPayment,
   createMyDocument,
   getCurrentAndPreviousUtilityReadings,
@@ -21,13 +20,12 @@ import {
   type RoommateSummary,
   type TenantDocument,
   type TenantDocumentType,
-  type UtilityEvidenceType,
   type UtilityReadingSnapshot,
   type UtilityReadingStatus,
 } from '../../services/tenantRoomService'
 import type { PaymentRequest, PaymentRequestStatus } from '../../services/paymentsService'
 import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
-import type { UploadedCloudinaryFile } from '../../services/uploadService'
+import { uploadFileToCloudinary, type UploadedCloudinaryFile } from '../../services/uploadService'
 import { getUserErrorMessage } from '../../services/errorMessage'
 import {
   calculateReadingUsage,
@@ -35,15 +33,6 @@ import {
   validateTenantUtilityReading,
   type TenantUtilityReadingFormValues,
 } from './utilityReadingForm'
-
-interface EvidenceFormValues {
-  evidence_type: UtilityEvidenceType
-  file_name?: string
-  file_url?: string
-  mime_type?: string
-  file_size?: number
-  note?: string
-}
 
 interface PaymentProofFormValues {
   file_name?: string
@@ -123,7 +112,6 @@ export function TenantRoomPage() {
 
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
-  const [evidenceSubmitting, setEvidenceSubmitting] = useState(false)
   const [context, setContext] = useState<Awaited<ReturnType<typeof getMyRoomContext>>>(null)
   const [roommates, setRoommates] = useState<RoommateSummary[]>([])
   const [currentBill, setCurrentBill] = useState<InvoiceSummary | null>(null)
@@ -137,9 +125,10 @@ export function TenantRoomPage() {
   const [paymentProofSubmitting, setPaymentProofSubmitting] = useState(false)
   const [tenantDocuments, setTenantDocuments] = useState<TenantDocument[]>([])
   const [tenantDocumentSubmitting, setTenantDocumentSubmitting] = useState(false)
+  const [electricityEvidenceFile, setElectricityEvidenceFile] = useState<File | null>(null)
+  const [waterEvidenceFile, setWaterEvidenceFile] = useState<File | null>(null)
 
   const [form] = Form.useForm<TenantUtilityReadingFormValues>()
-  const [evidenceForm] = Form.useForm<EvidenceFormValues>()
   const [paymentProofForm] = Form.useForm<PaymentProofFormValues>()
   const [tenantDocumentForm] = Form.useForm<TenantDocumentFormValues>()
   const monthValue = Form.useWatch('month', form)
@@ -166,6 +155,8 @@ export function TenantRoomPage() {
   const hydrateFormByMonth = async (roomId: string, month: string) => {
     const snapshot = await getCurrentAndPreviousUtilityReadings(roomId, `${month}-01`)
     setUtilitySnapshot(snapshot)
+    setElectricityEvidenceFile(null)
+    setWaterEvidenceFile(null)
     form.setFieldsValue({
       electricity_prev: snapshot.electricity_prev_value,
       electricity_curr: snapshot.electricity_curr_value,
@@ -251,9 +242,24 @@ export function TenantRoomPage() {
       return
     }
 
+    if (!electricityEvidenceFile || !waterEvidenceFile) {
+      message.error('Please select both electricity and water evidence images.')
+      return
+    }
+
     setSubmitting(true)
     try {
-      await upsertMyUtilityReading(context.room.id, validation.payload)
+      const [electricityEvidence, waterEvidence] = await Promise.all([
+        uploadFileToCloudinary(electricityEvidenceFile, 'UTILITY_EVIDENCE'),
+        uploadFileToCloudinary(waterEvidenceFile, 'UTILITY_EVIDENCE'),
+      ])
+      await upsertMyUtilityReading(context.room.id, {
+        ...validation.payload,
+        evidence: {
+          electricity: uploadedFileFields(electricityEvidence),
+          water: uploadedFileFields(waterEvidence),
+        },
+      })
 
       await hydrateFormByMonth(context.room.id, validation.formMonth)
       message.success('Đã ghi nhận chỉ số điện nước thành công')
@@ -261,38 +267,6 @@ export function TenantRoomPage() {
       message.error(getUserErrorMessage(error, 'Khong the luu chi so dien nuoc.'))
     } finally {
       setSubmitting(false)
-    }
-  }
-
-  const handleEvidenceSubmit = async (values: EvidenceFormValues) => {
-    if (!context || !currentReading) {
-      message.warning('Please submit the monthly reading before adding evidence.')
-      return
-    }
-
-    setEvidenceSubmitting(true)
-    try {
-      if (!values.file_url || !values.mime_type || !values.file_size) {
-        message.warning('Please upload evidence file before submitting.')
-        return
-      }
-
-      await attachMyUtilityReadingEvidence(currentReading.id, {
-        evidence_type: values.evidence_type,
-        file_name: values.file_name?.trim() || null,
-        file_url: values.file_url.trim(),
-        mime_type: values.mime_type,
-        file_size: values.file_size,
-        note: values.note?.trim() || null,
-      })
-      evidenceForm.resetFields()
-      evidenceForm.setFieldValue('evidence_type', 'ELECTRIC')
-      await hydrateFormByMonth(context.room.id, form.getFieldValue('month'))
-      message.success('Evidence metadata uploaded')
-    } catch (error) {
-      message.error(getUserErrorMessage(error, 'Khong the luu minh chung chi so.'))
-    } finally {
-      setEvidenceSubmitting(false)
     }
   }
 
@@ -782,6 +756,55 @@ export function TenantRoomPage() {
             <Input.TextArea rows={3} maxLength={500} showCount placeholder="Ghi chú (không bắt buộc)" />
           </Form.Item>
 
+          <Row gutter={[16, 8]}>
+            <Col xs={24} md={12}>
+              <Form.Item label="Electricity evidence" required>
+                <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                  <CloudinaryUploadButton
+                    accept={imageAccept}
+                    context="UTILITY_EVIDENCE"
+                    deferred
+                    disabled={readingLocked || submitting}
+                    onSelected={setElectricityEvidenceFile}
+                  >
+                    Select electricity image
+                  </CloudinaryUploadButton>
+                  <Typography.Text type={electricityEvidenceFile ? undefined : 'secondary'} ellipsis title={electricityEvidenceFile?.name}>
+                    {electricityEvidenceFile?.name ?? 'No image selected'}
+                  </Typography.Text>
+                  {electricityEvidenceFile ? (
+                    <Button size="small" danger disabled={submitting} onClick={() => setElectricityEvidenceFile(null)}>
+                      Remove
+                    </Button>
+                  ) : null}
+                </Space>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="Water evidence" required>
+                <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                  <CloudinaryUploadButton
+                    accept={imageAccept}
+                    context="UTILITY_EVIDENCE"
+                    deferred
+                    disabled={readingLocked || submitting}
+                    onSelected={setWaterEvidenceFile}
+                  >
+                    Select water image
+                  </CloudinaryUploadButton>
+                  <Typography.Text type={waterEvidenceFile ? undefined : 'secondary'} ellipsis title={waterEvidenceFile?.name}>
+                    {waterEvidenceFile?.name ?? 'No image selected'}
+                  </Typography.Text>
+                  {waterEvidenceFile ? (
+                    <Button size="small" danger disabled={submitting} onClick={() => setWaterEvidenceFile(null)}>
+                      Remove
+                    </Button>
+                  ) : null}
+                </Space>
+              </Form.Item>
+            </Col>
+          </Row>
+
           {readingLocked ? (
             <Alert
               type="warning"
@@ -811,97 +834,6 @@ export function TenantRoomPage() {
             Lưu chỉ số tháng
           </Button>
         </Form>
-      </Card>
-
-      <Card title="Utility evidence">
-        {!currentReading ? (
-          <Alert showIcon type="info" message="Submit the monthly reading before attaching evidence." />
-        ) : (
-          <Form<EvidenceFormValues>
-            form={evidenceForm}
-            layout="vertical"
-            onFinish={handleEvidenceSubmit}
-            initialValues={{ evidence_type: 'ELECTRIC' }}
-          >
-            <Row gutter={[16, 8]}>
-              <Col xs={24} md={8}>
-                <Form.Item name="evidence_type" label="Evidence type" rules={[{ required: true, message: 'Please select evidence type' }]}>
-                  <Select
-                    options={[
-                      { label: 'Electric', value: 'ELECTRIC' },
-                      { label: 'Water', value: 'WATER' },
-                      { label: 'Other', value: 'OTHER' },
-                    ]}
-                  />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={16}>
-                <Form.Item name="file_url" label="File URL" rules={[{ required: true, whitespace: true, message: 'Please enter file URL' }]}>
-                  <Input placeholder="https://..." disabled={currentReading.status === 'INVOICED'} />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={8}>
-                <Form.Item name="file_name" label="File name">
-                  <Input disabled={currentReading.status === 'INVOICED'} />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={8}>
-                <Form.Item name="mime_type" label="MIME type">
-                  <Input placeholder="image/jpeg" disabled={currentReading.status === 'INVOICED'} />
-                </Form.Item>
-              </Col>
-              <Col xs={24}>
-                <Form.Item label="Upload evidence file">
-                  <Space wrap>
-                    <CloudinaryUploadButton
-                      accept={imageAccept}
-                      context="UTILITY_EVIDENCE"
-                      disabled={currentReading.status === 'INVOICED'}
-                      onUploaded={(file) => evidenceForm.setFieldsValue(uploadedFileFields(file))}
-                    >
-                      Upload file
-                    </CloudinaryUploadButton>
-                    <Form.Item noStyle shouldUpdate={(prev, next) => prev.file_url !== next.file_url || prev.file_name !== next.file_name}>
-                      {({ getFieldValue }) => {
-                        const fileUrl = getFieldValue('file_url') as string | undefined
-                        const fileName = getFieldValue('file_name') as string | undefined
-                        return fileUrl ? (
-                          <Typography.Link href={fileUrl} target="_blank" rel="noreferrer">
-                            {fileName || 'Uploaded file'}
-                          </Typography.Link>
-                        ) : (
-                          <Typography.Text type="secondary">No file uploaded</Typography.Text>
-                        )
-                      }}
-                    </Form.Item>
-                  </Space>
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={8}>
-                <Form.Item name="file_size" label="File size">
-                  <InputNumber min={0} precision={0} style={{ width: '100%' }} disabled={currentReading.status === 'INVOICED'} />
-                </Form.Item>
-              </Col>
-            </Row>
-            <Form.Item name="note" label="Evidence note">
-              <Input.TextArea rows={2} disabled={currentReading.status === 'INVOICED'} />
-            </Form.Item>
-            <Space wrap>
-              <Tag color={utilityReadingStatusColor[currentReading.status]}>{currentReading.status}</Tag>
-              <Typography.Text type="secondary">{currentReading.evidence_count} evidence file(s) submitted</Typography.Text>
-            </Space>
-            <Button
-              htmlType="submit"
-              type="primary"
-              loading={evidenceSubmitting}
-              disabled={currentReading.status === 'INVOICED'}
-              block={isMobile}
-              style={{ marginTop: 16 }}
-            >
-              Add evidence metadata
-            </Button>
-          </Form>
-        )}
       </Card>
 
       <Card title="Lịch sử hóa đơn gần đây">

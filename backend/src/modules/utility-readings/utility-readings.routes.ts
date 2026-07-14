@@ -16,20 +16,28 @@ import {
 
 const router = Router();
 
+const utilityEvidenceFileSchema = z.object({
+  file_name: z.string().trim().nullable().optional(),
+  file_url: z.string().trim().url(),
+  mime_type: z.string().trim().min(1),
+  file_size: z.coerce.number().int().positive()
+});
+
 const utilityReadingCreateSchema = z.object({
   room_id: z.string().uuid(),
   month: z.string().trim().nullable().optional(),
   electricity_curr: z.coerce.number().nonnegative(),
   water_curr: z.coerce.number().nonnegative(),
-  note: z.string().trim().nullable().optional()
+  note: z.string().trim().nullable().optional(),
+  evidence: z.object({
+    electricity: utilityEvidenceFileSchema,
+    water: utilityEvidenceFileSchema
+  }).optional()
 });
 
 const utilityEvidenceSchema = z.object({
   evidence_type: z.enum(['ELECTRIC', 'WATER', 'OTHER']),
-  file_name: z.string().trim().nullable().optional(),
-  file_url: z.string().trim().url(),
-  mime_type: z.string().trim().min(1),
-  file_size: z.coerce.number().int().positive(),
+  ...utilityEvidenceFileSchema.shape,
   note: z.string().trim().nullable().optional()
 });
 
@@ -60,6 +68,10 @@ router.get('/:id', asyncHandler(async (req, res) => {
 
 router.post('/', requireRole('TENANT'), asyncHandler(async (req, res) => {
   const body = parseBody(utilityReadingCreateSchema, req.body);
+  if (body.evidence) {
+    validateStoredUpload('UTILITY_EVIDENCE', body.evidence.electricity, req.auth!.role);
+    validateStoredUpload('UTILITY_EVIDENCE', body.evidence.water, req.auth!.role);
+  }
   res.status(201).json(await createUtilityReading(body, req.auth!.userId));
 }));
 

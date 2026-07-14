@@ -15,12 +15,17 @@ vi.mock('../src/modules/fixed-charges/fixed-charges.service', async (importOrigi
 });
 
 const uploadServiceMocks = vi.hoisted(() => ({
-  deleteCloudinaryUpload: vi.fn().mockResolvedValue(undefined)
+  deleteCloudinaryUpload: vi.fn().mockResolvedValue(undefined),
+  validateStoredUpload: vi.fn().mockReturnValue('image')
 }));
 
 vi.mock('../src/modules/uploads/uploads.service', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/modules/uploads/uploads.service')>();
-  return { ...actual, deleteCloudinaryUpload: uploadServiceMocks.deleteCloudinaryUpload };
+  return {
+    ...actual,
+    deleteCloudinaryUpload: uploadServiceMocks.deleteCloudinaryUpload,
+    validateStoredUpload: uploadServiceMocks.validateStoredUpload
+  };
 });
 
 import { app } from '../src/app';
@@ -508,7 +513,21 @@ describe('backend API smoke tests', () => {
         month: '2026-07',
         electricity_curr: 150,
         water_curr: 75,
-        note: 'July reading'
+        note: 'July reading',
+        evidence: {
+          electricity: {
+            file_name: 'electricity.jpg',
+            file_url: 'https://example.com/electricity.jpg',
+            mime_type: 'image/jpeg',
+            file_size: 1024
+          },
+          water: {
+            file_name: 'water.jpg',
+            file_url: 'https://example.com/water.jpg',
+            mime_type: 'image/jpeg',
+            file_size: 2048
+          }
+        }
       })
       .expect(201);
 
@@ -519,6 +538,12 @@ describe('backend API smoke tests', () => {
       water_prev: 60,
       status: 'SUBMITTED'
     });
+    expect(fakeDb.utilityEvidence.filter((item) => item.utility_reading_id === submitted.body.id)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ evidence_type: 'ELECTRIC', file_name: 'electricity.jpg' }),
+        expect.objectContaining({ evidence_type: 'WATER', file_name: 'water.jpg' })
+      ])
+    );
 
     const duplicateSubmission = await request(app)
       .post('/api/utility-readings')

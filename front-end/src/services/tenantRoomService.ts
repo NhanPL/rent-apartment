@@ -146,14 +146,21 @@ export interface UtilityReadingSubmitPayload {
   electricity_curr: number
   water_curr: number
   note: string | null
+  evidence?: {
+    electricity: UtilityEvidenceFilePayload
+    water: UtilityEvidenceFilePayload
+  }
 }
 
-export interface UtilityEvidenceSubmitPayload {
-  evidence_type: UtilityEvidenceType
+export interface UtilityEvidenceFilePayload {
   file_name: string | null
   file_url: string
   mime_type: string
   file_size: number
+}
+
+export interface UtilityEvidenceSubmitPayload extends UtilityEvidenceFilePayload {
+  evidence_type: UtilityEvidenceType
   note: string | null
 }
 
@@ -419,6 +426,7 @@ export async function upsertMyUtilityReading(roomId: string, payload: UtilityRea
       electricity_curr: payload.electricity_curr,
       water_curr: payload.water_curr,
       note: payload.note,
+      evidence: payload.evidence,
     },
   })
 }

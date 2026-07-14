@@ -544,6 +544,32 @@ class FakeDb {
       return result<T>([reading as T]);
     }
 
+    if (sql.startsWith('insert into utility_reading_evidence(') && sql.includes("($1,'electric'")) {
+      this.utilityEvidence.push(
+        {
+          id: this.newId(),
+          utility_reading_id: params[0],
+          evidence_type: 'ELECTRIC',
+          file_name: params[1],
+          file_url: params[2],
+          mime_type: params[3],
+          file_size: params[4],
+          uploaded_by_user_id: params[9]
+        },
+        {
+          id: this.newId(),
+          utility_reading_id: params[0],
+          evidence_type: 'WATER',
+          file_name: params[5],
+          file_url: params[6],
+          mime_type: params[7],
+          file_size: params[8],
+          uploaded_by_user_id: params[9]
+        }
+      );
+      return result<T>([]);
+    }
+
     if (sql.startsWith('select ur.* from utility_reading ur') && sql.includes('for update of ur')) {
       const reading = this.getReadingForManager(String(params[0]), String(params[1]));
       return result<T>(reading ? [reading as T] : []);
