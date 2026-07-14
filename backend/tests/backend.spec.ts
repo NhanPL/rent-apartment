@@ -600,6 +600,34 @@ describe('backend API smoke tests', () => {
     });
   });
 
+  it('deletes draft invoices and rejects deleting issued invoices', async () => {
+    const managerSession = await login('manager@example.com');
+
+    const generated = await request(app)
+      .post('/api/invoices/generate/room')
+      .set(auth(managerSession.accessToken))
+      .send({ month: '2026-06', room_id: ids.roomA })
+      .expect(201);
+
+    const draftInvoiceId = generated.body.generated[0].id as string;
+
+    await request(app)
+      .delete(`/api/invoices/${draftInvoiceId}`)
+      .set(auth(managerSession.accessToken))
+      .expect(204);
+
+    expect(fakeDb.invoices.find((invoice) => invoice.id === draftInvoiceId)).toBeUndefined();
+    expect(fakeDb.invoiceItems.some((item) => item.invoice_id === draftInvoiceId)).toBe(false);
+
+    const issuedInvoice = await request(app)
+      .delete(`/api/invoices/${ids.invoiceIssued}`)
+      .set(auth(managerSession.accessToken))
+      .expect(409);
+
+    expect(issuedInvoice.body.code).toBe('INVOICE_NOT_DRAFT');
+    expect(fakeDb.invoices.find((invoice) => invoice.id === ids.invoiceIssued)).toBeDefined();
+  });
+
   it('creates payment requests and reviews submitted payment proofs', async () => {
     const managerSession = await login('manager@example.com');
     const tenantSession = await login('tenant@example.com');

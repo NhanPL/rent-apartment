@@ -649,7 +649,10 @@ export const updateManualInvoice = async (invoiceId: string, payload: InvoiceUps
 
 export const deleteManualInvoice = async (invoiceId: string, managerId: string) =>
   withTransaction(async (client) => {
-    await getScopedInvoiceForManager(client, invoiceId, managerId);
+    const invoice = await getScopedInvoiceForManager(client, invoiceId, managerId);
+    if (invoice.status !== 'DRAFT') {
+      throw new AppError(409, 'Only draft invoices can be deleted', 'INVOICE_NOT_DRAFT');
+    }
 
     const blocking = await client.query(
       `SELECT id FROM payment WHERE invoice_id=$1

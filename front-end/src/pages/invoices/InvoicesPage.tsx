@@ -26,6 +26,7 @@ import {
   Statistic,
   Table,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from 'antd'
@@ -365,7 +366,7 @@ export function InvoicesPage() {
   const onDelete = useCallback((id: string) => {
     Modal.confirm({
       title: 'Delete this invoice?',
-      content: 'This action cannot be undone.',
+      content: 'This permanently removes the draft invoice and its line items. This action cannot be undone.',
       okText: 'Delete',
       okButtonProps: { danger: true },
       onOk: async () => {
@@ -558,7 +559,11 @@ export function InvoicesPage() {
         <Space size={4}>
           <Button size="small" icon={<EyeOutlined />} onClick={() => void openDetail(row.id)} />
           <Button size="small" icon={<EditOutlined />} onClick={() => void openEdit(row.id)} />
-          <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onDelete(row.id)} />
+          {row.status === 'DRAFT' ? (
+            <Tooltip title="Delete draft invoice">
+              <Button size="small" danger icon={<DeleteOutlined />} aria-label="Delete draft invoice" onClick={() => onDelete(row.id)} />
+            </Tooltip>
+          ) : null}
         </Space>
       ),
     },

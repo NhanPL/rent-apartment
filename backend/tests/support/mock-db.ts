@@ -735,6 +735,21 @@ class FakeDb {
       return result<T>(this.invoiceAdjustments.filter((item) => item.invoice_id === params[0]) as T[]);
     }
 
+    if (sql.startsWith('select id from payment where invoice_id=$1 union all select id from payment_request where invoice_id=$1')) {
+      const payment = this.payments.find((item) => item.invoice_id === params[0]);
+      const request = this.paymentRequests.find((item) => item.invoice_id === params[0]);
+      const row = payment ?? request;
+      return result<T>(row ? [{ id: row.id } as T] : []);
+    }
+
+    if (sql.startsWith('delete from invoice where id=$1')) {
+      const invoiceId = params[0];
+      this.invoices = this.invoices.filter((item) => item.id !== invoiceId);
+      this.invoiceItems = this.invoiceItems.filter((item) => item.invoice_id !== invoiceId);
+      this.invoiceAdjustments = this.invoiceAdjustments.filter((item) => item.invoice_id !== invoiceId);
+      return result<T>([]);
+    }
+
     if (sql.startsWith('select id from payment_request')) {
       const request = this.paymentRequests.find((item) => item.invoice_id === params[0] && !['CANCELLED', 'EXPIRED'].includes(item.status));
       return result<T>(request ? [{ id: request.id } as T] : []);
