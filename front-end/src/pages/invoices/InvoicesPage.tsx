@@ -157,6 +157,8 @@ export function InvoicesPage() {
   const [generateLoading, setGenerateLoading] = useState(false)
   const [generateResult, setGenerateResult] = useState<{ generated: number; skipped: number; total: number } | null>(null)
   const [statusActionLoading, setStatusActionLoading] = useState<string | null>(null)
+  const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
   const [paymentRequestOpen, setPaymentRequestOpen] = useState(false)
   const [paymentRequestLoading, setPaymentRequestLoading] = useState(false)
   const [paymentActionLoading, setPaymentActionLoading] = useState<string | null>(null)
@@ -363,24 +365,21 @@ export function InvoicesPage() {
     }
   }, [drawerMode, editingId, form, loadData])
 
-  const onDelete = useCallback((id: string) => {
-    Modal.confirm({
-      title: 'Delete this invoice?',
-      content: 'This permanently removes the draft invoice and its line items. This action cannot be undone.',
-      okText: 'Delete',
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          await deleteInvoice(id)
-          message.success('Invoice deleted.')
-          await loadData()
-        } catch (error) {
-          message.error(getUserErrorMessage(error, 'Khong the xoa hoa don.'))
-          throw error
-        }
-      },
-    })
-  }, [loadData])
+  const confirmDelete = useCallback(async () => {
+    if (!deletingInvoiceId) return
+
+    setDeleteLoading(true)
+    try {
+      await deleteInvoice(deletingInvoiceId)
+      setDeletingInvoiceId(null)
+      message.success('Invoice deleted.')
+      await loadData()
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Unable to delete the invoice.'))
+    } finally {
+      setDeleteLoading(false)
+    }
+  }, [deletingInvoiceId, loadData])
 
   const openGenerate = useCallback(() => {
     setGenerateResult(null)
@@ -559,11 +558,9 @@ export function InvoicesPage() {
         <Space size={4}>
           <Button size="small" icon={<EyeOutlined />} onClick={() => void openDetail(row.id)} />
           <Button size="small" icon={<EditOutlined />} onClick={() => void openEdit(row.id)} />
-          {row.status === 'DRAFT' ? (
-            <Tooltip title="Delete draft invoice">
-              <Button size="small" danger icon={<DeleteOutlined />} aria-label="Delete draft invoice" onClick={() => onDelete(row.id)} />
-            </Tooltip>
-          ) : null}
+          <Tooltip title="Delete invoice">
+            <Button size="small" danger icon={<DeleteOutlined />} aria-label="Delete invoice" onClick={() => setDeletingInvoiceId(row.id)} />
+          </Tooltip>
         </Space>
       ),
     },
@@ -766,6 +763,23 @@ export function InvoicesPage() {
           </Space>
         )}
       </Drawer>
+
+      <Modal
+        open={Boolean(deletingInvoiceId)}
+        title="Delete this invoice?"
+        okText="Delete"
+        okButtonProps={{ danger: true }}
+        cancelButtonProps={{ disabled: deleteLoading }}
+        confirmLoading={deleteLoading}
+        closable={!deleteLoading}
+        maskClosable={!deleteLoading}
+        onOk={() => void confirmDelete()}
+        onCancel={() => setDeletingInvoiceId(null)}
+      >
+        <Typography.Text>
+          This permanently removes the invoice, its line items, and all related payment records. This action cannot be undone.
+        </Typography.Text>
+      </Modal>
 
       <Modal
         open={adjustmentOpen}

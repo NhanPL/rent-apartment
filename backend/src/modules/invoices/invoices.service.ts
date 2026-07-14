@@ -650,20 +650,22 @@ export const updateManualInvoice = async (invoiceId: string, payload: InvoiceUps
 export const deleteManualInvoice = async (invoiceId: string, managerId: string) =>
   withTransaction(async (client) => {
     const invoice = await getScopedInvoiceForManager(client, invoiceId, managerId);
-    if (invoice.status !== 'DRAFT') {
-      throw new AppError(409, 'Only draft invoices can be deleted', 'INVOICE_NOT_DRAFT');
-    }
 
-    const blocking = await client.query(
-      `SELECT id FROM payment WHERE invoice_id=$1
-       UNION ALL
-       SELECT id FROM payment_request WHERE invoice_id=$1
-       LIMIT 1`,
-      [invoiceId]
-    );
-    if (blocking.rows[0]) throw new AppError(409, 'Cannot delete invoice with payment activity', 'INVOICE_HAS_PAYMENTS');
-
+    // Payments must be removed before requests because both restrict invoice deletion.
+    // Payment transactions and proofs are removed by their database cascade rules.
+    await client.query('DELETE FROM payment WHERE invoice_id=$1', [invoiceId]);
+    await client.query('DELETE FROM payment_request WHERE invoice_id=$1', [invoiceId]);
     await client.query('DELETE FROM invoice WHERE id=$1', [invoiceId]);
+
+    if (invoice.utility_reading_id) {
+      await client.query(
+        `UPDATE utility_reading ur
+         SET status='APPROVED'
+         WHERE ur.id=$1 AND ur.status='INVOICED'
+           AND NOT EXISTS (SELECT 1 FROM invoice i WHERE i.utility_reading_id=ur.id)`,
+        [invoice.utility_reading_id]
+      );
+    }
   });
 
 export const getInvoicePrefill = async (roomId: string, monthValue: string | undefined, managerId: string) => {

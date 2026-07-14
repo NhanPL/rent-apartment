@@ -549,6 +549,13 @@ class FakeDb {
       return result<T>(reading ? [reading as T] : []);
     }
 
+    if (sql.startsWith("update utility_reading ur set status='approved'")) {
+      const reading = this.utilityReadings.find((item) => item.id === params[0]);
+      const stillInvoiced = this.invoices.some((item) => item.utility_reading_id === params[0]);
+      if (reading?.status === 'INVOICED' && !stillInvoiced) reading.status = 'APPROVED';
+      return result<T>([]);
+    }
+
     if (sql.startsWith("update utility_reading set status='approved'")) {
       const reading = this.utilityReadings.find((item) => item.id === params[0]);
       if (reading) {
@@ -735,11 +742,18 @@ class FakeDb {
       return result<T>(this.invoiceAdjustments.filter((item) => item.invoice_id === params[0]) as T[]);
     }
 
-    if (sql.startsWith('select id from payment where invoice_id=$1 union all select id from payment_request where invoice_id=$1')) {
-      const payment = this.payments.find((item) => item.invoice_id === params[0]);
-      const request = this.paymentRequests.find((item) => item.invoice_id === params[0]);
-      const row = payment ?? request;
-      return result<T>(row ? [{ id: row.id } as T] : []);
+    if (sql.startsWith('delete from payment where invoice_id=$1')) {
+      this.payments = this.payments.filter((item) => item.invoice_id !== params[0]);
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('delete from payment_request where invoice_id=$1')) {
+      const requestIds = this.paymentRequests
+        .filter((item) => item.invoice_id === params[0])
+        .map((item) => item.id);
+      this.paymentProofs = this.paymentProofs.filter((item) => !requestIds.includes(item.payment_request_id));
+      this.paymentRequests = this.paymentRequests.filter((item) => item.invoice_id !== params[0]);
+      return result<T>([]);
     }
 
     if (sql.startsWith('delete from invoice where id=$1')) {
