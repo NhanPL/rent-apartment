@@ -8,6 +8,7 @@ import type {
   InvoiceGeneratePayload,
   InvoiceGenerationResult,
   InvoiceItem,
+  InvoiceIssuePaymentPayload,
   InvoiceListItem,
   InvoiceListParams,
   InvoicePrefill,
@@ -223,8 +224,8 @@ export async function generateInvoices(payload: InvoiceGeneratePayload): Promise
   }
 }
 
-export async function issueInvoice(id: string): Promise<InvoiceDetail> {
-  const row = await apiRequest<InvoiceDetailApiRow>(API_ROUTES.invoices.issue(id), { method: 'POST' })
+export async function issueInvoice(id: string, payload?: InvoiceIssuePaymentPayload): Promise<InvoiceDetail> {
+  const row = await apiRequest<InvoiceDetailApiRow>(API_ROUTES.invoices.issue(id), { method: 'POST', body: payload })
   return toInvoiceDetail(row)
 }
 

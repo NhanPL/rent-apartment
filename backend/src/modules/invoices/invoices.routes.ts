@@ -50,6 +50,13 @@ const invoiceGenerateSchema = z.object({
   building_id: z.string().uuid().optional()
 });
 
+const invoiceIssueSchema = z.object({
+  bank_code: z.string().trim().min(2).max(20).regex(/^[A-Za-z0-9]+$/).optional(),
+  bank_account_no: z.string().trim().regex(/^\d{6,19}$/).optional(),
+  bank_account_name: z.string().trim().min(2).max(100).optional(),
+  transfer_note: z.string().trim().min(1).max(25).optional()
+});
+
 router.get('/', asyncHandler(async (req, res) => {
   res.json(await listInvoices(req.auth!));
 }));
@@ -97,7 +104,8 @@ router.post('/generate/all', requireRole('MANAGER'), asyncHandler(async (req, re
 }));
 
 router.post('/:id/issue', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  res.json(await updateInvoiceStatus(req.params.id, req.auth!.userId, 'issue'));
+  const body = parseBody(invoiceIssueSchema, req.body ?? {});
+  res.json(await updateInvoiceStatus(req.params.id, req.auth!.userId, 'issue', body));
 }));
 
 router.post('/:id/void', requireRole('MANAGER'), asyncHandler(async (req, res) => {

@@ -118,6 +118,7 @@ export function TenantRoomPage() {
   const [currentPaymentRequest, setCurrentPaymentRequest] = useState<PaymentRequest | null>(null)
   const [billHistory, setBillHistory] = useState<InvoiceSummary[]>([])
   const [billDetail, setBillDetail] = useState<InvoiceDetail | null>(null)
+  const [billDetailPaymentRequest, setBillDetailPaymentRequest] = useState<PaymentRequest | null>(null)
   const [billDetailOpen, setBillDetailOpen] = useState(false)
   const [billDetailLoading, setBillDetailLoading] = useState(false)
   const [utilitySnapshot, setUtilitySnapshot] = useState<UtilityReadingSnapshot | null>(null)
@@ -348,8 +349,17 @@ export function TenantRoomPage() {
     setBillDetailOpen(true)
     setBillDetailLoading(true)
     setBillDetail(null)
+    setBillDetailPaymentRequest(null)
     try {
-      setBillDetail(await getMyInvoiceDetail(invoiceId))
+      const detail = await getMyInvoiceDetail(invoiceId)
+      setBillDetail(detail)
+      if (detail.payment_request_id) {
+        try {
+          setBillDetailPaymentRequest(await getMyPaymentRequest(detail.payment_request_id))
+        } catch {
+          setBillDetailPaymentRequest(null)
+        }
+      }
     } catch (error) {
       message.error(getUserErrorMessage(error, 'Khong tai duoc chi tiet hoa don.'))
       setBillDetailOpen(false)
@@ -438,7 +448,11 @@ export function TenantRoomPage() {
                         <Descriptions.Item label="Hạn yêu cầu">{currentPaymentRequest.expires_at ? dayjs(currentPaymentRequest.expires_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
                       </Descriptions>
                       {currentPaymentRequest.qr_image_url ? (
-                        <img src={currentPaymentRequest.qr_image_url} alt="Payment QR" style={{ maxWidth: 220, width: '100%', borderRadius: 8 }} />
+                        <img
+                          src={currentPaymentRequest.qr_image_url}
+                          alt={`VietQR payment for invoice ${dayjs(currentBill.month).format('MM/YYYY')}`}
+                          style={{ display: 'block', maxWidth: 280, width: '100%', margin: '0 auto' }}
+                        />
                       ) : currentPaymentRequest.qr_content ? (
                         <Input.TextArea value={currentPaymentRequest.qr_content} autoSize readOnly />
                       ) : null}
@@ -871,6 +885,7 @@ export function TenantRoomPage() {
         onClose={() => {
           setBillDetailOpen(false)
           setBillDetail(null)
+          setBillDetailPaymentRequest(null)
         }}
       >
         {billDetailLoading || !billDetail ? (
@@ -888,6 +903,28 @@ export function TenantRoomPage() {
               <Descriptions.Item label="Ngày thanh toán">{billDetail.paid_at ? dayjs(billDetail.paid_at).format('DD/MM/YYYY') : '-'}</Descriptions.Item>
               <Descriptions.Item label="Ghi chú" span={isMobile ? 1 : 2}>{billDetail.note ?? '-'}</Descriptions.Item>
             </Descriptions>
+            {billDetailPaymentRequest ? (
+              <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                <Typography.Title level={5} style={{ margin: 0 }}>Bank transfer</Typography.Title>
+                <Descriptions bordered size="small" column={isMobile ? 1 : 2}>
+                  <Descriptions.Item label="Amount">{currency.format(billDetailPaymentRequest.remaining_amount ?? billDetailPaymentRequest.amount)}</Descriptions.Item>
+                  <Descriptions.Item label="Status">
+                    <Tag color={paymentRequestStatusColor[billDetailPaymentRequest.status]}>{billDetailPaymentRequest.status}</Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Bank">{billDetailPaymentRequest.bank_code ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="Account number">{billDetailPaymentRequest.bank_account_no ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="Account name">{billDetailPaymentRequest.bank_account_name ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="Transfer note">{billDetailPaymentRequest.transfer_note ?? '-'}</Descriptions.Item>
+                </Descriptions>
+                {billDetailPaymentRequest.qr_image_url ? (
+                  <img
+                    src={billDetailPaymentRequest.qr_image_url}
+                    alt={`VietQR payment for invoice ${dayjs(billDetail.month).format('MM/YYYY')}`}
+                    style={{ display: 'block', maxWidth: 320, width: '100%', margin: '0 auto' }}
+                  />
+                ) : null}
+              </Space>
+            ) : null}
             <Table
               rowKey="id"
               size="small"

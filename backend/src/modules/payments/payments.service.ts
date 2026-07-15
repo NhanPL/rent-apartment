@@ -1,19 +1,12 @@
 import { query, withTransaction } from '../../db';
 import { env } from '../../config/env';
 import { AppError } from '../../shared/errors/app-error';
+import { createVietQrPaymentData } from './vietqr.service';
 
 type DbRow = Record<string, any>;
 type AuthScope = { userId: string; role: 'MANAGER' | 'TENANT' };
 
 const toNumber = (value: unknown) => Number(value ?? 0);
-
-const buildQrContent = (amount: number, transferNote: string, payload: any) =>
-  JSON.stringify({
-    bankCode: payload.bank_code ?? env.DEFAULT_BANK_CODE ?? null,
-    accountNo: payload.bank_account_no ?? env.DEFAULT_BANK_ACCOUNT_NO ?? null,
-    amount,
-    transferNote
-  });
 
 const paymentRequestSummarySelect = `
   pr.*,
@@ -101,6 +94,19 @@ export const createPaymentRequest = async (invoiceId: string, managerId: string,
     if (amount > remainingAmount) throw new AppError(400, 'Amount cannot exceed invoice remaining balance');
 
     const transferNote = payload.transfer_note ?? `INV-${invoiceId.slice(0, 8)}`;
+    const bankCode = payload.bank_code ?? env.DEFAULT_BANK_CODE;
+    const bankAccountNo = payload.bank_account_no ?? env.DEFAULT_BANK_ACCOUNT_NO;
+    const bankAccountName = payload.bank_account_name ?? env.DEFAULT_BANK_ACCOUNT_NAME;
+    if (!bankCode || !bankAccountNo || !bankAccountName) {
+      throw new AppError(400, 'Bank account information is required to create a payment request', 'BANK_ACCOUNT_REQUIRED');
+    }
+    const vietQr = createVietQrPaymentData({
+      bankCode,
+      accountNo: bankAccountNo,
+      accountName: bankAccountName,
+      amount,
+      transferNote
+    });
 
     const pr = await client.query<DbRow>(
       `INSERT INTO payment_request(invoice_id,status,amount,currency,qr_content,qr_image_url,bank_code,bank_account_no,bank_account_name,transfer_note,expires_at,sent_at,created_by_user_id)
@@ -110,12 +116,12 @@ export const createPaymentRequest = async (invoiceId: string, managerId: string,
         invoiceId,
         amount,
         payload.currency ?? 'VND',
-        buildQrContent(amount, transferNote, payload),
-        payload.qr_image_url ?? null,
-        payload.bank_code ?? env.DEFAULT_BANK_CODE ?? null,
-        payload.bank_account_no ?? env.DEFAULT_BANK_ACCOUNT_NO ?? null,
-        payload.bank_account_name ?? env.DEFAULT_BANK_ACCOUNT_NAME ?? null,
-        transferNote,
+        vietQr.qrContent,
+        vietQr.qrImageUrl,
+        bankCode.trim().toUpperCase(),
+        bankAccountNo.trim(),
+        bankAccountName.trim(),
+        vietQr.normalizedTransferNote,
         payload.expires_at ?? null,
         managerId
       ]

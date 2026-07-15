@@ -804,14 +804,14 @@ class FakeDb {
         amount: params[1],
         currency: issuedByInvoice ? 'VND' : params[2],
         qr_content: issuedByInvoice ? params[2] : params[3],
-        qr_image_url: issuedByInvoice ? null : params[4] ?? null,
-        bank_code: issuedByInvoice ? params[3] ?? null : params[5] ?? null,
-        bank_account_no: issuedByInvoice ? params[4] ?? null : params[6] ?? null,
-        bank_account_name: issuedByInvoice ? params[5] ?? null : params[7] ?? null,
-        transfer_note: issuedByInvoice ? params[6] : params[8],
+        qr_image_url: issuedByInvoice ? params[3] : params[4] ?? null,
+        bank_code: issuedByInvoice ? params[4] ?? null : params[5] ?? null,
+        bank_account_no: issuedByInvoice ? params[5] ?? null : params[6] ?? null,
+        bank_account_name: issuedByInvoice ? params[6] ?? null : params[7] ?? null,
+        transfer_note: issuedByInvoice ? params[7] : params[8],
         expires_at: issuedByInvoice ? null : params[9] ?? null,
         sent_at: now,
-        created_by_user_id: issuedByInvoice ? params[7] : params[10],
+        created_by_user_id: issuedByInvoice ? params[8] : params[10],
         created_at: now
       };
       this.paymentRequests.push(row);

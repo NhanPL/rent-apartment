@@ -1,10 +1,10 @@
-import { CheckCircleOutlined, EyeOutlined, FileAddOutlined, ReloadOutlined, SendOutlined, ThunderboltOutlined } from '@ant-design/icons'
+import { CheckCircleOutlined, FileAddOutlined, ReloadOutlined, SendOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { Button, Empty, Select, Space, Table, Tag, Typography, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { listBuildings } from '../../services/invoicesService'
-import { generateMonthlyInvoice, issueMonthlyInvoice, listMonthlyBilling, type MonthlyBillingAction, type MonthlyBillingItem } from '../../services/monthlyBillingService'
+import { generateMonthlyInvoice, listMonthlyBilling, type MonthlyBillingAction, type MonthlyBillingItem } from '../../services/monthlyBillingService'
 import { getUserErrorMessage } from '../../services/errorMessage'
 import './MonthlyBillingPage.css'
 
@@ -53,17 +53,6 @@ export function MonthlyBillingPage() {
     finally { setActionId(undefined) }
   }, [load, month])
 
-  const issue = useCallback(async (row: MonthlyBillingItem) => {
-    if (!row.invoice_id) return
-    setActionId(row.invoice_id)
-    try {
-      await issueMonthlyInvoice(row.invoice_id)
-      message.success('Invoice issued and payment request created.')
-      await load()
-    } catch (error) { message.error(getUserErrorMessage(error, 'Unable to issue the invoice.')) }
-    finally { setActionId(undefined) }
-  }, [load])
-
   const columns = useMemo<ColumnsType<MonthlyBillingItem>>(() => [
     { title: 'Room', render: (_, row) => <Space direction="vertical" size={0}><Typography.Text strong>{row.room_code}</Typography.Text><Typography.Text type="secondary">{row.building_name}</Typography.Text></Space> },
     { title: 'Primary tenant', dataIndex: 'primary_tenant', render: (value) => value ?? '-' },
@@ -73,8 +62,8 @@ export function MonthlyBillingPage() {
     { title: 'Paid', dataIndex: 'paid_amount', align: 'right', render: (value) => currency.format(value) },
     { title: 'Outstanding', dataIndex: 'outstanding_amount', align: 'right', render: (value) => currency.format(value) },
     { title: 'Next action', dataIndex: 'next_action', render: (value: MonthlyBillingAction) => <Tag color={value === 'PAID' ? 'green' : 'processing'}>{actionLabels[value]}</Tag> },
-    { title: '', fixed: 'right', width: 180, render: (_, row) => row.next_action === 'REVIEW_DRAFT' ? <Space><Button icon={<EyeOutlined />} onClick={() => navigate(`/invoices?invoiceId=${encodeURIComponent(row.invoice_id ?? '')}`)} /><Button type="primary" icon={<SendOutlined />} loading={actionId === row.invoice_id} onClick={() => void issue(row)}>Issue</Button></Space> : <Button type={row.next_action === 'GENERATE_INVOICE' ? 'primary' : 'default'} icon={row.next_action === 'GENERATE_INVOICE' ? <FileAddOutlined /> : row.next_action === 'PAID' ? <CheckCircleOutlined /> : <ThunderboltOutlined />} loading={actionId === row.room_id} onClick={() => void runAction(row)}>{actionLabels[row.next_action]}</Button> },
-  ], [actionId, issue, runAction])
+    { title: '', fixed: 'right', width: 180, render: (_, row) => row.next_action === 'REVIEW_DRAFT' ? <Button type="primary" icon={<SendOutlined />} onClick={() => navigate(`/invoices?invoiceId=${encodeURIComponent(row.invoice_id ?? '')}`)}>Review & issue</Button> : <Button type={row.next_action === 'GENERATE_INVOICE' ? 'primary' : 'default'} icon={row.next_action === 'GENERATE_INVOICE' ? <FileAddOutlined /> : row.next_action === 'PAID' ? <CheckCircleOutlined /> : <ThunderboltOutlined />} loading={actionId === row.room_id} onClick={() => void runAction(row)}>{actionLabels[row.next_action]}</Button> },
+  ], [actionId, runAction])
 
   return <Space direction="vertical" size={16} className="monthly-billing-page">
     <div className="monthly-billing-toolbar"><div><Typography.Title level={3}>Monthly billing</Typography.Title><Typography.Text type="secondary">Close the billing cycle from readings through payment reconciliation.</Typography.Text></div><Button icon={<ReloadOutlined />} loading={loading} onClick={() => void load()}>Reload</Button></div>

@@ -33,6 +33,8 @@ const envSchema = z.object({
   DEFAULT_BANK_CODE: z.string().optional(),
   DEFAULT_BANK_ACCOUNT_NO: z.string().optional(),
   DEFAULT_BANK_ACCOUNT_NAME: z.string().optional(),
+  VIETQR_IMAGE_BASE_URL: z.string().trim().url().default('https://img.vietqr.io/image'),
+  VIETQR_TEMPLATE: z.string().trim().min(1).default('compact2'),
   CLOUDINARY_CLOUD_NAME: z.string().trim().optional(),
   CLOUDINARY_API_KEY: z.string().trim().optional(),
   CLOUDINARY_API_SECRET: z.string().trim().optional(),

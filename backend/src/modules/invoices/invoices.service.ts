@@ -3,6 +3,7 @@ import { AppError } from '../../shared/errors/app-error';
 import { firstDayOfMonth } from '../../shared/utils/date';
 import { resolveFixedChargesForContract, type ResolvedFixedCharge } from '../fixed-charges/fixed-charges.service';
 import { env } from '../../config/env';
+import { createVietQrPaymentData } from '../payments/vietqr.service';
 
 type DbRow = Record<string, any>;
 type AuthScope = { userId: string; role: 'MANAGER' | 'TENANT' };
@@ -32,6 +33,13 @@ export interface InvoiceGeneratePayload {
   month: string;
   room_id?: string;
   building_id?: string;
+}
+
+export interface InvoiceIssuePaymentPayload {
+  bank_code?: string;
+  bank_account_no?: string;
+  bank_account_name?: string;
+  transfer_note?: string;
 }
 
 const calc = (q: number, p: number) => Number((q * p).toFixed(2));
@@ -363,15 +371,16 @@ export const generateInvoicesForScope = async (payload: InvoiceGeneratePayload, 
   });
 };
 
-export const updateInvoiceStatus = async (invoiceId: string, managerId: string, action: 'issue' | 'void' | 'mark-overdue') => {
+export const updateInvoiceStatus = async (
+  invoiceId: string,
+  managerId: string,
+  action: 'issue' | 'void' | 'mark-overdue',
+  issuePayment?: InvoiceIssuePaymentPayload
+) => {
   const updatedId = await withTransaction(async (client) => {
     const invoice = await getScopedInvoiceForManager(client, invoiceId, managerId);
     if (action === 'issue') {
       if (invoice.status !== 'DRAFT') throw new AppError(409, 'Only draft invoices can be issued', 'INVOICE_NOT_DRAFT');
-      await client.query(`UPDATE invoice SET status='ISSUED', issued_at=now(), approved_by_user_id=$2, approved_at=now() WHERE id=$1`, [invoiceId, managerId]);
-      if (invoice.utility_reading_id) {
-        await client.query(`UPDATE utility_reading SET status='INVOICED' WHERE id=$1 AND status='APPROVED'`, [invoice.utility_reading_id]);
-      }
       const existingRequest = await client.query(
         `SELECT id FROM payment_request WHERE invoice_id=$1 AND status NOT IN ('CANCELLED','EXPIRED') LIMIT 1`,
         [invoiceId]
@@ -383,18 +392,39 @@ export const updateInvoiceStatus = async (invoiceId: string, managerId: string, 
         );
         const amount = Math.max(0, toNumber(invoice.total) - toNumber(paid.rows[0]?.paid_amount));
         if (amount <= 0) throw new AppError(409, 'Invoice is already fully paid', 'INVOICE_PAID');
-        const transferNote = `INV-${invoiceId.slice(0, 8)}`;
-        const qrContent = JSON.stringify({
-          bankCode: env.DEFAULT_BANK_CODE ?? null,
-          accountNo: env.DEFAULT_BANK_ACCOUNT_NO ?? null,
+        const bankCode = issuePayment?.bank_code ?? env.DEFAULT_BANK_CODE;
+        const bankAccountNo = issuePayment?.bank_account_no ?? env.DEFAULT_BANK_ACCOUNT_NO;
+        const bankAccountName = issuePayment?.bank_account_name ?? env.DEFAULT_BANK_ACCOUNT_NAME;
+        if (!bankCode || !bankAccountNo || !bankAccountName) {
+          throw new AppError(400, 'Bank account information is required to issue an invoice', 'BANK_ACCOUNT_REQUIRED');
+        }
+
+        const vietQr = createVietQrPaymentData({
+          bankCode,
+          accountNo: bankAccountNo,
+          accountName: bankAccountName,
           amount,
-          transferNote
+          transferNote: issuePayment?.transfer_note ?? `INV ${invoiceId.slice(0, 8)}`
         });
         await client.query(
-          `INSERT INTO payment_request(invoice_id,status,amount,currency,qr_content,bank_code,bank_account_no,bank_account_name,transfer_note,sent_at,created_by_user_id)
-           VALUES($1,'WAITING_TRANSFER',$2,'VND',$3,$4,$5,$6,$7,now(),$8)`,
-          [invoiceId, amount, qrContent, env.DEFAULT_BANK_CODE ?? null, env.DEFAULT_BANK_ACCOUNT_NO ?? null, env.DEFAULT_BANK_ACCOUNT_NAME ?? null, transferNote, managerId]
+          `INSERT INTO payment_request(invoice_id,status,amount,currency,qr_content,qr_image_url,bank_code,bank_account_no,bank_account_name,transfer_note,sent_at,created_by_user_id)
+           VALUES($1,'WAITING_TRANSFER',$2,'VND',$3,$4,$5,$6,$7,$8,now(),$9)`,
+          [
+            invoiceId,
+            amount,
+            vietQr.qrContent,
+            vietQr.qrImageUrl,
+            bankCode.trim().toUpperCase(),
+            bankAccountNo.trim(),
+            bankAccountName.trim(),
+            vietQr.normalizedTransferNote,
+            managerId
+          ]
         );
+      }
+      await client.query(`UPDATE invoice SET status='ISSUED', issued_at=now(), approved_by_user_id=$2, approved_at=now() WHERE id=$1`, [invoiceId, managerId]);
+      if (invoice.utility_reading_id) {
+        await client.query(`UPDATE utility_reading SET status='INVOICED' WHERE id=$1 AND status='APPROVED'`, [invoice.utility_reading_id]);
       }
     } else if (action === 'void') {
       if (invoice.status === 'PAID') throw new AppError(409, 'Paid invoice cannot be voided', 'INVOICE_PAID');

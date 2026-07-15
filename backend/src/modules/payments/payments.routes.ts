@@ -21,7 +21,6 @@ const paymentRequestSchema = z.object({
   invoice_id: z.string().uuid(),
   amount: z.coerce.number().positive().nullable().optional(),
   currency: z.string().trim().min(1).optional(),
-  qr_image_url: z.string().trim().nullable().optional(),
   bank_code: z.string().trim().nullable().optional(),
   bank_account_no: z.string().trim().nullable().optional(),
   bank_account_name: z.string().trim().nullable().optional(),

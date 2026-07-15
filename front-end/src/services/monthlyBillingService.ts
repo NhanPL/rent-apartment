@@ -1,7 +1,7 @@
 import dayjs from 'dayjs'
 import { apiRequest } from './apiClient'
 import { API_ROUTES } from './apiRoutes'
-import { generateInvoices, issueInvoice } from './invoicesService'
+import { generateInvoices } from './invoicesService'
 
 export type MonthlyBillingAction = 'ENTER_READING' | 'REVIEW_READING' | 'CORRECT_READING' | 'GENERATE_INVOICE' | 'REVIEW_DRAFT' | 'WAITING_PAYMENT' | 'RECONCILE_PAYMENT' | 'PAID'
 
@@ -37,4 +37,3 @@ export async function listMonthlyBilling(buildingId: string | undefined, month: 
 }
 
 export const generateMonthlyInvoice = (roomId: string, month: string) => generateInvoices({ scope: 'room', room_id: roomId, month })
-export const issueMonthlyInvoice = (invoiceId: string) => issueInvoice(invoiceId)

@@ -74,7 +74,6 @@ export interface PaymentRequestPayload {
   invoice_id: string
   amount?: number | null
   currency?: string
-  qr_image_url?: string | null
   bank_code?: string | null
   bank_account_no?: string | null
   bank_account_name?: string | null

@@ -4,6 +4,7 @@ import {
   EditOutlined,
   EyeOutlined,
   PlusOutlined,
+  QrcodeOutlined,
   ReloadOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons'
@@ -114,11 +115,61 @@ interface PaymentRequestFormValues {
   bank_account_no?: string
   bank_account_name?: string
   transfer_note?: string
-  qr_image_url?: string
   expires_at?: string
 }
 
 interface AdjustmentFormValues { amount: number; reason: string }
+
+interface IssueInvoiceFormValues {
+  bank_code: string
+  bank_account_no: string
+  bank_account_name: string
+  transfer_note: string
+}
+
+function VietQrBankFields() {
+  return (
+    <>
+      <Form.Item
+        name="bank_code"
+        label="Bank code or BIN"
+        rules={[
+          { required: true, whitespace: true, message: 'Please enter the receiving bank code.' },
+          { pattern: /^[A-Za-z0-9]{2,20}$/, message: 'Use a VietQR bank code or bank BIN.' },
+        ]}
+      >
+        <Input placeholder="970436 or VCB" maxLength={20} />
+      </Form.Item>
+      <Form.Item
+        name="bank_account_no"
+        label="Bank account number"
+        rules={[
+          { required: true, whitespace: true, message: 'Please enter the bank account number.' },
+          { pattern: /^\d{6,19}$/, message: 'The account number must contain 6 to 19 digits.' },
+        ]}
+      >
+        <Input inputMode="numeric" maxLength={19} />
+      </Form.Item>
+      <Form.Item
+        name="bank_account_name"
+        label="Bank account name"
+        rules={[{ required: true, whitespace: true, message: 'Please enter the bank account name.' }]}
+      >
+        <Input maxLength={100} />
+      </Form.Item>
+      <Form.Item
+        name="transfer_note"
+        label="Transfer note"
+        rules={[
+          { required: true, whitespace: true, message: 'Please enter the transfer note.' },
+          { max: 25, message: 'The transfer note must not exceed 25 characters.' },
+        ]}
+      >
+        <Input maxLength={25} showCount />
+      </Form.Item>
+    </>
+  )
+}
 
 export function InvoicesPage() {
   const screens = Grid.useBreakpoint()
@@ -127,6 +178,7 @@ export function InvoicesPage() {
   const [generateForm] = Form.useForm<{ scope: InvoiceGenerateScope; month: string; building_id?: string; room_id?: string }>()
   const [paymentRequestForm] = Form.useForm<PaymentRequestFormValues>()
   const [adjustmentForm] = Form.useForm<AdjustmentFormValues>()
+  const [issueForm] = Form.useForm<IssueInvoiceFormValues>()
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -170,6 +222,8 @@ export function InvoicesPage() {
   const [paymentActionLoading, setPaymentActionLoading] = useState<string | null>(null)
   const [adjustmentOpen, setAdjustmentOpen] = useState(false)
   const [adjustmentLoading, setAdjustmentLoading] = useState(false)
+  const [issueOpen, setIssueOpen] = useState(false)
+  const [issueLoading, setIssueLoading] = useState(false)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearch(searchInput), 300)
@@ -501,16 +555,14 @@ export function InvoicesPage() {
     }
   }, [generateForm, loadData])
 
-  const runStatusAction = useCallback(async (action: 'issue' | 'void' | 'overdue') => {
+  const runStatusAction = useCallback(async (action: 'void' | 'overdue') => {
     if (!detailItem) return
     setStatusActionLoading(action)
     try {
       const updated =
-        action === 'issue'
-          ? await issueInvoice(detailItem.id)
-          : action === 'void'
-            ? await voidInvoice(detailItem.id)
-            : await markInvoiceOverdue(detailItem.id)
+        action === 'void'
+          ? await voidInvoice(detailItem.id)
+          : await markInvoiceOverdue(detailItem.id)
       setDetailItem(updated)
       await loadData()
       message.success('Invoice status updated.')
@@ -542,6 +594,43 @@ export function InvoicesPage() {
     if (!detailItem) return 0
     return Math.max(0, detailItem.total - detailItem.paid_amount)
   }, [detailItem])
+
+  const openIssueModal = useCallback(() => {
+    if (!detailItem) return
+    issueForm.resetFields()
+    issueForm.setFieldsValue({
+      transfer_note: `INV ${detailItem.id.slice(0, 8)}`,
+    })
+    setIssueOpen(true)
+  }, [detailItem, issueForm])
+
+  const onIssueInvoice = useCallback(async () => {
+    if (!detailItem) return
+
+    try {
+      const values = await issueForm.validateFields()
+      setIssueLoading(true)
+      const updated = await issueInvoice(detailItem.id, {
+        bank_code: values.bank_code.trim(),
+        bank_account_no: values.bank_account_no.trim(),
+        bank_account_name: values.bank_account_name.trim(),
+        transfer_note: values.transfer_note.trim(),
+      })
+      const paymentRequest = await getPaymentRequestByInvoice(detailItem.id)
+      setDetailItem(updated)
+      setDetailPaymentRequest(paymentRequest)
+      setIssueOpen(false)
+      await loadData()
+      message.success('Invoice issued and VietQR payment request created.')
+    } catch (error) {
+      const formError = error as { errorFields?: unknown[] }
+      if (!formError.errorFields) {
+        message.error(getUserErrorMessage(error, 'Unable to issue the invoice and create its VietQR payment request.'))
+      }
+    } finally {
+      setIssueLoading(false)
+    }
+  }, [detailItem, issueForm, loadData])
 
   const paymentRequestIsClosed = !detailPaymentRequest || ['CANCELLED', 'EXPIRED'].includes(detailPaymentRequest.status)
 
@@ -580,7 +669,6 @@ export function InvoicesPage() {
         bank_account_no: values.bank_account_no?.trim() || null,
         bank_account_name: values.bank_account_name?.trim() || null,
         transfer_note: values.transfer_note?.trim() || null,
-        qr_image_url: values.qr_image_url?.trim() || null,
         expires_at: values.expires_at ? dayjs(values.expires_at).toISOString() : null,
       })
       setDetailPaymentRequest(request)
@@ -647,7 +735,7 @@ export function InvoicesPage() {
       width: 130,
       render: (_, row) => (
         <Space size={4}>
-          <Button size="small" icon={<EyeOutlined />} onClick={() => void openDetail(row.id)} />
+          <Button size="small" icon={<EyeOutlined />} aria-label="View invoice" onClick={() => void openDetail(row.id)} />
           <Button size="small" icon={<EditOutlined />} onClick={() => void openEdit(row.id)} />
           <Tooltip title="Delete invoice">
             <Button size="small" danger icon={<DeleteOutlined />} aria-label="Delete invoice" onClick={() => setDeletingInvoiceId(row.id)} />
@@ -749,7 +837,7 @@ export function InvoicesPage() {
                 <Typography.Text type="secondary">{dayjs(detailItem.month).format('MM/YYYY')}</Typography.Text>
               </Space>
               <Space wrap>
-                {detailItem.status === 'DRAFT' ? <Button type="primary" loading={statusActionLoading === 'issue'} onClick={() => void runStatusAction('issue')}>Issue and create QR</Button> : null}
+                {detailItem.status === 'DRAFT' ? <Button type="primary" icon={<QrcodeOutlined />} onClick={openIssueModal}>Issue and create QR</Button> : null}
                 {detailItem.status === 'DRAFT' ? <Button icon={<PlusOutlined />} onClick={() => setAdjustmentOpen(true)}>Adjustment</Button> : null}
                 <Button loading={statusActionLoading === 'overdue'} disabled={detailItem.status !== 'ISSUED'} onClick={() => void runStatusAction('overdue')}>Mark overdue</Button>
                 <Button danger loading={statusActionLoading === 'void'} disabled={detailItem.status === 'PAID' || detailItem.status === 'VOID'} onClick={() => void runStatusAction('void')}>Void</Button>
@@ -823,6 +911,13 @@ export function InvoicesPage() {
                     <Descriptions.Item label="Expires at">{detailPaymentRequest.expires_at ? dayjs(detailPaymentRequest.expires_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
                     <Descriptions.Item label="Sent at">{detailPaymentRequest.sent_at ? dayjs(detailPaymentRequest.sent_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
                   </Descriptions>
+                  {detailPaymentRequest.qr_image_url ? (
+                    <img
+                      src={detailPaymentRequest.qr_image_url}
+                      alt="VietQR bank transfer"
+                      style={{ display: 'block', width: '100%', maxWidth: 280, margin: '0 auto' }}
+                    />
+                  ) : null}
                   {!['VERIFIED', 'CANCELLED', 'EXPIRED'].includes(detailPaymentRequest.status) ? (
                     <Space>
                       <Button danger loading={paymentActionLoading === 'cancel'} onClick={() => void runPaymentRequestAction('cancel')}>Cancel request</Button>
@@ -876,6 +971,25 @@ export function InvoicesPage() {
       </Modal>
 
       <Modal
+        open={issueOpen}
+        title="Issue invoice and create VietQR"
+        okText="Issue invoice"
+        confirmLoading={issueLoading}
+        closable={!issueLoading}
+        maskClosable={!issueLoading}
+        onOk={() => void onIssueInvoice()}
+        onCancel={() => setIssueOpen(false)}
+        destroyOnHidden
+      >
+        <Form form={issueForm} layout="vertical">
+          <Form.Item label="Transfer amount">
+            <Input value={currency.format(paymentRemainingAmount)} disabled />
+          </Form.Item>
+          <VietQrBankFields />
+        </Form>
+      </Modal>
+
+      <Modal
         open={adjustmentOpen}
         title="Add draft adjustment"
         okText="Add adjustment"
@@ -905,21 +1019,7 @@ export function InvoicesPage() {
           <Form.Item name="amount" label="Amount" rules={[{ required: true, type: 'number', min: 1, message: 'Please enter amount' }]}>
             <InputNumber min={1} max={paymentRemainingAmount || undefined} precision={0} style={{ width: '100%' }} formatter={(value) => `${value ?? ''}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')} parser={(value) => Number(value?.replace(/\D/g, '') || 0)} />
           </Form.Item>
-          <Form.Item name="bank_code" label="Bank code">
-            <Input placeholder="VCB, ACB, TCB..." />
-          </Form.Item>
-          <Form.Item name="bank_account_no" label="Bank account number">
-            <Input />
-          </Form.Item>
-          <Form.Item name="bank_account_name" label="Bank account name">
-            <Input />
-          </Form.Item>
-          <Form.Item name="transfer_note" label="Transfer note">
-            <Input />
-          </Form.Item>
-          <Form.Item name="qr_image_url" label="QR image URL">
-            <Input placeholder="https://..." />
-          </Form.Item>
+          <VietQrBankFields />
           <Form.Item name="expires_at" label="Expires at">
             <Input type="datetime-local" />
           </Form.Item>

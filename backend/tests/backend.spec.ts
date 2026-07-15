@@ -32,6 +32,12 @@ import { app } from '../src/app';
 import { fakeDb, ids } from './support/mock-db';
 
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
+const issueBankPayload = {
+  bank_code: '970436',
+  bank_account_no: '1234567890',
+  bank_account_name: 'RentMate Manager',
+  transfer_note: 'INV TEST'
+};
 
 const login = async (identifier: string) => {
   const response = await request(app)
@@ -613,16 +619,28 @@ describe('backend API smoke tests', () => {
       'WATER'
     ]);
 
-    const issued = await request(app)
+    const missingBank = await request(app)
       .post(`/api/invoices/${generated.body.generated[0].id}/issue`)
       .set(auth(managerSession.accessToken));
+    expect(missingBank.status, JSON.stringify(missingBank.body)).toBe(400);
+    expect(missingBank.body).toMatchObject({ code: 'BANK_ACCOUNT_REQUIRED' });
+    expect(fakeDb.invoices.find((invoice) => invoice.id === generated.body.generated[0].id)).toMatchObject({ status: 'DRAFT' });
+
+    const issued = await request(app)
+      .post(`/api/invoices/${generated.body.generated[0].id}/issue`)
+      .set(auth(managerSession.accessToken))
+      .send(issueBankPayload);
     expect(issued.status, JSON.stringify(issued.body)).toBe(200);
 
     expect(fakeDb.utilityReadings.find((reading) => reading.id === ids.readingApproved)).toMatchObject({ status: 'INVOICED' });
     expect(fakeDb.paymentRequests.find((item) => item.invoice_id === generated.body.generated[0].id)).toMatchObject({
       status: 'WAITING_TRANSFER',
-      amount: 1120
+      amount: 1120,
+      bank_code: issueBankPayload.bank_code,
+      bank_account_no: issueBankPayload.bank_account_no,
+      qr_image_url: expect.stringContaining('https://img.vietqr.io/image/970436-1234567890-compact2.png')
     });
+
   });
 
   it('deletes paid invoices together with their payment data', async () => {
@@ -639,6 +657,7 @@ describe('backend API smoke tests', () => {
     await request(app)
       .post(`/api/invoices/${invoiceId}/issue`)
       .set(auth(managerSession.accessToken))
+      .send(issueBankPayload)
       .expect(200);
 
     const paymentRequest = fakeDb.paymentRequests.find((item) => item.invoice_id === invoiceId)!;
@@ -679,13 +698,14 @@ describe('backend API smoke tests', () => {
     const requestResponse = await request(app)
       .post('/api/payments/requests')
       .set(auth(managerSession.accessToken))
-      .send({ invoice_id: ids.invoiceIssued })
+      .send({ invoice_id: ids.invoiceIssued, ...issueBankPayload })
       .expect(201);
 
     expect(requestResponse.body).toMatchObject({
       invoice_id: ids.invoiceIssued,
       status: 'WAITING_TRANSFER',
-      amount: 1200
+      amount: 1200,
+      qr_image_url: expect.stringContaining('https://img.vietqr.io/image/970436-1234567890-compact2.png')
     });
 
     const rejectedProof = await request(app)

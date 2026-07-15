@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const invoiceServiceMocks = vi.hoisted(() => ({
   deleteInvoice: vi.fn(),
   getEffectiveUtilityRate: vi.fn(),
+  getInvoice: vi.fn(),
   getInvoicePrefill: vi.fn(),
   getInvoicesSummary: vi.fn(),
   listBuildings: vi.fn(),
@@ -12,10 +13,15 @@ const invoiceServiceMocks = vi.hoisted(() => ({
   listInvoices: vi.fn(),
   listRooms: vi.fn(),
   listTenants: vi.fn(),
+  issueInvoice: vi.fn(),
 }))
 
 const utilityServiceMocks = vi.hoisted(() => ({
   getUtilityReading: vi.fn(),
+}))
+
+const paymentServiceMocks = vi.hoisted(() => ({
+  getPaymentRequestByInvoice: vi.fn(),
 }))
 
 vi.mock('../../services/invoicesService', () => ({
@@ -23,11 +29,11 @@ vi.mock('../../services/invoicesService', () => ({
   createInvoice: vi.fn(),
   deleteInvoice: invoiceServiceMocks.deleteInvoice,
   generateInvoices: vi.fn(),
-  getInvoice: vi.fn(),
+  getInvoice: invoiceServiceMocks.getInvoice,
   getEffectiveUtilityRate: invoiceServiceMocks.getEffectiveUtilityRate,
   getInvoicePrefill: invoiceServiceMocks.getInvoicePrefill,
   getInvoicesSummary: invoiceServiceMocks.getInvoicesSummary,
-  issueInvoice: vi.fn(),
+  issueInvoice: invoiceServiceMocks.issueInvoice,
   listBuildings: invoiceServiceMocks.listBuildings,
   listContracts: invoiceServiceMocks.listContracts,
   listInvoices: invoiceServiceMocks.listInvoices,
@@ -46,7 +52,7 @@ vi.mock('../../services/paymentsService', () => ({
   cancelPaymentRequest: vi.fn(),
   createPaymentRequest: vi.fn(),
   expirePaymentRequest: vi.fn(),
-  getPaymentRequestByInvoice: vi.fn(),
+  getPaymentRequestByInvoice: paymentServiceMocks.getPaymentRequestByInvoice,
 }))
 
 import { InvoicesPage } from './InvoicesPage'
@@ -103,6 +109,7 @@ describe('InvoicesPage invoice deletion', () => {
       totalRevenue: 4_000_000,
     })
     invoiceServiceMocks.deleteInvoice.mockResolvedValue(undefined)
+    paymentServiceMocks.getPaymentRequestByInvoice.mockResolvedValue(null)
     invoiceServiceMocks.getEffectiveUtilityRate.mockResolvedValue({
       electricity_unit_price: 3_500,
       water_unit_price: 15_000,
@@ -183,5 +190,65 @@ describe('InvoicesPage invoice deletion', () => {
     expect(screen.getByLabelText('Billing month')).toHaveValue('2026-07-01')
     expect(screen.getByLabelText('Current electric reading')).toBeDisabled()
     expect(window.location.search).toBe('')
+  })
+
+  it('collects bank details and shows the generated VietQR after issuing', async () => {
+    const user = userEvent.setup()
+    const draftInvoice = {
+      ...invoice,
+      status: 'DRAFT',
+      payment_status: null,
+      issued_at: null,
+      paid_at: null,
+      paid_amount: 0,
+      items: [],
+      adjustments: [],
+    }
+    const issuedInvoice = { ...draftInvoice, status: 'ISSUED', issued_at: '2026-07-15T00:00:00.000Z' }
+    const paymentRequest = {
+      id: '00000000-0000-4000-8000-000000000951',
+      invoice_id: invoice.id,
+      status: 'WAITING_TRANSFER',
+      amount: invoice.total,
+      currency: 'VND',
+      qr_content: '{}',
+      qr_image_url: 'https://img.vietqr.io/image/970436-1234567890-compact2.png?amount=4000000',
+      bank_code: '970436',
+      bank_account_no: '1234567890',
+      bank_account_name: 'RentMate Manager',
+      transfer_note: `INV ${invoice.id.slice(0, 8)}`,
+      expires_at: null,
+      sent_at: '2026-07-15T00:00:00.000Z',
+      created_at: '2026-07-15T00:00:00.000Z',
+      updated_at: '2026-07-15T00:00:00.000Z',
+      paid_amount: 0,
+      remaining_amount: invoice.total,
+      proofs: [],
+    }
+    invoiceServiceMocks.getInvoice.mockResolvedValue(draftInvoice)
+    invoiceServiceMocks.issueInvoice.mockResolvedValue(issuedInvoice)
+    paymentServiceMocks.getPaymentRequestByInvoice
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(paymentRequest)
+
+    render(<InvoicesPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'View invoice' }))
+    await user.click(await screen.findByRole('button', { name: /issue and create qr/i }))
+
+    const dialogTitle = await screen.findByText('Issue invoice and create VietQR')
+    const dialog = dialogTitle.closest('.ant-modal') as HTMLElement
+    await user.type(within(dialog).getByLabelText('Bank code or BIN'), '970436')
+    await user.type(within(dialog).getByLabelText('Bank account number'), '1234567890')
+    await user.type(within(dialog).getByLabelText('Bank account name'), 'RentMate Manager')
+    await user.click(within(dialog).getByRole('button', { name: 'Issue invoice' }))
+
+    await waitFor(() => expect(invoiceServiceMocks.issueInvoice).toHaveBeenCalledWith(invoice.id, {
+      bank_code: '970436',
+      bank_account_no: '1234567890',
+      bank_account_name: 'RentMate Manager',
+      transfer_note: `INV ${invoice.id.slice(0, 8)}`,
+    }))
+    expect(await screen.findByAltText('VietQR bank transfer')).toHaveAttribute('src', paymentRequest.qr_image_url)
   })
 })
