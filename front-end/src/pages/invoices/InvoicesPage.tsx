@@ -23,6 +23,7 @@ import {
   Select,
   Skeleton,
   Space,
+  Spin,
   Statistic,
   Table,
   Tag,
@@ -32,12 +33,13 @@ import {
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   createInvoice,
   addInvoiceAdjustment,
   deleteInvoice,
   getInvoice,
+  getInvoicePrefill,
   getInvoicesSummary,
   generateInvoices,
   issueInvoice,
@@ -51,6 +53,7 @@ import {
   voidInvoice,
 } from '../../services/invoicesService'
 import { getUserErrorMessage } from '../../services/errorMessage'
+import { getUtilityReading } from '../../services/utilitiesService'
 import {
   cancelPaymentRequest,
   createPaymentRequest,
@@ -148,6 +151,9 @@ export function InvoicesPage() {
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('create')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [saveLoading, setSaveLoading] = useState(false)
+  const [utilitySourceId, setUtilitySourceId] = useState<string | null>(null)
+  const [utilityPrefillLoading, setUtilityPrefillLoading] = useState(false)
+  const utilityPrefillRequest = useRef(0)
 
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailItem, setDetailItem] = useState<InvoiceDetail | null>(null)
@@ -248,17 +254,23 @@ export function InvoicesPage() {
   }, [selectedContractId, contracts, items, tenants])
 
   const openCreate = useCallback(() => {
+    utilityPrefillRequest.current += 1
     setDrawerMode('create')
     setEditingId(null)
+    setUtilitySourceId(null)
+    setUtilityPrefillLoading(false)
     form.resetFields()
     form.setFieldsValue(getInvoiceFormDefaultValues())
     setDrawerOpen(true)
   }, [form])
 
   const openEdit = useCallback(async (id: string) => {
+    utilityPrefillRequest.current += 1
     const row = await getInvoice(id)
     setDrawerMode('edit')
     setEditingId(id)
+    setUtilitySourceId(null)
+    setUtilityPrefillLoading(false)
     form.resetFields()
     form.setFieldsValue({
       building_id: row.building_id,
@@ -280,6 +292,68 @@ export function InvoicesPage() {
       note: row.note ?? undefined,
     })
     setDrawerOpen(true)
+  }, [form])
+
+  const openCreateFromUtilityReading = useCallback(async (utilityReadingId: string) => {
+    const requestId = utilityPrefillRequest.current + 1
+    utilityPrefillRequest.current = requestId
+    setDrawerMode('create')
+    setEditingId(null)
+    setUtilitySourceId(utilityReadingId)
+    setUtilityPrefillLoading(true)
+    form.resetFields()
+    form.setFieldsValue(getInvoiceFormDefaultValues())
+    setDrawerOpen(true)
+
+    try {
+      const reading = await getUtilityReading(utilityReadingId)
+      if (utilityPrefillRequest.current !== requestId) return
+      if (reading.status !== 'APPROVED') {
+        throw new Error('Only an approved utility reading can be used to create an invoice.')
+      }
+      if (
+        reading.electricity_prev === null ||
+        reading.electricity_curr === null ||
+        reading.water_prev === null ||
+        reading.water_curr === null
+      ) {
+        throw new Error('The approved utility reading is incomplete. Please review it before creating an invoice.')
+      }
+
+      const prefill = await getInvoicePrefill(reading.room_id, reading.month)
+      if (utilityPrefillRequest.current !== requestId) return
+      if (!prefill.contract_id) {
+        throw new Error('No active contract was found for this room and billing month.')
+      }
+
+      form.setFieldsValue({
+        ...getInvoiceFormDefaultValues(),
+        building_id: prefill.building_id,
+        contract_id: prefill.contract_id,
+        room_id: reading.room_id,
+        month: dayjs(reading.month).startOf('month').format('YYYY-MM-DD'),
+        status: 'DRAFT',
+        issued_at: prefill.issued_at,
+        due_date: prefill.due_date ?? undefined,
+        rent_amount: prefill.rent_amount,
+        electricity_prev: reading.electricity_prev,
+        electricity_curr: reading.electricity_curr,
+        water_prev: reading.water_prev,
+        water_curr: reading.water_curr,
+        electric_unit_price: prefill.electric_unit_price,
+        water_unit_price: prefill.water_unit_price,
+        other_fees: prefill.other_fees,
+      })
+    } catch (error) {
+      if (utilityPrefillRequest.current !== requestId) return
+      message.error(getUserErrorMessage(error, 'Unable to prepare the invoice from this utility reading.'))
+      setDrawerOpen(false)
+      setUtilitySourceId(null)
+    } finally {
+      if (utilityPrefillRequest.current === requestId) {
+        setUtilityPrefillLoading(false)
+      }
+    }
   }, [form])
 
   const openDetail = useCallback(async (id: string, syncUrl = true) => {
@@ -304,11 +378,28 @@ export function InvoicesPage() {
   }, [])
 
   useEffect(() => {
-    const invoiceId = new URLSearchParams(window.location.search).get('invoiceId')
+    const params = new URLSearchParams(window.location.search)
+    const utilityReadingId = params.get('utilityReadingId')
+    if (utilityReadingId) {
+      params.delete('utilityReadingId')
+      const queryString = params.toString()
+      window.history.replaceState(null, '', `/invoices${queryString ? `?${queryString}` : ''}`)
+      void openCreateFromUtilityReading(utilityReadingId)
+      return
+    }
+
+    const invoiceId = params.get('invoiceId')
     if (invoiceId) {
       void openDetail(invoiceId, false)
     }
-  }, [openDetail])
+  }, [openCreateFromUtilityReading, openDetail])
+
+  const closeInvoiceDrawer = useCallback(() => {
+    utilityPrefillRequest.current += 1
+    setDrawerOpen(false)
+    setUtilitySourceId(null)
+    setUtilityPrefillLoading(false)
+  }, [])
 
   const closeDetail = useCallback(() => {
     setDetailOpen(false)
@@ -356,14 +447,14 @@ export function InvoicesPage() {
         message.success('Invoice updated successfully.')
       }
 
-      setDrawerOpen(false)
+      closeInvoiceDrawer()
       void loadData()
     } catch (error) {
       message.error(getUserErrorMessage(error, 'Khong the luu hoa don. Vui long kiem tra du lieu.'))
     } finally {
       setSaveLoading(false)
     }
-  }, [drawerMode, editingId, form, loadData])
+  }, [closeInvoiceDrawer, drawerMode, editingId, form, loadData])
 
   const confirmDelete = useCallback(async () => {
     if (!deletingInvoiceId) return
@@ -619,29 +710,32 @@ export function InvoicesPage() {
       </Card>
 
       <Drawer
-        title={drawerMode === 'create' ? 'Add invoice' : 'Edit invoice'}
+        title={drawerMode === 'create' ? (utilitySourceId ? 'Create invoice from utility reading' : 'Add invoice') : 'Edit invoice'}
         placement="right"
         open={drawerOpen}
         width={isMobile ? '100%' : 500}
-        onClose={() => setDrawerOpen(false)}
+        onClose={closeInvoiceDrawer}
         destroyOnClose
       >
-        <Form form={form} layout="vertical" initialValues={invoiceFormDefaultValues}>
-          <InvoiceFormFields
-            form={form}
-            buildings={buildings}
-            rooms={rooms}
-            contracts={contracts}
-            tenantName={selectedTenantName ?? undefined}
-            invoiceStatusOptions={invoiceStatusOptions.map((item) => ({ label: item.label, value: item.value }))}
-            currencyFormatter={(value) => currency.format(value)}
-            autoFillFromLatest={drawerMode === 'create'}
-          />
-          <Space className="invoice-drawer-actions">
-            <Button onClick={() => setDrawerOpen(false)}>Cancel</Button>
-            <Button type="primary" loading={saveLoading} onClick={() => void onSave()}>Save</Button>
-          </Space>
-        </Form>
+        <Spin spinning={utilityPrefillLoading} tip="Loading approved utility reading...">
+          <Form form={form} layout="vertical" initialValues={invoiceFormDefaultValues}>
+            <InvoiceFormFields
+              form={form}
+              buildings={buildings}
+              rooms={rooms}
+              contracts={contracts}
+              tenantName={selectedTenantName ?? undefined}
+              invoiceStatusOptions={invoiceStatusOptions.map((item) => ({ label: item.label, value: item.value }))}
+              currencyFormatter={(value) => currency.format(value)}
+              sourceLocked={Boolean(utilitySourceId)}
+              autoFillFromLatest={drawerMode === 'create' && !utilitySourceId}
+            />
+            <Space className="invoice-drawer-actions">
+              <Button onClick={closeInvoiceDrawer}>Cancel</Button>
+              <Button type="primary" loading={saveLoading} disabled={utilityPrefillLoading} onClick={() => void onSave()}>Save</Button>
+            </Space>
+          </Form>
+        </Spin>
       </Drawer>
 
       <Drawer title="Invoice detail" placement="right" open={detailOpen} width={isMobile ? '100%' : 720} onClose={closeDetail}>

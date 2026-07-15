@@ -2,6 +2,7 @@ import {
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
+  FileAddOutlined,
   PlusOutlined,
   ReloadOutlined,
 } from '@ant-design/icons'
@@ -229,6 +230,12 @@ export function UtilitiesPage() {
     }
   }, [refreshReadingDetailAndList])
 
+  const openCreateInvoice = useCallback((reading: UtilityReadingListItem) => {
+    const params = new URLSearchParams({ utilityReadingId: reading.id })
+    window.history.pushState(null, '', `/invoices?${params.toString()}`)
+    window.dispatchEvent(new PopStateEvent('popstate'))
+  }, [])
+
   const openReject = useCallback((reading: UtilityReadingListItem) => {
     rejectForm.resetFields()
     setRejectTarget(reading)
@@ -396,7 +403,7 @@ export function UtilitiesPage() {
         title: 'Actions',
         key: 'actions',
         fixed: 'right',
-        width: 220,
+        width: 320,
         render: (_, item) => (
           <Space wrap>
             <Button type="text" icon={<EyeOutlined />} onClick={() => void openReadingDetail(item.id)} />
@@ -414,11 +421,16 @@ export function UtilitiesPage() {
             <Button type="link" disabled={item.status !== 'APPROVED'} onClick={() => openReject(item)}>
               Request correction
             </Button>
+            {item.status === 'APPROVED' ? (
+              <Button type="link" icon={<FileAddOutlined />} onClick={() => openCreateInvoice(item)}>
+                Create invoice
+              </Button>
+            ) : null}
           </Space>
         ),
       },
     ],
-    [actionLoading, handleApprove, openReadingDetail, openReject],
+    [actionLoading, handleApprove, openCreateInvoice, openReadingDetail, openReject],
   )
 
   const rateColumns: ColumnsType<UtilityRate> = useMemo(
@@ -617,6 +629,11 @@ export function UtilitiesPage() {
                 <Button disabled={detailItem.status !== 'APPROVED'} onClick={() => openReject(detailItem)}>
                   Request correction
                 </Button>
+                {detailItem.status === 'APPROVED' ? (
+                  <Button type="primary" icon={<FileAddOutlined />} onClick={() => openCreateInvoice(detailItem)}>
+                    Create invoice
+                  </Button>
+                ) : null}
               </Space>
             </div>
 

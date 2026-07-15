@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const invoiceServiceMocks = vi.hoisted(() => ({
   deleteInvoice: vi.fn(),
+  getEffectiveUtilityRate: vi.fn(),
+  getInvoicePrefill: vi.fn(),
   getInvoicesSummary: vi.fn(),
   listBuildings: vi.fn(),
   listContracts: vi.fn(),
@@ -12,13 +14,18 @@ const invoiceServiceMocks = vi.hoisted(() => ({
   listTenants: vi.fn(),
 }))
 
+const utilityServiceMocks = vi.hoisted(() => ({
+  getUtilityReading: vi.fn(),
+}))
+
 vi.mock('../../services/invoicesService', () => ({
   addInvoiceAdjustment: vi.fn(),
   createInvoice: vi.fn(),
   deleteInvoice: invoiceServiceMocks.deleteInvoice,
   generateInvoices: vi.fn(),
   getInvoice: vi.fn(),
-  getInvoicePrefill: vi.fn(),
+  getEffectiveUtilityRate: invoiceServiceMocks.getEffectiveUtilityRate,
+  getInvoicePrefill: invoiceServiceMocks.getInvoicePrefill,
   getInvoicesSummary: invoiceServiceMocks.getInvoicesSummary,
   issueInvoice: vi.fn(),
   listBuildings: invoiceServiceMocks.listBuildings,
@@ -29,6 +36,10 @@ vi.mock('../../services/invoicesService', () => ({
   markInvoiceOverdue: vi.fn(),
   updateInvoice: vi.fn(),
   voidInvoice: vi.fn(),
+}))
+
+vi.mock('../../services/utilitiesService', () => ({
+  getUtilityReading: utilityServiceMocks.getUtilityReading,
 }))
 
 vi.mock('../../services/paymentsService', () => ({
@@ -79,6 +90,7 @@ const invoice = {
 describe('InvoicesPage invoice deletion', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    window.history.replaceState(null, '', '/invoices')
     invoiceServiceMocks.listBuildings.mockResolvedValue([])
     invoiceServiceMocks.listContracts.mockResolvedValue([])
     invoiceServiceMocks.listRooms.mockResolvedValue([])
@@ -91,6 +103,10 @@ describe('InvoicesPage invoice deletion', () => {
       totalRevenue: 4_000_000,
     })
     invoiceServiceMocks.deleteInvoice.mockResolvedValue(undefined)
+    invoiceServiceMocks.getEffectiveUtilityRate.mockResolvedValue({
+      electricity_unit_price: 3_500,
+      water_unit_price: 15_000,
+    })
   })
 
   it('confirms deletion for a paid invoice and reloads the table', async () => {
@@ -106,5 +122,66 @@ describe('InvoicesPage invoice deletion', () => {
 
     await waitFor(() => expect(invoiceServiceMocks.deleteInvoice).toHaveBeenCalledWith(invoice.id))
     await waitFor(() => expect(invoiceServiceMocks.listInvoices).toHaveBeenCalledTimes(2))
+  })
+
+  it('opens a prefilled invoice form from an approved utility reading', async () => {
+    const utilityReadingId = '00000000-0000-4000-8000-000000000801'
+    invoiceServiceMocks.listBuildings.mockResolvedValue([
+      { id: invoice.building_id, name: invoice.building_name },
+    ])
+    invoiceServiceMocks.listRooms.mockResolvedValue([
+      { id: invoice.room_id, building_id: invoice.building_id, code: invoice.room_code, base_rent: 3_000_000 },
+    ])
+    invoiceServiceMocks.listContracts.mockResolvedValue([
+      {
+        id: invoice.contract_id,
+        room_id: invoice.room_id,
+        status: 'ACTIVE',
+        rent_price: 3_000_000,
+        billing_day: 5,
+        tenant_id: invoice.tenant_id,
+        tenant_name: invoice.tenant_name,
+      },
+    ])
+    utilityServiceMocks.getUtilityReading.mockResolvedValue({
+      id: utilityReadingId,
+      room_id: invoice.room_id,
+      month: invoice.month,
+      status: 'APPROVED',
+      electricity_prev: 120,
+      electricity_curr: 150,
+      water_prev: 30,
+      water_curr: 36,
+    })
+    invoiceServiceMocks.getInvoicePrefill.mockResolvedValue({
+      building_id: invoice.building_id,
+      contract_id: invoice.contract_id,
+      tenant_id: invoice.tenant_id,
+      tenant_name: invoice.tenant_name,
+      issued_at: '2026-07-15',
+      due_date: '2026-07-05',
+      rent_amount: 3_000_000,
+      other_fees: 250_000,
+      electricity_prev: 150,
+      water_prev: 36,
+      electric_unit_price: 3_500,
+      water_unit_price: 15_000,
+    })
+    window.history.replaceState(null, '', `/invoices?utilityReadingId=${utilityReadingId}`)
+
+    render(<InvoicesPage />)
+
+    expect(await screen.findByText('Create invoice from utility reading')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(invoiceServiceMocks.getInvoicePrefill).toHaveBeenCalledWith(invoice.room_id, invoice.month)
+    })
+
+    expect(screen.getByLabelText('Previous electric reading')).toHaveValue('120')
+    expect(screen.getByLabelText('Current electric reading')).toHaveValue('150')
+    expect(screen.getByLabelText('Previous water reading')).toHaveValue('30')
+    expect(screen.getByLabelText('Current water reading')).toHaveValue('36')
+    expect(screen.getByLabelText('Billing month')).toHaveValue('2026-07-01')
+    expect(screen.getByLabelText('Current electric reading')).toBeDisabled()
+    expect(window.location.search).toBe('')
   })
 })
