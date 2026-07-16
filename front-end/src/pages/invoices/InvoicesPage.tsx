@@ -867,6 +867,17 @@ export function InvoicesPage() {
                 <Typography.Text type="secondary">{dayjs(detailItem.month).format('MM/YYYY')}</Typography.Text>
               </Space>
               <Space wrap>
+                {pendingPaymentProof ? (
+                  <Button
+                    type="primary"
+                    icon={<CheckOutlined />}
+                    onClick={() => setConfirmingPaymentProof(pendingPaymentProof)}
+                  >
+                    {pendingPaymentProof.transfer_amount >= paymentRemainingAmount
+                      ? 'Confirm and complete invoice'
+                      : 'Confirm payment'}
+                  </Button>
+                ) : null}
                 {detailItem.status === 'DRAFT' ? <Button type="primary" icon={<QrcodeOutlined />} onClick={openIssueModal}>Issue and create QR</Button> : null}
                 {detailItem.status === 'DRAFT' ? <Button icon={<PlusOutlined />} onClick={() => setAdjustmentOpen(true)}>Adjustment</Button> : null}
                 <Button loading={statusActionLoading === 'overdue'} disabled={detailItem.status !== 'ISSUED'} onClick={() => void runStatusAction('overdue')}>Mark overdue</Button>
@@ -916,18 +927,7 @@ export function InvoicesPage() {
               size="small"
               title="Bank transfer payment"
               extra={
-                pendingPaymentProof ? (
-                  <Button
-                    size="small"
-                    type="primary"
-                    icon={<CheckOutlined />}
-                    onClick={() => setConfirmingPaymentProof(pendingPaymentProof)}
-                  >
-                    {pendingPaymentProof.transfer_amount >= paymentRemainingAmount
-                      ? 'Confirm and complete invoice'
-                      : 'Confirm payment'}
-                  </Button>
-                ) : paymentRequestIsClosed && ['ISSUED', 'OVERDUE'].includes(detailItem.status) ? (
+                paymentRequestIsClosed && ['ISSUED', 'OVERDUE'].includes(detailItem.status) ? (
                   <Button size="small" type="primary" icon={<BankOutlined />} onClick={openPaymentRequestModal}>
                     Create payment request
                   </Button>
