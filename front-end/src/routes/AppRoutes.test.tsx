@@ -147,6 +147,36 @@ describe('AppRoutes', () => {
     expect(screen.queryByText('My Room')).toBeNull()
   })
 
+  it.each([
+    ['/buildings', 'Buildings', 'Buildings Page'],
+    ['/contracts', 'Contracts', 'Contracts Page'],
+    ['/utilities', 'Utilities', 'Utilities Page'],
+    ['/fixed-charges', 'Fixed Charges', 'Fixed Charges Page'],
+    ['/tenants', 'Tenants', 'Tenants Page'],
+    ['/invoices', 'Invoices', 'Invoices Page'],
+    ['/payments', 'Payments', 'Payments Page'],
+    ['/reports', 'Reports', 'Reports Page'],
+  ])('renders manager deep link %s', async (path, title, pageText) => {
+    setAuth(managerUser)
+    window.history.replaceState(null, '', path)
+
+    render(<AppRoutes />)
+
+    expect(screen.getByTestId('page-title').textContent).toBe(title)
+    expect(await screen.findByText(pageText)).not.toBeNull()
+  })
+
+  it('renders room detail deep links under the buildings section', async () => {
+    setAuth(managerUser)
+    window.history.replaceState(null, '', '/rooms/room-1')
+
+    render(<AppRoutes />)
+
+    expect(screen.getByTestId('page-title').textContent).toBe('Room Detail')
+    expect(screen.getByTestId('layout-path').textContent).toBe('/buildings')
+    expect(await screen.findByText('Room Detail Page room-1')).not.toBeNull()
+  })
+
   it('redirects tenants away from manager-only routes to their room page', async () => {
     setAuth(tenantUser)
     window.history.replaceState(null, '', '/dashboard')

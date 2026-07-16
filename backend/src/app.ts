@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import fs from 'fs';
+import path from 'path';
 import buildingsRoutes from './modules/buildings/buildings.routes';
 import roomsRoutes from './modules/rooms/rooms.routes';
 import tenantsRoutes from './modules/tenants/tenants.routes';
@@ -21,6 +23,8 @@ import { errorHandler } from './shared/middleware/error-handler';
 import { env } from './config/env';
 
 export const app = express();
+const frontendDistPath = path.resolve(__dirname, '../../front-end/dist');
+const frontendIndexPath = path.join(frontendDistPath, 'index.html');
 
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', env.CLIENT_ORIGIN);
@@ -60,5 +64,18 @@ app.use('/api/me', meRoutes);
 app.use('/api/uploads', uploadsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/reports', reportsRoutes);
+
+if (fs.existsSync(frontendIndexPath)) {
+  app.use(express.static(frontendDistPath, { index: false }));
+  app.get('*', (req, res, next) => {
+    const isFileRequest = path.extname(req.path) !== '';
+    if (req.path.startsWith('/api') || req.path === '/health' || isFileRequest || !req.accepts('html')) {
+      next();
+      return;
+    }
+
+    res.sendFile(frontendIndexPath);
+  });
+}
 
 app.use(errorHandler);
