@@ -208,11 +208,12 @@ export const reviewPaymentProof = async (proofId: string, approve: boolean, mana
 
     const paidAmount = await getInvoicePaidAmount(client, proof.invoice_id);
     const fullyPaid = paidAmount >= toNumber(proof.invoice_total);
+    const nextRequestStatus = fullyPaid ? 'VERIFIED' : 'WAITING_TRANSFER';
     await client.query(
       `UPDATE payment_request
-       SET status=$2, approved_by_user_id=$3, approved_at=CASE WHEN $2='VERIFIED' THEN now() ELSE approved_at END
+       SET status=$2, approved_by_user_id=$3, approved_at=CASE WHEN $4 THEN now() ELSE approved_at END
        WHERE id=$1`,
-      [proof.payment_request_id, fullyPaid ? 'VERIFIED' : 'WAITING_TRANSFER', managerId]
+      [proof.payment_request_id, nextRequestStatus, managerId, fullyPaid]
     );
 
     if (fullyPaid) {
