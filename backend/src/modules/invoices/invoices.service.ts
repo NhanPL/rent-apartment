@@ -2,6 +2,8 @@ import { query, withTransaction } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
 import { firstDayOfMonth } from '../../shared/utils/date';
 import { resolveFixedChargesForContract, type ResolvedFixedCharge } from '../fixed-charges/fixed-charges.service';
+import { env } from '../../config/env';
+import { createVietQrPaymentData } from '../payments/vietqr.service';
 
 type DbRow = Record<string, any>;
 type AuthScope = { userId: string; role: 'MANAGER' | 'TENANT' };
@@ -31,6 +33,13 @@ export interface InvoiceGeneratePayload {
   month: string;
   room_id?: string;
   building_id?: string;
+}
+
+export interface InvoiceIssuePaymentPayload {
+  bank_code?: string;
+  bank_account_no?: string;
+  bank_account_name?: string;
+  transfer_note?: string;
 }
 
 const calc = (q: number, p: number) => Number((q * p).toFixed(2));
@@ -294,7 +303,7 @@ const generateInvoiceForContract = async (client: TxClient, contract: DbRow, mon
 
   const created = await client.query<DbRow>(
     `INSERT INTO invoice(contract_id, room_id, utility_reading_id, month, status, issued_at, due_date, note, subtotal, discount, total, approved_by_user_id, approved_at)
-     VALUES($1,$2,$3,$4,'ISSUED',now(),$5,$6,$7,0,$7,$8,now())
+     VALUES($1,$2,$3,$4,'DRAFT',NULL,$5,$6,$7,0,$7,NULL,NULL)
      RETURNING *`,
     [
       contract.id,
@@ -303,8 +312,7 @@ const generateInvoiceForContract = async (client: TxClient, contract: DbRow, mon
       month,
       getDueDate(month, Number(contract.billing_day ?? 1)),
       'Generated monthly invoice',
-      subtotal,
-      managerId
+      subtotal
     ]
   );
   const invoice = created.rows[0];
@@ -315,13 +323,6 @@ const generateInvoiceForContract = async (client: TxClient, contract: DbRow, mon
     ['WATER', 'Water', waterUsage, toNumber(rate.water_unit_price), waterAmount, { source: 'generated:utility_reading', reading_id: reading.id, rate_id: rate.id, prev: reading.water_prev, curr: reading.water_curr }],
     ...toFixedChargeInvoiceItems(fixedCharges)
   ]);
-
-  await client.query(
-    `UPDATE utility_reading
-     SET status='INVOICED', verified_by_user_id=COALESCE(verified_by_user_id, $2), verified_at=COALESCE(verified_at, now())
-     WHERE id=$1`,
-    [reading.id, managerId]
-  );
 
   return { skipped: false, invoice };
 };
@@ -370,15 +371,68 @@ export const generateInvoicesForScope = async (payload: InvoiceGeneratePayload, 
   });
 };
 
-export const updateInvoiceStatus = async (invoiceId: string, managerId: string, action: 'issue' | 'void' | 'mark-overdue') => {
+export const updateInvoiceStatus = async (
+  invoiceId: string,
+  managerId: string,
+  action: 'issue' | 'void' | 'mark-overdue',
+  issuePayment?: InvoiceIssuePaymentPayload
+) => {
   const updatedId = await withTransaction(async (client) => {
     const invoice = await getScopedInvoiceForManager(client, invoiceId, managerId);
     if (action === 'issue') {
-      if (invoice.status === 'VOID' || invoice.status === 'PAID') throw new AppError(409, 'Closed invoice cannot be issued', 'INVOICE_CLOSED');
-      await client.query(`UPDATE invoice SET status='ISSUED', issued_at=COALESCE(issued_at, now()) WHERE id=$1`, [invoiceId]);
+      if (invoice.status !== 'DRAFT') throw new AppError(409, 'Only draft invoices can be issued', 'INVOICE_NOT_DRAFT');
+      const existingRequest = await client.query(
+        `SELECT id FROM payment_request WHERE invoice_id=$1 AND status NOT IN ('CANCELLED','EXPIRED') LIMIT 1`,
+        [invoiceId]
+      );
+      if (!existingRequest.rows[0]) {
+        const paid = await client.query<{ paid_amount: string | number }>(
+          `SELECT COALESCE(SUM(amount), 0) AS paid_amount FROM payment WHERE invoice_id=$1 AND status='SUCCEEDED'`,
+          [invoiceId]
+        );
+        const amount = Math.max(0, toNumber(invoice.total) - toNumber(paid.rows[0]?.paid_amount));
+        if (amount <= 0) throw new AppError(409, 'Invoice is already fully paid', 'INVOICE_PAID');
+        const bankCode = issuePayment?.bank_code ?? env.DEFAULT_BANK_CODE;
+        const bankAccountNo = issuePayment?.bank_account_no ?? env.DEFAULT_BANK_ACCOUNT_NO;
+        const bankAccountName = issuePayment?.bank_account_name ?? env.DEFAULT_BANK_ACCOUNT_NAME;
+        if (!bankCode || !bankAccountNo || !bankAccountName) {
+          throw new AppError(400, 'Bank account information is required to issue an invoice', 'BANK_ACCOUNT_REQUIRED');
+        }
+
+        const vietQr = createVietQrPaymentData({
+          bankCode,
+          accountNo: bankAccountNo,
+          accountName: bankAccountName,
+          amount,
+          transferNote: issuePayment?.transfer_note ?? `INV ${invoiceId.slice(0, 8)}`
+        });
+        await client.query(
+          `INSERT INTO payment_request(invoice_id,status,amount,currency,qr_content,qr_image_url,bank_code,bank_account_no,bank_account_name,transfer_note,sent_at,created_by_user_id)
+           VALUES($1,'WAITING_TRANSFER',$2,'VND',$3,$4,$5,$6,$7,$8,now(),$9)`,
+          [
+            invoiceId,
+            amount,
+            vietQr.qrContent,
+            vietQr.qrImageUrl,
+            bankCode.trim().toUpperCase(),
+            bankAccountNo.trim(),
+            bankAccountName.trim(),
+            vietQr.normalizedTransferNote,
+            managerId
+          ]
+        );
+      }
+      await client.query(`UPDATE invoice SET status='ISSUED', issued_at=now(), approved_by_user_id=$2, approved_at=now() WHERE id=$1`, [invoiceId, managerId]);
+      if (invoice.utility_reading_id) {
+        await client.query(`UPDATE utility_reading SET status='INVOICED' WHERE id=$1 AND status='APPROVED'`, [invoice.utility_reading_id]);
+      }
     } else if (action === 'void') {
       if (invoice.status === 'PAID') throw new AppError(409, 'Paid invoice cannot be voided', 'INVOICE_PAID');
       await client.query(`UPDATE invoice SET status='VOID' WHERE id=$1`, [invoiceId]);
+      await client.query(`UPDATE payment_request SET status='CANCELLED' WHERE invoice_id=$1 AND status NOT IN ('VERIFIED','CANCELLED','EXPIRED')`, [invoiceId]);
+      if (invoice.utility_reading_id) {
+        await client.query(`UPDATE utility_reading SET status='APPROVED' WHERE id=$1 AND status='INVOICED'`, [invoice.utility_reading_id]);
+      }
     } else {
       if (invoice.status !== 'ISSUED') throw new AppError(409, 'Only issued invoices can be marked overdue', 'INVOICE_NOT_ISSUED');
       await client.query(`UPDATE invoice SET status='OVERDUE' WHERE id=$1`, [invoiceId]);
@@ -441,8 +495,8 @@ export const createInvoiceFromReading = async (utilityReadingId: string, manager
 
     const invRs = await client.query<DbRow>(
       `INSERT INTO invoice(contract_id, room_id, utility_reading_id, month, status, issued_at, due_date, subtotal, discount, total, approved_by_user_id, approved_at)
-       VALUES($1,$2,$3,$4,'ISSUED',now(),$5,$6,0,$6,$7,now()) RETURNING *`,
-      [contract.id, reading.room_id, reading.id, month, month, rent + elecAmount + waterAmount + fixedChargesAmount, managerId]
+       VALUES($1,$2,$3,$4,'DRAFT',NULL,$5,$6,0,$6,NULL,NULL) RETURNING *`,
+      [contract.id, reading.room_id, reading.id, month, month, rent + elecAmount + waterAmount + fixedChargesAmount]
     );
     const invoice = invRs.rows[0];
 
@@ -453,13 +507,11 @@ export const createInvoiceFromReading = async (utilityReadingId: string, manager
       ...toFixedChargeInvoiceItems(fixedCharges)
     ]);
 
-    await client.query(`UPDATE utility_reading SET status='INVOICED' WHERE id=$1`, [reading.id]);
-
     return invoice;
   });
 
-export const addInvoiceAdjustment = async (invoiceId: string, amount: number, reason: string, userId: string) =>
-  withTransaction(async (client) => {
+export const addInvoiceAdjustment = async (invoiceId: string, amount: number, reason: string, userId: string) => {
+  await withTransaction(async (client) => {
     const invRs = await client.query<DbRow>(
       `SELECT i.*
        FROM invoice i
@@ -471,7 +523,7 @@ export const addInvoiceAdjustment = async (invoiceId: string, amount: number, re
     );
     const inv = invRs.rows[0];
     if (!inv) throw new AppError(404, 'Invoice not found');
-    if (inv.status === 'PAID' || inv.status === 'VOID') throw new AppError(409, 'Cannot adjust closed invoice');
+    if (inv.status !== 'DRAFT') throw new AppError(409, 'Only draft invoices can be adjusted', 'INVOICE_NOT_DRAFT');
 
     const type = amount > 0 ? 'MANUAL_ADD' : 'MANUAL_DISCOUNT';
     await client.query(
@@ -485,12 +537,13 @@ export const addInvoiceAdjustment = async (invoiceId: string, amount: number, re
 
     const subtotal = Number(inv.subtotal) + (amount > 0 ? amount : 0);
     const discount = Number(inv.discount) + (amount < 0 ? Math.abs(amount) : 0);
-    const updated = await client.query<DbRow>(
+    await client.query<DbRow>(
       `UPDATE invoice SET subtotal=$1, discount=$2, total=$3, adjustment_note=$4 WHERE id=$5 RETURNING *`,
       [subtotal, discount, total, reason, invoiceId]
     );
-    return updated.rows[0];
   });
+  return getInvoiceDetail(invoiceId, { userId, role: 'MANAGER' });
+};
 
 export const listInvoices = async (scope: AuthScope) => {
   if (scope.role === 'MANAGER') {
@@ -508,7 +561,7 @@ export const listInvoices = async (scope: AuthScope) => {
     `SELECT DISTINCT ${invoiceListProjection}
      FROM invoice i
      ${invoiceListJoins}
-     WHERE EXISTS (
+     WHERE i.status <> 'DRAFT' AND EXISTS (
        SELECT 1
        FROM contract_tenant ct_scope
        JOIN tenant t_scope ON t_scope.id=ct_scope.tenant_id
@@ -532,7 +585,7 @@ export const getInvoiceDetail = async (id: string, scope: AuthScope) => {
       `SELECT DISTINCT ${invoiceListProjection}
        FROM invoice i
        ${invoiceListJoins}
-       WHERE i.id=$1 AND EXISTS (
+       WHERE i.id=$1 AND i.status <> 'DRAFT' AND EXISTS (
          SELECT 1
          FROM contract_tenant ct_scope
          JOIN tenant t_scope ON t_scope.id=ct_scope.tenant_id
@@ -626,18 +679,23 @@ export const updateManualInvoice = async (invoiceId: string, payload: InvoiceUps
 
 export const deleteManualInvoice = async (invoiceId: string, managerId: string) =>
   withTransaction(async (client) => {
-    await getScopedInvoiceForManager(client, invoiceId, managerId);
+    const invoice = await getScopedInvoiceForManager(client, invoiceId, managerId);
 
-    const blocking = await client.query(
-      `SELECT id FROM payment WHERE invoice_id=$1
-       UNION ALL
-       SELECT id FROM payment_request WHERE invoice_id=$1
-       LIMIT 1`,
-      [invoiceId]
-    );
-    if (blocking.rows[0]) throw new AppError(409, 'Cannot delete invoice with payment activity', 'INVOICE_HAS_PAYMENTS');
-
+    // Payments must be removed before requests because both restrict invoice deletion.
+    // Payment transactions and proofs are removed by their database cascade rules.
+    await client.query('DELETE FROM payment WHERE invoice_id=$1', [invoiceId]);
+    await client.query('DELETE FROM payment_request WHERE invoice_id=$1', [invoiceId]);
     await client.query('DELETE FROM invoice WHERE id=$1', [invoiceId]);
+
+    if (invoice.utility_reading_id) {
+      await client.query(
+        `UPDATE utility_reading ur
+         SET status='APPROVED'
+         WHERE ur.id=$1 AND ur.status='INVOICED'
+           AND NOT EXISTS (SELECT 1 FROM invoice i WHERE i.utility_reading_id=ur.id)`,
+        [invoice.utility_reading_id]
+      );
+    }
   });
 
 export const getInvoicePrefill = async (roomId: string, monthValue: string | undefined, managerId: string) => {

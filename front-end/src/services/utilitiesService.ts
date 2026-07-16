@@ -90,6 +90,14 @@ export async function rejectUtilityReading(id: string, reason: string): Promise<
   return toReadingDetail(row)
 }
 
+export async function requestUtilityReadingCorrection(id: string, reason: string): Promise<UtilityReadingDetail> {
+  const row = await apiRequest<UtilityReadingApiDetail>(API_ROUTES.utilityReadings.requestCorrection(id), {
+    method: 'POST',
+    body: { reason },
+  })
+  return toReadingDetail(row)
+}
+
 export function attachUtilityReadingEvidence(id: string, payload: UtilityEvidencePayload): Promise<UtilityEvidence> {
   return apiRequest<UtilityEvidence>(API_ROUTES.utilityReadings.evidence(id), { method: 'POST', body: payload })
 }

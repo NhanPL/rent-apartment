@@ -1,15 +1,13 @@
-import { CreditCardOutlined, EyeOutlined, TeamOutlined } from '@ant-design/icons'
+import { EyeOutlined, TeamOutlined } from '@ant-design/icons'
 import { Alert, Button, Card, Col, Descriptions, Drawer, Empty, Form, Grid, Input, InputNumber, List, Row, Select, Skeleton, Space, Statistic, Table, Tag, Typography, message } from 'antd'
 import dayjs from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
 import {
-  attachMyUtilityReadingEvidence,
-  createMyVnpayPayment,
   createMyDocument,
   getCurrentAndPreviousUtilityReadings,
   getCurrentMonthBill,
   getMyInvoiceDetail,
-  getMyPaymentRequest,
+  getMyPaymentRequestForInvoice,
   getMyRoomContext,
   getMyRoommates,
   listMyDocuments,
@@ -21,13 +19,12 @@ import {
   type RoommateSummary,
   type TenantDocument,
   type TenantDocumentType,
-  type UtilityEvidenceType,
   type UtilityReadingSnapshot,
   type UtilityReadingStatus,
 } from '../../services/tenantRoomService'
 import type { PaymentRequest, PaymentRequestStatus } from '../../services/paymentsService'
 import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
-import type { UploadedCloudinaryFile } from '../../services/uploadService'
+import { uploadFileToCloudinary, type UploadedCloudinaryFile } from '../../services/uploadService'
 import { getUserErrorMessage } from '../../services/errorMessage'
 import {
   calculateReadingUsage,
@@ -36,22 +33,8 @@ import {
   type TenantUtilityReadingFormValues,
 } from './utilityReadingForm'
 
-interface EvidenceFormValues {
-  evidence_type: UtilityEvidenceType
-  file_name?: string
-  file_url?: string
-  mime_type?: string
-  file_size?: number
-  note?: string
-}
-
 interface PaymentProofFormValues {
-  file_name?: string
-  file_url?: string
-  mime_type?: string
-  file_size?: number
   transfer_amount?: number
-  transfer_time?: string
   payer_note?: string
 }
 
@@ -117,29 +100,55 @@ const uploadedFileFields = (file: UploadedCloudinaryFile) => ({
   file_size: file.file_size,
 })
 
+function VietQrImage({ url, alt, maxWidth }: { url: string; alt: string; maxWidth: number }) {
+  const [loadFailed, setLoadFailed] = useState(false)
+
+  if (loadFailed) {
+    return (
+      <Alert
+        showIcon
+        type="error"
+        message="The VietQR image could not be loaded. Please ask the manager to verify the bank code."
+      />
+    )
+  }
+
+  return (
+    <img
+      src={url}
+      alt={alt}
+      onError={() => setLoadFailed(true)}
+      style={{ display: 'block', maxWidth, width: '100%', margin: '0 auto' }}
+    />
+  )
+}
+
 export function TenantRoomPage() {
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
 
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
-  const [evidenceSubmitting, setEvidenceSubmitting] = useState(false)
   const [context, setContext] = useState<Awaited<ReturnType<typeof getMyRoomContext>>>(null)
   const [roommates, setRoommates] = useState<RoommateSummary[]>([])
   const [currentBill, setCurrentBill] = useState<InvoiceSummary | null>(null)
   const [currentPaymentRequest, setCurrentPaymentRequest] = useState<PaymentRequest | null>(null)
+  const [currentPaymentRequestError, setCurrentPaymentRequestError] = useState<string | null>(null)
   const [billHistory, setBillHistory] = useState<InvoiceSummary[]>([])
   const [billDetail, setBillDetail] = useState<InvoiceDetail | null>(null)
+  const [billDetailPaymentRequest, setBillDetailPaymentRequest] = useState<PaymentRequest | null>(null)
+  const [billDetailPaymentRequestError, setBillDetailPaymentRequestError] = useState<string | null>(null)
   const [billDetailOpen, setBillDetailOpen] = useState(false)
   const [billDetailLoading, setBillDetailLoading] = useState(false)
   const [utilitySnapshot, setUtilitySnapshot] = useState<UtilityReadingSnapshot | null>(null)
-  const [vnpaySubmitting, setVnpaySubmitting] = useState(false)
   const [paymentProofSubmitting, setPaymentProofSubmitting] = useState(false)
+  const [paymentProofFile, setPaymentProofFile] = useState<UploadedCloudinaryFile | null>(null)
   const [tenantDocuments, setTenantDocuments] = useState<TenantDocument[]>([])
   const [tenantDocumentSubmitting, setTenantDocumentSubmitting] = useState(false)
+  const [electricityEvidenceFile, setElectricityEvidenceFile] = useState<File | null>(null)
+  const [waterEvidenceFile, setWaterEvidenceFile] = useState<File | null>(null)
 
   const [form] = Form.useForm<TenantUtilityReadingFormValues>()
-  const [evidenceForm] = Form.useForm<EvidenceFormValues>()
   const [paymentProofForm] = Form.useForm<PaymentProofFormValues>()
   const [tenantDocumentForm] = Form.useForm<TenantDocumentFormValues>()
   const monthValue = Form.useWatch('month', form)
@@ -161,11 +170,12 @@ export function TenantRoomPage() {
   const currentReading = utilitySnapshot?.current_reading ?? null
   const readingLocked = isTenantUtilityReadingLocked(currentReading?.status)
   const currentRemainingAmount = currentBill ? Math.max(currentBill.total - currentBill.paid_amount, 0) : 0
-  const canPayCurrentBill = Boolean(currentBill && currentBill.status !== 'PAID' && currentBill.status !== 'VOID' && currentRemainingAmount > 0)
 
   const hydrateFormByMonth = async (roomId: string, month: string) => {
     const snapshot = await getCurrentAndPreviousUtilityReadings(roomId, `${month}-01`)
     setUtilitySnapshot(snapshot)
+    setElectricityEvidenceFile(null)
+    setWaterEvidenceFile(null)
     form.setFieldsValue({
       electricity_prev: snapshot.electricity_prev_value,
       electricity_curr: snapshot.electricity_curr_value,
@@ -203,11 +213,13 @@ export function TenantRoomPage() {
       setRoommates(roommatesData)
       setTenantDocuments(documentData)
       setCurrentBill(currentBillData)
-      if (currentBillData?.payment_request_id) {
+      setCurrentPaymentRequestError(null)
+      if (currentBillData) {
         try {
-          setCurrentPaymentRequest(await getMyPaymentRequest(currentBillData.payment_request_id))
-        } catch {
+          setCurrentPaymentRequest(await getMyPaymentRequestForInvoice(currentBillData.id))
+        } catch (error) {
           setCurrentPaymentRequest(null)
+          setCurrentPaymentRequestError(getUserErrorMessage(error, 'The bank transfer QR could not be loaded.'))
         }
       } else {
         setCurrentPaymentRequest(null)
@@ -242,7 +254,7 @@ export function TenantRoomPage() {
     const validation = validateTenantUtilityReading(values, readingLocked)
     if (!validation.ok) {
       if (validation.reason === 'locked') {
-        message.warning('Reading for this month is already approved or invoiced.')
+        message.warning('This month has already been submitted. You can update it only after the manager rejects it for correction.')
       } else if (validation.reason === 'missing-month') {
         message.error('Vui lòng chọn tháng ghi chỉ số')
       } else {
@@ -251,9 +263,24 @@ export function TenantRoomPage() {
       return
     }
 
+    if (!electricityEvidenceFile || !waterEvidenceFile) {
+      message.error('Please select both electricity and water evidence images.')
+      return
+    }
+
     setSubmitting(true)
     try {
-      await upsertMyUtilityReading(context.room.id, validation.payload)
+      const [electricityEvidence, waterEvidence] = await Promise.all([
+        uploadFileToCloudinary(electricityEvidenceFile, 'UTILITY_EVIDENCE'),
+        uploadFileToCloudinary(waterEvidenceFile, 'UTILITY_EVIDENCE'),
+      ])
+      await upsertMyUtilityReading(context.room.id, {
+        ...validation.payload,
+        evidence: {
+          electricity: uploadedFileFields(electricityEvidence),
+          water: uploadedFileFields(waterEvidence),
+        },
+      })
 
       await hydrateFormByMonth(context.room.id, validation.formMonth)
       message.success('Đã ghi nhận chỉ số điện nước thành công')
@@ -264,38 +291,6 @@ export function TenantRoomPage() {
     }
   }
 
-  const handleEvidenceSubmit = async (values: EvidenceFormValues) => {
-    if (!context || !currentReading) {
-      message.warning('Please submit the monthly reading before adding evidence.')
-      return
-    }
-
-    setEvidenceSubmitting(true)
-    try {
-      if (!values.file_url || !values.mime_type || !values.file_size) {
-        message.warning('Please upload evidence file before submitting.')
-        return
-      }
-
-      await attachMyUtilityReadingEvidence(currentReading.id, {
-        evidence_type: values.evidence_type,
-        file_name: values.file_name?.trim() || null,
-        file_url: values.file_url.trim(),
-        mime_type: values.mime_type,
-        file_size: values.file_size,
-        note: values.note?.trim() || null,
-      })
-      evidenceForm.resetFields()
-      evidenceForm.setFieldValue('evidence_type', 'ELECTRIC')
-      await hydrateFormByMonth(context.room.id, form.getFieldValue('month'))
-      message.success('Evidence metadata uploaded')
-    } catch (error) {
-      message.error(getUserErrorMessage(error, 'Khong the luu minh chung chi so.'))
-    } finally {
-      setEvidenceSubmitting(false)
-    }
-  }
-
   const handlePaymentProofSubmit = async (values: PaymentProofFormValues) => {
     if (!currentPaymentRequest) {
       return
@@ -303,43 +298,27 @@ export function TenantRoomPage() {
 
     setPaymentProofSubmitting(true)
     try {
-      if (!values.file_url || !values.mime_type || !values.file_size) {
+      if (!paymentProofFile) {
         message.warning('Please upload payment proof before submitting.')
         return
       }
 
       await submitMyPaymentProof(currentPaymentRequest.id, {
-        file_name: values.file_name?.trim() || null,
-        file_url: values.file_url.trim(),
-        mime_type: values.mime_type,
-        file_size: values.file_size,
+        file_name: paymentProofFile.file_name,
+        file_url: paymentProofFile.file_url,
+        mime_type: paymentProofFile.mime_type,
+        file_size: paymentProofFile.file_size,
         transfer_amount: values.transfer_amount ?? null,
-        transfer_time: values.transfer_time ? dayjs(values.transfer_time).toISOString() : null,
         payer_note: values.payer_note?.trim() || null,
       })
       paymentProofForm.resetFields()
+      setPaymentProofFile(null)
       await refresh()
       message.success('Payment proof submitted for manager review.')
     } catch (error) {
       message.error(getUserErrorMessage(error, 'Khong the gui chung tu thanh toan.'))
     } finally {
       setPaymentProofSubmitting(false)
-    }
-  }
-
-  const handleVnpayPayment = async () => {
-    if (!currentBill) {
-      return
-    }
-
-    setVnpaySubmitting(true)
-    try {
-      const checkout = await createMyVnpayPayment(currentBill.id)
-      window.location.assign(checkout.redirect_url)
-    } catch (error) {
-      message.error(getUserErrorMessage(error, 'Khong the tao giao dich VNPAY.'))
-    } finally {
-      setVnpaySubmitting(false)
     }
   }
 
@@ -374,8 +353,17 @@ export function TenantRoomPage() {
     setBillDetailOpen(true)
     setBillDetailLoading(true)
     setBillDetail(null)
+    setBillDetailPaymentRequest(null)
+    setBillDetailPaymentRequestError(null)
     try {
-      setBillDetail(await getMyInvoiceDetail(invoiceId))
+      const detail = await getMyInvoiceDetail(invoiceId)
+      setBillDetail(detail)
+      try {
+        setBillDetailPaymentRequest(await getMyPaymentRequestForInvoice(detail.id))
+      } catch (error) {
+        setBillDetailPaymentRequest(null)
+        setBillDetailPaymentRequestError(getUserErrorMessage(error, 'The bank transfer QR could not be loaded.'))
+      }
     } catch (error) {
       message.error(getUserErrorMessage(error, 'Khong tai duoc chi tiet hoa don.'))
       setBillDetailOpen(false)
@@ -442,15 +430,10 @@ export function TenantRoomPage() {
                 </Space>
                 <Typography.Text type="secondary">Ngày thanh toán: {currentBill.paid_at ? dayjs(currentBill.paid_at).format('DD/MM/YYYY') : '-'}</Typography.Text>
                 <Typography.Text type="secondary">Đã thanh toán: {currency.format(currentBill.paid_amount)}</Typography.Text>
-                {canPayCurrentBill ? (
-                  <Space wrap>
-                    <Button type="primary" icon={<CreditCardOutlined />} loading={vnpaySubmitting} onClick={() => void handleVnpayPayment()}>
-                      Pay with VNPAY
-                    </Button>
-                    <Typography.Text type="secondary">Remaining: {currency.format(currentRemainingAmount)}</Typography.Text>
-                  </Space>
-                ) : null}
-                {!currentPaymentRequest ? (
+                <Typography.Text type="secondary">Remaining: {currency.format(currentRemainingAmount)}</Typography.Text>
+                {currentPaymentRequestError ? (
+                  <Alert showIcon type="error" message={currentPaymentRequestError} />
+                ) : !currentPaymentRequest ? (
                   <Alert showIcon type="info" message="Chưa có yêu cầu chuyển khoản cho hóa đơn này." />
                 ) : (
                   <Card size="small" title="Thanh toán chuyển khoản">
@@ -464,70 +447,43 @@ export function TenantRoomPage() {
                         <Descriptions.Item label="Hạn yêu cầu">{currentPaymentRequest.expires_at ? dayjs(currentPaymentRequest.expires_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
                       </Descriptions>
                       {currentPaymentRequest.qr_image_url ? (
-                        <img src={currentPaymentRequest.qr_image_url} alt="Payment QR" style={{ maxWidth: 220, width: '100%', borderRadius: 8 }} />
+                        <VietQrImage
+                          key={currentPaymentRequest.qr_image_url}
+                          url={currentPaymentRequest.qr_image_url}
+                          alt={`VietQR payment for invoice ${dayjs(currentBill.month).format('MM/YYYY')}`}
+                          maxWidth={280}
+                        />
                       ) : currentPaymentRequest.qr_content ? (
                         <Input.TextArea value={currentPaymentRequest.qr_content} autoSize readOnly />
                       ) : null}
                       {(currentPaymentRequest.status === 'WAITING_TRANSFER' || currentPaymentRequest.status === 'REJECTED') && currentBill.status !== 'PAID' ? (
                         <Form<PaymentProofFormValues> form={paymentProofForm} layout="vertical" onFinish={handlePaymentProofSubmit}>
-                          <Row gutter={[12, 0]}>
-                            <Col xs={24} md={12}>
-                              <Form.Item name="transfer_amount" label="Số tiền đã chuyển">
-                                <InputNumber min={1} max={currentPaymentRequest.remaining_amount || undefined} precision={0} style={{ width: '100%' }} />
-                              </Form.Item>
-                            </Col>
-                            <Col xs={24} md={12}>
-                              <Form.Item name="transfer_time" label="Thời gian chuyển">
-                                <Input type="datetime-local" />
-                              </Form.Item>
-                            </Col>
-                            <Col xs={24}>
-                              <Form.Item name="file_url" label="Link ảnh/biên lai" rules={[{ required: true, whitespace: true, message: 'Vui lòng nhập link biên lai' }]}>
-                                <Input placeholder="https://..." />
-                              </Form.Item>
-                            </Col>
-                            <Col xs={24} md={8}>
-                              <Form.Item name="file_name" label="Tên file">
-                                <Input />
-                              </Form.Item>
-                            </Col>
-                            <Col xs={24} md={8}>
-                              <Form.Item name="mime_type" label="MIME type">
-                                <Input placeholder="image/jpeg" />
-                              </Form.Item>
-                            </Col>
-                            <Col xs={24}>
-                              <Form.Item label="Upload payment proof">
-                                <Space wrap>
-                                  <CloudinaryUploadButton
-                                    accept={imageAccept}
-                                    context="PAYMENT_PROOF"
-                                    onUploaded={(file) => paymentProofForm.setFieldsValue(uploadedFileFields(file))}
-                                  >
-                                    Upload file
-                                  </CloudinaryUploadButton>
-                                  <Form.Item noStyle shouldUpdate={(prev, next) => prev.file_url !== next.file_url || prev.file_name !== next.file_name}>
-                                    {({ getFieldValue }) => {
-                                      const fileUrl = getFieldValue('file_url') as string | undefined
-                                      const fileName = getFieldValue('file_name') as string | undefined
-                                      return fileUrl ? (
-                                        <Typography.Link href={fileUrl} target="_blank" rel="noreferrer">
-                                          {fileName || 'Uploaded file'}
-                                        </Typography.Link>
-                                      ) : (
-                                        <Typography.Text type="secondary">No file uploaded</Typography.Text>
-                                      )
-                                    }}
-                                  </Form.Item>
-                                </Space>
-                              </Form.Item>
-                            </Col>
-                            <Col xs={24} md={8}>
-                              <Form.Item name="file_size" label="Dung lượng file">
-                                <InputNumber min={0} precision={0} style={{ width: '100%' }} />
-                              </Form.Item>
-                            </Col>
-                          </Row>
+                          <Form.Item
+                            name="transfer_amount"
+                            label="Số tiền đã chuyển"
+                            initialValue={currentPaymentRequest.remaining_amount ?? currentPaymentRequest.amount}
+                            rules={[{ required: true, message: 'Vui lòng nhập số tiền đã chuyển' }]}
+                          >
+                            <InputNumber min={1} max={currentPaymentRequest.remaining_amount || undefined} precision={0} style={{ width: '100%' }} />
+                          </Form.Item>
+                          <Form.Item label="Ảnh biên lai" required>
+                            <Space wrap>
+                              <CloudinaryUploadButton
+                                accept={imageAccept}
+                                context="PAYMENT_PROOF"
+                                onUploaded={setPaymentProofFile}
+                              >
+                                Upload image
+                              </CloudinaryUploadButton>
+                              {paymentProofFile ? (
+                                <Typography.Link href={paymentProofFile.file_url} target="_blank" rel="noreferrer">
+                                  {paymentProofFile.file_name}
+                                </Typography.Link>
+                              ) : (
+                                <Typography.Text type="secondary">No image uploaded</Typography.Text>
+                              )}
+                            </Space>
+                          </Form.Item>
                           <Form.Item name="payer_note" label="Ghi chú">
                             <Input.TextArea rows={2} />
                           </Form.Item>
@@ -782,12 +738,61 @@ export function TenantRoomPage() {
             <Input.TextArea rows={3} maxLength={500} showCount placeholder="Ghi chú (không bắt buộc)" />
           </Form.Item>
 
+          <Row gutter={[16, 8]}>
+            <Col xs={24} md={12}>
+              <Form.Item label="Electricity evidence" required>
+                <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                  <CloudinaryUploadButton
+                    accept={imageAccept}
+                    context="UTILITY_EVIDENCE"
+                    deferred
+                    disabled={readingLocked || submitting}
+                    onSelected={setElectricityEvidenceFile}
+                  >
+                    Select electricity image
+                  </CloudinaryUploadButton>
+                  <Typography.Text type={electricityEvidenceFile ? undefined : 'secondary'} ellipsis title={electricityEvidenceFile?.name}>
+                    {electricityEvidenceFile?.name ?? 'No image selected'}
+                  </Typography.Text>
+                  {electricityEvidenceFile ? (
+                    <Button size="small" danger disabled={submitting} onClick={() => setElectricityEvidenceFile(null)}>
+                      Remove
+                    </Button>
+                  ) : null}
+                </Space>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.Item label="Water evidence" required>
+                <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                  <CloudinaryUploadButton
+                    accept={imageAccept}
+                    context="UTILITY_EVIDENCE"
+                    deferred
+                    disabled={readingLocked || submitting}
+                    onSelected={setWaterEvidenceFile}
+                  >
+                    Select water image
+                  </CloudinaryUploadButton>
+                  <Typography.Text type={waterEvidenceFile ? undefined : 'secondary'} ellipsis title={waterEvidenceFile?.name}>
+                    {waterEvidenceFile?.name ?? 'No image selected'}
+                  </Typography.Text>
+                  {waterEvidenceFile ? (
+                    <Button size="small" danger disabled={submitting} onClick={() => setWaterEvidenceFile(null)}>
+                      Remove
+                    </Button>
+                  ) : null}
+                </Space>
+              </Form.Item>
+            </Col>
+          </Row>
+
           {readingLocked ? (
             <Alert
               type="warning"
               showIcon
               style={{ marginBottom: 16 }}
-              message="Reading for this month is already approved or invoiced, so it can no longer be changed."
+              message="This month has already been submitted. The saved readings are shown above and can only be updated after the manager rejects them for correction."
             />
           ) : null}
 
@@ -811,97 +816,6 @@ export function TenantRoomPage() {
             Lưu chỉ số tháng
           </Button>
         </Form>
-      </Card>
-
-      <Card title="Utility evidence">
-        {!currentReading ? (
-          <Alert showIcon type="info" message="Submit the monthly reading before attaching evidence." />
-        ) : (
-          <Form<EvidenceFormValues>
-            form={evidenceForm}
-            layout="vertical"
-            onFinish={handleEvidenceSubmit}
-            initialValues={{ evidence_type: 'ELECTRIC' }}
-          >
-            <Row gutter={[16, 8]}>
-              <Col xs={24} md={8}>
-                <Form.Item name="evidence_type" label="Evidence type" rules={[{ required: true, message: 'Please select evidence type' }]}>
-                  <Select
-                    options={[
-                      { label: 'Electric', value: 'ELECTRIC' },
-                      { label: 'Water', value: 'WATER' },
-                      { label: 'Other', value: 'OTHER' },
-                    ]}
-                  />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={16}>
-                <Form.Item name="file_url" label="File URL" rules={[{ required: true, whitespace: true, message: 'Please enter file URL' }]}>
-                  <Input placeholder="https://..." disabled={currentReading.status === 'INVOICED'} />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={8}>
-                <Form.Item name="file_name" label="File name">
-                  <Input disabled={currentReading.status === 'INVOICED'} />
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={8}>
-                <Form.Item name="mime_type" label="MIME type">
-                  <Input placeholder="image/jpeg" disabled={currentReading.status === 'INVOICED'} />
-                </Form.Item>
-              </Col>
-              <Col xs={24}>
-                <Form.Item label="Upload evidence file">
-                  <Space wrap>
-                    <CloudinaryUploadButton
-                      accept={imageAccept}
-                      context="UTILITY_EVIDENCE"
-                      disabled={currentReading.status === 'INVOICED'}
-                      onUploaded={(file) => evidenceForm.setFieldsValue(uploadedFileFields(file))}
-                    >
-                      Upload file
-                    </CloudinaryUploadButton>
-                    <Form.Item noStyle shouldUpdate={(prev, next) => prev.file_url !== next.file_url || prev.file_name !== next.file_name}>
-                      {({ getFieldValue }) => {
-                        const fileUrl = getFieldValue('file_url') as string | undefined
-                        const fileName = getFieldValue('file_name') as string | undefined
-                        return fileUrl ? (
-                          <Typography.Link href={fileUrl} target="_blank" rel="noreferrer">
-                            {fileName || 'Uploaded file'}
-                          </Typography.Link>
-                        ) : (
-                          <Typography.Text type="secondary">No file uploaded</Typography.Text>
-                        )
-                      }}
-                    </Form.Item>
-                  </Space>
-                </Form.Item>
-              </Col>
-              <Col xs={24} md={8}>
-                <Form.Item name="file_size" label="File size">
-                  <InputNumber min={0} precision={0} style={{ width: '100%' }} disabled={currentReading.status === 'INVOICED'} />
-                </Form.Item>
-              </Col>
-            </Row>
-            <Form.Item name="note" label="Evidence note">
-              <Input.TextArea rows={2} disabled={currentReading.status === 'INVOICED'} />
-            </Form.Item>
-            <Space wrap>
-              <Tag color={utilityReadingStatusColor[currentReading.status]}>{currentReading.status}</Tag>
-              <Typography.Text type="secondary">{currentReading.evidence_count} evidence file(s) submitted</Typography.Text>
-            </Space>
-            <Button
-              htmlType="submit"
-              type="primary"
-              loading={evidenceSubmitting}
-              disabled={currentReading.status === 'INVOICED'}
-              block={isMobile}
-              style={{ marginTop: 16 }}
-            >
-              Add evidence metadata
-            </Button>
-          </Form>
-        )}
       </Card>
 
       <Card title="Lịch sử hóa đơn gần đây">
@@ -939,6 +853,7 @@ export function TenantRoomPage() {
         onClose={() => {
           setBillDetailOpen(false)
           setBillDetail(null)
+          setBillDetailPaymentRequest(null)
         }}
       >
         {billDetailLoading || !billDetail ? (
@@ -956,6 +871,31 @@ export function TenantRoomPage() {
               <Descriptions.Item label="Ngày thanh toán">{billDetail.paid_at ? dayjs(billDetail.paid_at).format('DD/MM/YYYY') : '-'}</Descriptions.Item>
               <Descriptions.Item label="Ghi chú" span={isMobile ? 1 : 2}>{billDetail.note ?? '-'}</Descriptions.Item>
             </Descriptions>
+            {billDetailPaymentRequestError ? (
+              <Alert showIcon type="error" message={billDetailPaymentRequestError} />
+            ) : billDetailPaymentRequest ? (
+              <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                <Typography.Title level={5} style={{ margin: 0 }}>Bank transfer</Typography.Title>
+                <Descriptions bordered size="small" column={isMobile ? 1 : 2}>
+                  <Descriptions.Item label="Amount">{currency.format(billDetailPaymentRequest.remaining_amount ?? billDetailPaymentRequest.amount)}</Descriptions.Item>
+                  <Descriptions.Item label="Status">
+                    <Tag color={paymentRequestStatusColor[billDetailPaymentRequest.status]}>{billDetailPaymentRequest.status}</Tag>
+                  </Descriptions.Item>
+                  <Descriptions.Item label="Bank">{billDetailPaymentRequest.bank_code ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="Account number">{billDetailPaymentRequest.bank_account_no ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="Account name">{billDetailPaymentRequest.bank_account_name ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="Transfer note">{billDetailPaymentRequest.transfer_note ?? '-'}</Descriptions.Item>
+                </Descriptions>
+                {billDetailPaymentRequest.qr_image_url ? (
+                  <VietQrImage
+                    key={billDetailPaymentRequest.qr_image_url}
+                    url={billDetailPaymentRequest.qr_image_url}
+                    alt={`VietQR payment for invoice ${dayjs(billDetail.month).format('MM/YYYY')}`}
+                    maxWidth={320}
+                  />
+                ) : null}
+              </Space>
+            ) : null}
             <Table
               rowKey="id"
               size="small"

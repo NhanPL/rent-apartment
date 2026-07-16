@@ -12,14 +12,14 @@ const DashboardPage = lazy(() => import('../pages/dashboard/DashboardPage').then
 const RoomDetailPage = lazy(() => import('../pages/rooms/RoomDetailPage').then((module) => ({ default: module.RoomDetailPage })))
 const TenantsPage = lazy(() => import('../pages/tenants/TenantsPage').then((module) => ({ default: module.TenantsPage })))
 const InvoicesPage = lazy(() => import('../pages/invoices/InvoicesPage').then((module) => ({ default: module.InvoicesPage })))
+const MonthlyBillingPage = lazy(() => import('../pages/monthly-billing/MonthlyBillingPage').then((module) => ({ default: module.MonthlyBillingPage })))
 const FixedChargesPage = lazy(() => import('../pages/fixed-charges/FixedChargesPage').then((module) => ({ default: module.FixedChargesPage })))
 const TenantRoomPage = lazy(() => import('../pages/tenant-room/TenantRoomPage').then((module) => ({ default: module.TenantRoomPage })))
 const UtilitiesPage = lazy(() => import('../pages/utilities/UtilitiesPage').then((module) => ({ default: module.UtilitiesPage })))
 const PaymentsPage = lazy(() => import('../pages/payments/PaymentsPage').then((module) => ({ default: module.PaymentsPage })))
-const PaymentResultPage = lazy(() => import('../pages/payments/PaymentResultPage').then((module) => ({ default: module.PaymentResultPage })))
 const ReportsPage = lazy(() => import('../pages/reports/ReportsPage').then((module) => ({ default: module.ReportsPage })))
 
-const adminPaths = new Set(['/dashboard', '/buildings', '/rental-registration', '/contracts', '/utilities', '/fixed-charges', '/tenants', '/invoices', '/payments', '/reports'])
+const adminPaths = new Set(['/dashboard', '/buildings', '/rental-registration', '/contracts', '/utilities', '/fixed-charges', '/tenants', '/invoices', '/monthly-billing', '/payments', '/reports'])
 
 function RouteFallback() {
   return (
@@ -42,10 +42,6 @@ function homePathByRole(role: AppRole) {
 
 function canAccess(pathname: string, role: AppRole) {
   if (pathname === '/my-room') {
-    return role === 'TENANT'
-  }
-
-  if (pathname === '/payment-result') {
     return role === 'TENANT'
   }
 
@@ -121,8 +117,8 @@ export function AppRoutes() {
     if (protectedPath.startsWith('/rooms/')) return <RoomDetailPage roomId={protectedPath.split('/')[2]} />
     if (protectedPath === '/tenants') return <TenantsPage />
     if (protectedPath === '/invoices') return <InvoicesPage />
+    if (protectedPath === '/monthly-billing') return <MonthlyBillingPage />
     if (protectedPath === '/payments') return <PaymentsPage />
-    if (protectedPath === '/payment-result') return <PaymentResultPage />
     if (protectedPath === '/reports') return <ReportsPage />
     if (protectedPath === '/my-room') return <TenantRoomPage />
     return null

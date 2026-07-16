@@ -78,6 +78,17 @@ const tenantInvoiceJoins = `
   ) paid_payment ON true
 `;
 
+const latestActivePaymentRequestJoin = `
+  LEFT JOIN LATERAL (
+    SELECT pr_scope.id, pr_scope.status
+    FROM payment_request pr_scope
+    WHERE pr_scope.invoice_id=i.id
+      AND pr_scope.status NOT IN ('CANCELLED', 'EXPIRED')
+    ORDER BY pr_scope.created_at DESC
+    LIMIT 1
+  ) pr ON true
+`;
+
 router.get('/room', asyncHandler(async (req, res) => {
   const { rows } = await query(
     `SELECT
@@ -183,7 +194,7 @@ router.get('/current-bill', asyncHandler(async (req, res) => {
      FROM invoice i
      JOIN vw_tenant_current_room v ON v.contract_id=i.contract_id
      ${tenantInvoiceJoins}
-     LEFT JOIN payment_request pr ON pr.invoice_id=i.id
+     ${latestActivePaymentRequestJoin}
      WHERE v.tenant_id=(SELECT id FROM tenant WHERE user_id=$1) AND i.month=$2`,
     [req.auth!.userId, month]
   );
@@ -207,7 +218,7 @@ router.get('/payment-status', asyncHandler(async (req, res) => {
      FROM invoice i
      JOIN vw_tenant_current_room v ON v.contract_id=i.contract_id
      ${tenantInvoiceJoins}
-     LEFT JOIN payment_request pr ON pr.invoice_id=i.id
+     ${latestActivePaymentRequestJoin}
      WHERE v.tenant_id=(SELECT id FROM tenant WHERE user_id=$1)
      ORDER BY i.month DESC LIMIT 12`,
     [req.auth!.userId]
@@ -221,7 +232,7 @@ router.get('/invoices/:id', asyncHandler(async (req, res) => {
      FROM invoice i
      JOIN vw_tenant_current_room v ON v.contract_id=i.contract_id
      ${tenantInvoiceJoins}
-     LEFT JOIN payment_request pr ON pr.invoice_id=i.id
+     ${latestActivePaymentRequestJoin}
      WHERE v.tenant_id=(SELECT id FROM tenant WHERE user_id=$1) AND i.id=$2`,
     [req.auth!.userId, req.params.id]
   );

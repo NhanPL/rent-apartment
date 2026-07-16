@@ -14,6 +14,7 @@ interface InvoiceFormFieldsProps {
   invoiceStatusOptions: { label: string; value: InvoiceStatus }[]
   currencyFormatter: (value: number) => string
   roomLocked?: boolean
+  sourceLocked?: boolean
   autoFillFromLatest?: boolean
 }
 
@@ -26,6 +27,7 @@ export function InvoiceFormFields({
   invoiceStatusOptions,
   currencyFormatter,
   roomLocked = false,
+  sourceLocked = false,
   autoFillFromLatest = false,
 }: InvoiceFormFieldsProps) {
   const selectedBuildingId = Form.useWatch('building_id', form)
@@ -44,12 +46,12 @@ export function InvoiceFormFields({
   )
 
   const roomOptions = useMemo(() => {
-    const selectableRooms = roomLocked ? rooms : rooms.filter((room) => occupiedRoomIds.has(room.id))
+    const selectableRooms = roomLocked || sourceLocked ? rooms : rooms.filter((room) => occupiedRoomIds.has(room.id))
 
     return selectableRooms
       .filter((room) => !selectedBuildingId || room.building_id === selectedBuildingId)
       .map((item) => ({ label: item.code, value: item.id }))
-  }, [occupiedRoomIds, roomLocked, rooms, selectedBuildingId])
+  }, [occupiedRoomIds, roomLocked, rooms, selectedBuildingId, sourceLocked])
 
   const contractOptions = useMemo(
     () => activeContracts.filter((contract) => !selectedRoomId || contract.room_id === selectedRoomId),
@@ -151,6 +153,7 @@ export function InvoiceFormFields({
             showSearch
             optionFilterProp="label"
             options={buildingOptions}
+            disabled={sourceLocked}
             onChange={() => {
               form.setFieldsValue({
                 room_id: undefined,
@@ -171,7 +174,7 @@ export function InvoiceFormFields({
           showSearch
           optionFilterProp="label"
           options={roomOptions}
-          disabled={roomLocked}
+          disabled={roomLocked || sourceLocked}
           onChange={(value) => {
             const selectedRoom = rooms.find((room) => room.id === value)
             form.setFieldsValue({
@@ -188,6 +191,7 @@ export function InvoiceFormFields({
       </Form.Item>
       <Form.Item label="Contract" name="contract_id" rules={[{ required: true, message: 'Please select contract' }]}>
         <Select
+          disabled={sourceLocked}
           options={contractOptions.map((item) => ({
             label: item.tenant_name ? `${item.id} - ${item.tenant_name}` : item.id,
             value: item.id,
@@ -199,7 +203,7 @@ export function InvoiceFormFields({
         <Input value={tenantName ?? '-'} readOnly />
       </Form.Item>
       <Form.Item label="Billing month" name="month" rules={[{ required: true }]}>
-        <Input type="date" />
+        <Input type="date" disabled={sourceLocked} />
       </Form.Item>
 
       <Form.Item label="Invoice status" name="status" rules={[{ required: true }]}>
@@ -217,7 +221,7 @@ export function InvoiceFormFields({
       </Form.Item>
 
       <Form.Item label="Previous electric reading" name="electricity_prev" rules={[{ required: true }]}>
-        <InputNumber min={0} style={{ width: '100%' }} />
+        <InputNumber min={0} style={{ width: '100%' }} disabled={sourceLocked} />
       </Form.Item>
       <Form.Item
         label="Current electric reading"
@@ -240,11 +244,11 @@ export function InvoiceFormFields({
           }),
         ]}
       >
-        <InputNumber min={0} style={{ width: '100%' }} />
+        <InputNumber min={0} style={{ width: '100%' }} disabled={sourceLocked} />
       </Form.Item>
 
       <Form.Item label="Previous water reading" name="water_prev" rules={[{ required: true }]}>
-        <InputNumber min={0} style={{ width: '100%' }} />
+        <InputNumber min={0} style={{ width: '100%' }} disabled={sourceLocked} />
       </Form.Item>
       <Form.Item
         label="Current water reading"
@@ -267,7 +271,7 @@ export function InvoiceFormFields({
           }),
         ]}
       >
-        <InputNumber min={0} style={{ width: '100%' }} />
+        <InputNumber min={0} style={{ width: '100%' }} disabled={sourceLocked} />
       </Form.Item>
 
       <Form.Item label="Electric unit price" name="electric_unit_price" rules={[{ required: true }]}>

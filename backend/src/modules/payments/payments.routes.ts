@@ -1,4 +1,4 @@
-import { Request, Router } from 'express';
+import { Router } from 'express';
 import { z } from 'zod';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
@@ -13,7 +13,6 @@ import {
   submitPaymentProof,
   updatePaymentRequestStatus
 } from './payments.service';
-import { createVnpayPayment } from './vnpay.service';
 
 const router = Router();
 
@@ -21,7 +20,6 @@ const paymentRequestSchema = z.object({
   invoice_id: z.string().uuid(),
   amount: z.coerce.number().positive().nullable().optional(),
   currency: z.string().trim().min(1).optional(),
-  qr_image_url: z.string().trim().nullable().optional(),
   bank_code: z.string().trim().nullable().optional(),
   bank_account_no: z.string().trim().nullable().optional(),
   bank_account_name: z.string().trim().nullable().optional(),
@@ -43,17 +41,6 @@ const paymentRejectSchema = z.object({
   reason: z.string().trim().min(1).optional()
 });
 
-const vnpayPaymentSchema = z.object({
-  invoice_id: z.string().uuid(),
-  bank_code: z.string().trim().nullable().optional(),
-  locale: z.enum(['vn', 'en']).optional()
-});
-
-const getRequestIp = (req: Request) => {
-  const forwardedFor = req.header('x-forwarded-for')?.split(',')[0]?.trim();
-  return forwardedFor || req.ip || req.socket.remoteAddress || '127.0.0.1';
-};
-
 router.get('/requests', asyncHandler(async (req, res) => {
   res.json(await listPaymentRequests(req.auth!));
 }));
@@ -69,11 +56,6 @@ router.get('/invoices/:invoiceId/request', asyncHandler(async (req, res) => {
 router.post('/requests', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const body = parseBody(paymentRequestSchema, req.body);
   res.status(201).json(await createPaymentRequest(body.invoice_id, req.auth!.userId, body));
-}));
-
-router.post('/vnpay/create', requireRole('TENANT'), asyncHandler(async (req, res) => {
-  const body = parseBody(vnpayPaymentSchema, req.body);
-  res.status(201).json(await createVnpayPayment(body.invoice_id, req.auth!.userId, body, getRequestIp(req)));
 }));
 
 router.post('/requests/:id/cancel', requireRole('MANAGER'), asyncHandler(async (req, res) => {

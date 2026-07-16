@@ -2,14 +2,12 @@ import dayjs from 'dayjs'
 import { apiRequest } from './apiClient'
 import { API_ROUTES } from './apiRoutes'
 import {
-  createVnpayPayment,
-  getPaymentRequest,
+  getPaymentRequestByInvoice,
   submitPaymentProof,
   type PaymentProofPayload,
   type PaymentRecord,
   type PaymentRequest,
   type PaymentRequestStatus,
-  type VnpayCreatePaymentResponse,
 } from './paymentsService'
 
 export type ContractStatus = 'DRAFT' | 'ACTIVE' | 'ENDED' | 'CANCELLED'
@@ -146,14 +144,21 @@ export interface UtilityReadingSubmitPayload {
   electricity_curr: number
   water_curr: number
   note: string | null
+  evidence?: {
+    electricity: UtilityEvidenceFilePayload
+    water: UtilityEvidenceFilePayload
+  }
 }
 
-export interface UtilityEvidenceSubmitPayload {
-  evidence_type: UtilityEvidenceType
+export interface UtilityEvidenceFilePayload {
   file_name: string | null
   file_url: string
   mime_type: string
   file_size: number
+}
+
+export interface UtilityEvidenceSubmitPayload extends UtilityEvidenceFilePayload {
+  evidence_type: UtilityEvidenceType
   note: string | null
 }
 
@@ -374,10 +379,25 @@ export async function getMyInvoiceDetail(invoiceId: string): Promise<InvoiceDeta
 }
 
 export async function getCurrentAndPreviousUtilityReadings(roomId: string, month: string): Promise<UtilityReadingSnapshot> {
-  const rows = await apiRequest<UtilityReading[]>(API_ROUTES.utilityReadings.list)
-  const ordered = [...rows].sort((left, right) => dayjs(right.month).valueOf() - dayjs(left.month).valueOf())
-  const current = ordered.find((row) => row.room_id === roomId && row.month === month) ?? null
-  const previous = ordered.find((row) => row.room_id === roomId && dayjs(row.month).isBefore(dayjs(month))) ?? null
+  const rows = await apiRequest<Array<Omit<UtilityReading, 'electricity_prev' | 'electricity_curr' | 'water_prev' | 'water_curr' | 'evidence_count'> & {
+    electricity_prev: number | string | null
+    electricity_curr: number | string | null
+    water_prev: number | string | null
+    water_curr: number | string | null
+    evidence_count: number | string | null
+  }>>(API_ROUTES.utilityReadings.list)
+  const normalizedRows: UtilityReading[] = rows.map((row) => ({
+    ...row,
+    electricity_prev: row.electricity_prev === null ? null : Number(row.electricity_prev),
+    electricity_curr: row.electricity_curr === null ? null : Number(row.electricity_curr),
+    water_prev: row.water_prev === null ? null : Number(row.water_prev),
+    water_curr: row.water_curr === null ? null : Number(row.water_curr),
+    evidence_count: Number(row.evidence_count ?? 0),
+  }))
+  const selectedMonth = dayjs(month)
+  const ordered = [...normalizedRows].sort((left, right) => dayjs(right.month).valueOf() - dayjs(left.month).valueOf())
+  const current = ordered.find((row) => row.room_id === roomId && dayjs(row.month).isSame(selectedMonth, 'month')) ?? null
+  const previous = ordered.find((row) => row.room_id === roomId && dayjs(row.month).isBefore(selectedMonth, 'month')) ?? null
 
   return {
     month,
@@ -404,6 +424,7 @@ export async function upsertMyUtilityReading(roomId: string, payload: UtilityRea
       electricity_curr: payload.electricity_curr,
       water_curr: payload.water_curr,
       note: payload.note,
+      evidence: payload.evidence,
     },
   })
 }
@@ -415,14 +436,10 @@ export async function attachMyUtilityReadingEvidence(readingId: string, payload:
   })
 }
 
-export function getMyPaymentRequest(paymentRequestId: string): Promise<PaymentRequest> {
-  return getPaymentRequest(paymentRequestId)
+export function getMyPaymentRequestForInvoice(invoiceId: string): Promise<PaymentRequest | null> {
+  return getPaymentRequestByInvoice(invoiceId)
 }
 
 export function submitMyPaymentProof(paymentRequestId: string, payload: PaymentProofPayload) {
   return submitPaymentProof(paymentRequestId, payload)
-}
-
-export function createMyVnpayPayment(invoiceId: string): Promise<VnpayCreatePaymentResponse> {
-  return createVnpayPayment({ invoice_id: invoiceId })
 }

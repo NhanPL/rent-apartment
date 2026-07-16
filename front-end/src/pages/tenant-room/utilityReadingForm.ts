@@ -17,7 +17,7 @@ export type TenantUtilityReadingValidationResult =
   | { ok: false; reason: 'locked' | 'missing-month' | 'missing-current-readings' }
 
 export function isTenantUtilityReadingLocked(status: UtilityReadingStatus | null | undefined) {
-  return status === 'APPROVED' || status === 'INVOICED'
+  return Boolean(status && status !== 'REJECTED')
 }
 
 export function calculateReadingUsage(previous: number | null | undefined, current: number | null | undefined) {

@@ -19,6 +19,17 @@ export interface UtilityReadingCreatePayload {
   electricity_curr: number;
   water_curr: number;
   note?: string | null;
+  evidence?: {
+    electricity: UtilityEvidenceFilePayload;
+    water: UtilityEvidenceFilePayload;
+  };
+}
+
+interface UtilityEvidenceFilePayload {
+  file_name?: string | null;
+  file_url: string;
+  mime_type: string;
+  file_size: number;
 }
 
 export interface UtilityEvidencePayload {
@@ -186,9 +197,10 @@ export const createUtilityReading = async (payload: UtilityReadingCreatePayload,
       [payload.room_id, month]
     );
 
+    let reading: DbRow;
     if (existing.rows[0]) {
-      if (existing.rows[0].status === 'APPROVED' || existing.rows[0].status === 'INVOICED') {
-        throw new AppError(409, 'Approved or invoiced readings cannot be resubmitted', 'UTILITY_READING_LOCKED');
+      if (existing.rows[0].status !== 'REJECTED') {
+        throw new AppError(409, 'Submitted readings can only be updated after manager rejection', 'UTILITY_READING_LOCKED');
       }
 
       const updated = await client.query<DbRow>(
@@ -209,16 +221,39 @@ export const createUtilityReading = async (payload: UtilityReadingCreatePayload,
          RETURNING *`,
         [electricityPrev, payload.electricity_curr, waterPrev, payload.water_curr, userId, payload.note ?? null, existing.rows[0].id]
       );
-      return updated.rows[0];
+      reading = updated.rows[0];
+    } else {
+      const created = await client.query<DbRow>(
+        `INSERT INTO utility_reading(room_id, month, electricity_prev, electricity_curr, water_prev, water_curr, status, reported_by_user_id, reported_at, submitted_at, note)
+         VALUES($1,$2,$3,$4,$5,$6,'SUBMITTED',$7,now(),now(),$8)
+         RETURNING *`,
+        [payload.room_id, month, electricityPrev, payload.electricity_curr, waterPrev, payload.water_curr, userId, payload.note ?? null]
+      );
+      reading = created.rows[0];
     }
 
-    const created = await client.query<DbRow>(
-      `INSERT INTO utility_reading(room_id, month, electricity_prev, electricity_curr, water_prev, water_curr, status, reported_by_user_id, reported_at, submitted_at, note)
-       VALUES($1,$2,$3,$4,$5,$6,'SUBMITTED',$7,now(),now(),$8)
-       RETURNING *`,
-      [payload.room_id, month, electricityPrev, payload.electricity_curr, waterPrev, payload.water_curr, userId, payload.note ?? null]
-    );
-    return created.rows[0];
+    if (payload.evidence) {
+      await client.query(
+        `INSERT INTO utility_reading_evidence(utility_reading_id,evidence_type,file_name,file_url,mime_type,file_size,uploaded_by_user_id)
+         VALUES
+           ($1,'ELECTRIC',$2,$3,$4,$5,$10),
+           ($1,'WATER',$6,$7,$8,$9,$10)`,
+        [
+          reading.id,
+          payload.evidence.electricity.file_name ?? null,
+          payload.evidence.electricity.file_url,
+          payload.evidence.electricity.mime_type,
+          payload.evidence.electricity.file_size,
+          payload.evidence.water.file_name ?? null,
+          payload.evidence.water.file_url,
+          payload.evidence.water.mime_type,
+          payload.evidence.water.file_size,
+          userId
+        ]
+      );
+    }
+
+    return reading;
   });
 };
 
@@ -265,6 +300,32 @@ export const rejectUtilityReading = async (id: string, managerId: string, reason
     );
   });
 
+  return getUtilityReadingById(id, { userId: managerId, role: 'MANAGER' });
+};
+
+export const requestUtilityReadingCorrection = async (id: string, managerId: string, reason: string) => {
+  await withTransaction(async (client) => {
+    const reading = await getScopedReadingForManager(client, id, managerId);
+    if (reading.status === 'INVOICED') {
+      throw new AppError(409, 'Void the invoice before requesting a reading correction', 'UTILITY_READING_LOCKED');
+    }
+    if (reading.status !== 'APPROVED') {
+      throw new AppError(409, 'Only approved readings can be returned for correction', 'UTILITY_READING_NOT_APPROVED');
+    }
+    const invoice = await client.query(
+      `SELECT id FROM invoice WHERE utility_reading_id=$1 AND status<>'VOID' LIMIT 1`,
+      [id]
+    );
+    if (invoice.rows[0]) throw new AppError(409, 'Void the invoice before requesting a reading correction', 'UTILITY_READING_LOCKED');
+
+    await client.query(
+      `UPDATE utility_reading
+       SET status='REJECTED', rejected_by_user_id=$2, rejected_at=now(), rejection_reason=$3,
+           approved_by_user_id=NULL, approved_at=NULL
+       WHERE id=$1`,
+      [id, managerId, reason]
+    );
+  });
   return getUtilityReadingById(id, { userId: managerId, role: 'MANAGER' });
 };
 

@@ -16,10 +16,12 @@ const baseValues: TenantUtilityReadingFormValues = {
 }
 
 describe('tenant utility reading validation', () => {
-  it('locks approved and invoiced readings', () => {
+  it('locks every existing reading unless the manager rejected it', () => {
+    expect(isTenantUtilityReadingLocked('DRAFT')).toBe(true)
+    expect(isTenantUtilityReadingLocked('SUBMITTED')).toBe(true)
     expect(isTenantUtilityReadingLocked('APPROVED')).toBe(true)
     expect(isTenantUtilityReadingLocked('INVOICED')).toBe(true)
-    expect(isTenantUtilityReadingLocked('SUBMITTED')).toBe(false)
+    expect(isTenantUtilityReadingLocked('REJECTED')).toBe(false)
     expect(isTenantUtilityReadingLocked(null)).toBe(false)
   })
 

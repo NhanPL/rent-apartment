@@ -15,18 +15,29 @@ vi.mock('../src/modules/fixed-charges/fixed-charges.service', async (importOrigi
 });
 
 const uploadServiceMocks = vi.hoisted(() => ({
-  deleteCloudinaryUpload: vi.fn().mockResolvedValue(undefined)
+  deleteCloudinaryUpload: vi.fn().mockResolvedValue(undefined),
+  validateStoredUpload: vi.fn().mockReturnValue('image')
 }));
 
 vi.mock('../src/modules/uploads/uploads.service', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/modules/uploads/uploads.service')>();
-  return { ...actual, deleteCloudinaryUpload: uploadServiceMocks.deleteCloudinaryUpload };
+  return {
+    ...actual,
+    deleteCloudinaryUpload: uploadServiceMocks.deleteCloudinaryUpload,
+    validateStoredUpload: uploadServiceMocks.validateStoredUpload
+  };
 });
 
 import { app } from '../src/app';
 import { fakeDb, ids } from './support/mock-db';
 
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
+const issueBankPayload = {
+  bank_code: '970436',
+  bank_account_no: '1234567890',
+  bank_account_name: 'RentMate Manager',
+  transfer_note: 'INV TEST'
+};
 
 const login = async (identifier: string) => {
   const response = await request(app)
@@ -125,6 +136,21 @@ describe('backend API smoke tests', () => {
         phone: '0911111111'
       })
       .expect(403);
+  });
+
+  it('does not expose the removed VNPAY payment endpoints', async () => {
+    const tenantSession = await login('tenant@example.com');
+
+    await request(app)
+      .post('/api/payments/vnpay/create')
+      .set(auth(tenantSession.accessToken))
+      .send({ invoice_id: ids.invoiceIssued })
+      .expect(404);
+
+    await request(app)
+      .get('/api/payments/vnpay/return')
+      .set(auth(tenantSession.accessToken))
+      .expect(404);
   });
 
   it('isolates tenant data between managers', async () => {
@@ -508,7 +534,21 @@ describe('backend API smoke tests', () => {
         month: '2026-07',
         electricity_curr: 150,
         water_curr: 75,
-        note: 'July reading'
+        note: 'July reading',
+        evidence: {
+          electricity: {
+            file_name: 'electricity.jpg',
+            file_url: 'https://example.com/electricity.jpg',
+            mime_type: 'image/jpeg',
+            file_size: 1024
+          },
+          water: {
+            file_name: 'water.jpg',
+            file_url: 'https://example.com/water.jpg',
+            mime_type: 'image/jpeg',
+            file_size: 2048
+          }
+        }
       })
       .expect(201);
 
@@ -519,6 +559,25 @@ describe('backend API smoke tests', () => {
       water_prev: 60,
       status: 'SUBMITTED'
     });
+    expect(fakeDb.utilityEvidence.filter((item) => item.utility_reading_id === submitted.body.id)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ evidence_type: 'ELECTRIC', file_name: 'electricity.jpg' }),
+        expect.objectContaining({ evidence_type: 'WATER', file_name: 'water.jpg' })
+      ])
+    );
+
+    const duplicateSubmission = await request(app)
+      .post('/api/utility-readings')
+      .set(auth(tenantSession.accessToken))
+      .send({
+        room_id: ids.roomA,
+        month: '2026-07',
+        electricity_curr: 151,
+        water_curr: 76
+      })
+      .expect(409);
+
+    expect(duplicateSubmission.body.code).toBe('UTILITY_READING_LOCKED');
 
     const approved = await request(app)
       .post(`/api/utility-readings/${ids.readingSubmitted}/approve`)
@@ -562,16 +621,89 @@ describe('backend API smoke tests', () => {
     expect(generated.body.generated[0]).toMatchObject({
       contract_id: ids.contractA,
       room_id: ids.roomA,
+      status: 'DRAFT',
+      issued_at: null,
       total: 1120
     });
     expect(fakeDb.utilityReadings.find((reading) => reading.id === ids.readingApproved)).toMatchObject({
-      status: 'INVOICED'
+      status: 'APPROVED'
     });
     expect(fakeDb.invoiceItems.filter((item) => item.invoice_id === generated.body.generated[0].id).map((item) => item.code)).toEqual([
       'ROOM_RENT',
       'ELECTRICITY',
       'WATER'
     ]);
+
+    const missingBank = await request(app)
+      .post(`/api/invoices/${generated.body.generated[0].id}/issue`)
+      .set(auth(managerSession.accessToken));
+    expect(missingBank.status, JSON.stringify(missingBank.body)).toBe(400);
+    expect(missingBank.body).toMatchObject({ code: 'BANK_ACCOUNT_REQUIRED' });
+    expect(fakeDb.invoices.find((invoice) => invoice.id === generated.body.generated[0].id)).toMatchObject({ status: 'DRAFT' });
+
+    const issued = await request(app)
+      .post(`/api/invoices/${generated.body.generated[0].id}/issue`)
+      .set(auth(managerSession.accessToken))
+      .send(issueBankPayload);
+    expect(issued.status, JSON.stringify(issued.body)).toBe(200);
+
+    expect(fakeDb.utilityReadings.find((reading) => reading.id === ids.readingApproved)).toMatchObject({ status: 'INVOICED' });
+    expect(fakeDb.paymentRequests.find((item) => item.invoice_id === generated.body.generated[0].id)).toMatchObject({
+      status: 'WAITING_TRANSFER',
+      amount: 1120,
+      bank_code: issueBankPayload.bank_code,
+      bank_account_no: issueBankPayload.bank_account_no,
+      qr_image_url: expect.stringContaining('https://img.vietqr.io/image/970436-1234567890-compact2.png')
+    });
+
+  });
+
+  it('deletes paid invoices together with their payment data', async () => {
+    const managerSession = await login('manager@example.com');
+
+    const generated = await request(app)
+      .post('/api/invoices/generate/room')
+      .set(auth(managerSession.accessToken))
+      .send({ month: '2026-06', room_id: ids.roomA })
+      .expect(201);
+
+    const invoiceId = generated.body.generated[0].id as string;
+
+    await request(app)
+      .post(`/api/invoices/${invoiceId}/issue`)
+      .set(auth(managerSession.accessToken))
+      .send(issueBankPayload)
+      .expect(200);
+
+    const paymentRequest = fakeDb.paymentRequests.find((item) => item.invoice_id === invoiceId)!;
+    const proofId = '00000000-0000-4000-8000-000000009101';
+    fakeDb.paymentProofs.push({
+      id: proofId,
+      payment_request_id: paymentRequest.id,
+      status: 'APPROVED',
+      file_url: 'https://example.com/payment-proof.png'
+    });
+    fakeDb.payments.push({
+      id: '00000000-0000-4000-8000-000000009102',
+      invoice_id: invoiceId,
+      payment_request_id: paymentRequest.id,
+      payment_proof_id: proofId,
+      status: 'SUCCEEDED',
+      amount: generated.body.generated[0].total
+    });
+    fakeDb.invoices.find((invoice) => invoice.id === invoiceId)!.status = 'PAID';
+
+    const deleted = await request(app)
+      .delete(`/api/invoices/${invoiceId}`)
+      .set(auth(managerSession.accessToken));
+    expect(deleted.status, JSON.stringify(deleted.body)).toBe(204);
+
+    expect(fakeDb.invoices.some((invoice) => invoice.id === invoiceId)).toBe(false);
+    expect(fakeDb.invoiceItems.some((item) => item.invoice_id === invoiceId)).toBe(false);
+    expect(fakeDb.paymentRequests.some((item) => item.invoice_id === invoiceId)).toBe(false);
+    expect(fakeDb.paymentProofs.some((item) => item.payment_request_id === paymentRequest.id)).toBe(false);
+    expect(fakeDb.payments.some((item) => item.invoice_id === invoiceId)).toBe(false);
+    expect(fakeDb.utilityReadings.find((reading) => reading.id === ids.readingApproved)).toMatchObject({ status: 'APPROVED' });
   });
 
   it('creates payment requests and reviews submitted payment proofs', async () => {
@@ -581,13 +713,14 @@ describe('backend API smoke tests', () => {
     const requestResponse = await request(app)
       .post('/api/payments/requests')
       .set(auth(managerSession.accessToken))
-      .send({ invoice_id: ids.invoiceIssued })
+      .send({ invoice_id: ids.invoiceIssued, ...issueBankPayload })
       .expect(201);
 
     expect(requestResponse.body).toMatchObject({
       invoice_id: ids.invoiceIssued,
       status: 'WAITING_TRANSFER',
-      amount: 1200
+      amount: 1200,
+      qr_image_url: expect.stringContaining('https://img.vietqr.io/image/970436-1234567890-compact2.png')
     });
 
     const rejectedProof = await request(app)

@@ -1,9 +1,11 @@
 import {
   BankOutlined,
+  CheckOutlined,
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
   PlusOutlined,
+  QrcodeOutlined,
   ReloadOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons'
@@ -23,19 +25,23 @@ import {
   Select,
   Skeleton,
   Space,
+  Spin,
   Statistic,
   Table,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   createInvoice,
+  addInvoiceAdjustment,
   deleteInvoice,
   getInvoice,
+  getInvoicePrefill,
   getInvoicesSummary,
   generateInvoices,
   issueInvoice,
@@ -49,7 +55,9 @@ import {
   voidInvoice,
 } from '../../services/invoicesService'
 import { getUserErrorMessage } from '../../services/errorMessage'
+import { getUtilityReading } from '../../services/utilitiesService'
 import {
+  approvePaymentProof,
   cancelPaymentRequest,
   createPaymentRequest,
   expirePaymentRequest,
@@ -109,8 +117,60 @@ interface PaymentRequestFormValues {
   bank_account_no?: string
   bank_account_name?: string
   transfer_note?: string
-  qr_image_url?: string
   expires_at?: string
+}
+
+interface AdjustmentFormValues { amount: number; reason: string }
+
+interface IssueInvoiceFormValues {
+  bank_code: string
+  bank_account_no: string
+  bank_account_name: string
+  transfer_note: string
+}
+
+function VietQrBankFields() {
+  return (
+    <>
+      <Form.Item
+        name="bank_code"
+        label="Bank code or BIN"
+        rules={[
+          { required: true, whitespace: true, message: 'Please enter the receiving bank code.' },
+          { pattern: /^[A-Za-z0-9]{2,20}$/, message: 'Use a VietQR bank code or bank BIN.' },
+        ]}
+      >
+        <Input placeholder="970436 or VCB" maxLength={20} />
+      </Form.Item>
+      <Form.Item
+        name="bank_account_no"
+        label="Bank account number"
+        rules={[
+          { required: true, whitespace: true, message: 'Please enter the bank account number.' },
+          { pattern: /^\d{6,19}$/, message: 'The account number must contain 6 to 19 digits.' },
+        ]}
+      >
+        <Input inputMode="numeric" maxLength={19} />
+      </Form.Item>
+      <Form.Item
+        name="bank_account_name"
+        label="Bank account name"
+        rules={[{ required: true, whitespace: true, message: 'Please enter the bank account name.' }]}
+      >
+        <Input maxLength={100} />
+      </Form.Item>
+      <Form.Item
+        name="transfer_note"
+        label="Transfer note"
+        rules={[
+          { required: true, whitespace: true, message: 'Please enter the transfer note.' },
+          { max: 25, message: 'The transfer note must not exceed 25 characters.' },
+        ]}
+      >
+        <Input maxLength={25} showCount />
+      </Form.Item>
+    </>
+  )
 }
 
 export function InvoicesPage() {
@@ -119,6 +179,8 @@ export function InvoicesPage() {
   const [form] = Form.useForm<InvoiceFormValues>()
   const [generateForm] = Form.useForm<{ scope: InvoiceGenerateScope; month: string; building_id?: string; room_id?: string }>()
   const [paymentRequestForm] = Form.useForm<PaymentRequestFormValues>()
+  const [adjustmentForm] = Form.useForm<AdjustmentFormValues>()
+  const [issueForm] = Form.useForm<IssueInvoiceFormValues>()
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -143,6 +205,9 @@ export function InvoicesPage() {
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('create')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [saveLoading, setSaveLoading] = useState(false)
+  const [utilitySourceId, setUtilitySourceId] = useState<string | null>(null)
+  const [utilityPrefillLoading, setUtilityPrefillLoading] = useState(false)
+  const utilityPrefillRequest = useRef(0)
 
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailItem, setDetailItem] = useState<InvoiceDetail | null>(null)
@@ -152,9 +217,17 @@ export function InvoicesPage() {
   const [generateLoading, setGenerateLoading] = useState(false)
   const [generateResult, setGenerateResult] = useState<{ generated: number; skipped: number; total: number } | null>(null)
   const [statusActionLoading, setStatusActionLoading] = useState<string | null>(null)
+  const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
   const [paymentRequestOpen, setPaymentRequestOpen] = useState(false)
   const [paymentRequestLoading, setPaymentRequestLoading] = useState(false)
   const [paymentActionLoading, setPaymentActionLoading] = useState<string | null>(null)
+  const [confirmingPaymentProof, setConfirmingPaymentProof] = useState<PaymentProof | null>(null)
+  const [paymentConfirmationLoading, setPaymentConfirmationLoading] = useState(false)
+  const [adjustmentOpen, setAdjustmentOpen] = useState(false)
+  const [adjustmentLoading, setAdjustmentLoading] = useState(false)
+  const [issueOpen, setIssueOpen] = useState(false)
+  const [issueLoading, setIssueLoading] = useState(false)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setSearch(searchInput), 300)
@@ -239,17 +312,23 @@ export function InvoicesPage() {
   }, [selectedContractId, contracts, items, tenants])
 
   const openCreate = useCallback(() => {
+    utilityPrefillRequest.current += 1
     setDrawerMode('create')
     setEditingId(null)
+    setUtilitySourceId(null)
+    setUtilityPrefillLoading(false)
     form.resetFields()
     form.setFieldsValue(getInvoiceFormDefaultValues())
     setDrawerOpen(true)
   }, [form])
 
   const openEdit = useCallback(async (id: string) => {
+    utilityPrefillRequest.current += 1
     const row = await getInvoice(id)
     setDrawerMode('edit')
     setEditingId(id)
+    setUtilitySourceId(null)
+    setUtilityPrefillLoading(false)
     form.resetFields()
     form.setFieldsValue({
       building_id: row.building_id,
@@ -271,6 +350,68 @@ export function InvoicesPage() {
       note: row.note ?? undefined,
     })
     setDrawerOpen(true)
+  }, [form])
+
+  const openCreateFromUtilityReading = useCallback(async (utilityReadingId: string) => {
+    const requestId = utilityPrefillRequest.current + 1
+    utilityPrefillRequest.current = requestId
+    setDrawerMode('create')
+    setEditingId(null)
+    setUtilitySourceId(utilityReadingId)
+    setUtilityPrefillLoading(true)
+    form.resetFields()
+    form.setFieldsValue(getInvoiceFormDefaultValues())
+    setDrawerOpen(true)
+
+    try {
+      const reading = await getUtilityReading(utilityReadingId)
+      if (utilityPrefillRequest.current !== requestId) return
+      if (reading.status !== 'APPROVED') {
+        throw new Error('Only an approved utility reading can be used to create an invoice.')
+      }
+      if (
+        reading.electricity_prev === null ||
+        reading.electricity_curr === null ||
+        reading.water_prev === null ||
+        reading.water_curr === null
+      ) {
+        throw new Error('The approved utility reading is incomplete. Please review it before creating an invoice.')
+      }
+
+      const prefill = await getInvoicePrefill(reading.room_id, reading.month)
+      if (utilityPrefillRequest.current !== requestId) return
+      if (!prefill.contract_id) {
+        throw new Error('No active contract was found for this room and billing month.')
+      }
+
+      form.setFieldsValue({
+        ...getInvoiceFormDefaultValues(),
+        building_id: prefill.building_id,
+        contract_id: prefill.contract_id,
+        room_id: reading.room_id,
+        month: dayjs(reading.month).startOf('month').format('YYYY-MM-DD'),
+        status: 'DRAFT',
+        issued_at: prefill.issued_at,
+        due_date: prefill.due_date ?? undefined,
+        rent_amount: prefill.rent_amount,
+        electricity_prev: reading.electricity_prev,
+        electricity_curr: reading.electricity_curr,
+        water_prev: reading.water_prev,
+        water_curr: reading.water_curr,
+        electric_unit_price: prefill.electric_unit_price,
+        water_unit_price: prefill.water_unit_price,
+        other_fees: prefill.other_fees,
+      })
+    } catch (error) {
+      if (utilityPrefillRequest.current !== requestId) return
+      message.error(getUserErrorMessage(error, 'Unable to prepare the invoice from this utility reading.'))
+      setDrawerOpen(false)
+      setUtilitySourceId(null)
+    } finally {
+      if (utilityPrefillRequest.current === requestId) {
+        setUtilityPrefillLoading(false)
+      }
+    }
   }, [form])
 
   const openDetail = useCallback(async (id: string, syncUrl = true) => {
@@ -295,15 +436,33 @@ export function InvoicesPage() {
   }, [])
 
   useEffect(() => {
-    const invoiceId = new URLSearchParams(window.location.search).get('invoiceId')
+    const params = new URLSearchParams(window.location.search)
+    const utilityReadingId = params.get('utilityReadingId')
+    if (utilityReadingId) {
+      params.delete('utilityReadingId')
+      const queryString = params.toString()
+      window.history.replaceState(null, '', `/invoices${queryString ? `?${queryString}` : ''}`)
+      void openCreateFromUtilityReading(utilityReadingId)
+      return
+    }
+
+    const invoiceId = params.get('invoiceId')
     if (invoiceId) {
       void openDetail(invoiceId, false)
     }
-  }, [openDetail])
+  }, [openCreateFromUtilityReading, openDetail])
+
+  const closeInvoiceDrawer = useCallback(() => {
+    utilityPrefillRequest.current += 1
+    setDrawerOpen(false)
+    setUtilitySourceId(null)
+    setUtilityPrefillLoading(false)
+  }, [])
 
   const closeDetail = useCallback(() => {
     setDetailOpen(false)
     setDetailPaymentRequest(null)
+    setConfirmingPaymentProof(null)
     const params = new URLSearchParams(window.location.search)
     if (params.has('invoiceId')) {
       params.delete('invoiceId')
@@ -347,33 +506,30 @@ export function InvoicesPage() {
         message.success('Invoice updated successfully.')
       }
 
-      setDrawerOpen(false)
+      closeInvoiceDrawer()
       void loadData()
     } catch (error) {
       message.error(getUserErrorMessage(error, 'Khong the luu hoa don. Vui long kiem tra du lieu.'))
     } finally {
       setSaveLoading(false)
     }
-  }, [drawerMode, editingId, form, loadData])
+  }, [closeInvoiceDrawer, drawerMode, editingId, form, loadData])
 
-  const onDelete = useCallback((id: string) => {
-    Modal.confirm({
-      title: 'Delete this invoice?',
-      content: 'This action cannot be undone.',
-      okText: 'Delete',
-      okButtonProps: { danger: true },
-      onOk: async () => {
-        try {
-          await deleteInvoice(id)
-          message.success('Invoice deleted.')
-          await loadData()
-        } catch (error) {
-          message.error(getUserErrorMessage(error, 'Khong the xoa hoa don.'))
-          throw error
-        }
-      },
-    })
-  }, [loadData])
+  const confirmDelete = useCallback(async () => {
+    if (!deletingInvoiceId) return
+
+    setDeleteLoading(true)
+    try {
+      await deleteInvoice(deletingInvoiceId)
+      setDeletingInvoiceId(null)
+      message.success('Invoice deleted.')
+      await loadData()
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Unable to delete the invoice.'))
+    } finally {
+      setDeleteLoading(false)
+    }
+  }, [deletingInvoiceId, loadData])
 
   const openGenerate = useCallback(() => {
     setGenerateResult(null)
@@ -404,16 +560,14 @@ export function InvoicesPage() {
     }
   }, [generateForm, loadData])
 
-  const runStatusAction = useCallback(async (action: 'issue' | 'void' | 'overdue') => {
+  const runStatusAction = useCallback(async (action: 'void' | 'overdue') => {
     if (!detailItem) return
     setStatusActionLoading(action)
     try {
       const updated =
-        action === 'issue'
-          ? await issueInvoice(detailItem.id)
-          : action === 'void'
-            ? await voidInvoice(detailItem.id)
-            : await markInvoiceOverdue(detailItem.id)
+        action === 'void'
+          ? await voidInvoice(detailItem.id)
+          : await markInvoiceOverdue(detailItem.id)
       setDetailItem(updated)
       await loadData()
       message.success('Invoice status updated.')
@@ -424,10 +578,69 @@ export function InvoicesPage() {
     }
   }, [detailItem, loadData])
 
+  const submitAdjustment = useCallback(async () => {
+    if (!detailItem) return
+    setAdjustmentLoading(true)
+    try {
+      const values = await adjustmentForm.validateFields()
+      const updated = await addInvoiceAdjustment(detailItem.id, values.amount, values.reason)
+      setDetailItem(updated)
+      setAdjustmentOpen(false)
+      adjustmentForm.resetFields()
+      await loadData()
+      message.success('Adjustment added to the draft invoice.')
+    } catch (error) {
+      const formError = error as { errorFields?: unknown[] }
+      if (!formError.errorFields) message.error(getUserErrorMessage(error, 'Unable to add the adjustment.'))
+    } finally { setAdjustmentLoading(false) }
+  }, [adjustmentForm, detailItem, loadData])
+
   const paymentRemainingAmount = useMemo(() => {
     if (!detailItem) return 0
     return Math.max(0, detailItem.total - detailItem.paid_amount)
   }, [detailItem])
+
+  const pendingPaymentProof = useMemo(
+    () => detailPaymentRequest?.proofs?.find((proof) => proof.status === 'PENDING') ?? null,
+    [detailPaymentRequest],
+  )
+
+  const openIssueModal = useCallback(() => {
+    if (!detailItem) return
+    issueForm.resetFields()
+    issueForm.setFieldsValue({
+      transfer_note: `INV ${detailItem.id.slice(0, 8)}`,
+    })
+    setIssueOpen(true)
+  }, [detailItem, issueForm])
+
+  const onIssueInvoice = useCallback(async () => {
+    if (!detailItem) return
+
+    try {
+      const values = await issueForm.validateFields()
+      setIssueLoading(true)
+      const updated = await issueInvoice(detailItem.id, {
+        bank_code: values.bank_code.trim(),
+        bank_account_no: values.bank_account_no.trim(),
+        bank_account_name: values.bank_account_name.trim(),
+        transfer_note: values.transfer_note.trim(),
+      })
+      const paymentRequest = await getPaymentRequestByInvoice(detailItem.id)
+      setDetailItem(updated)
+      setDetailPaymentRequest(paymentRequest)
+      setIssueOpen(false)
+      await loadData()
+      message.success('Invoice issued and VietQR payment request created.')
+    } catch (error) {
+      const formError = error as { errorFields?: unknown[] }
+      if (!formError.errorFields) {
+        message.error(getUserErrorMessage(error, 'Unable to issue the invoice and create its VietQR payment request.'))
+      }
+    } finally {
+      setIssueLoading(false)
+    }
+  }, [detailItem, issueForm, loadData])
 
   const paymentRequestIsClosed = !detailPaymentRequest || ['CANCELLED', 'EXPIRED'].includes(detailPaymentRequest.status)
 
@@ -453,6 +666,26 @@ export function InvoicesPage() {
     await loadData()
   }, [detailItem, loadData])
 
+  const confirmInvoicePayment = useCallback(async () => {
+    if (!confirmingPaymentProof) return
+
+    setPaymentConfirmationLoading(true)
+    try {
+      const result = await approvePaymentProof(confirmingPaymentProof.id)
+      setConfirmingPaymentProof(null)
+      await refreshDetailPaymentRequest()
+      message.success(
+        result.invoice_status === 'PAID'
+          ? 'Payment confirmed. The invoice is now complete.'
+          : `Payment confirmed. Remaining balance: ${currency.format(result.remaining_amount)}.`,
+      )
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Unable to confirm this invoice payment.'))
+    } finally {
+      setPaymentConfirmationLoading(false)
+    }
+  }, [confirmingPaymentProof, refreshDetailPaymentRequest])
+
   const onCreatePaymentRequest = useCallback(async () => {
     if (!detailItem) return
     const values = await paymentRequestForm.validateFields()
@@ -466,7 +699,6 @@ export function InvoicesPage() {
         bank_account_no: values.bank_account_no?.trim() || null,
         bank_account_name: values.bank_account_name?.trim() || null,
         transfer_note: values.transfer_note?.trim() || null,
-        qr_image_url: values.qr_image_url?.trim() || null,
         expires_at: values.expires_at ? dayjs(values.expires_at).toISOString() : null,
       })
       setDetailPaymentRequest(request)
@@ -533,9 +765,11 @@ export function InvoicesPage() {
       width: 130,
       render: (_, row) => (
         <Space size={4}>
-          <Button size="small" icon={<EyeOutlined />} onClick={() => void openDetail(row.id)} />
+          <Button size="small" icon={<EyeOutlined />} aria-label="View invoice" onClick={() => void openDetail(row.id)} />
           <Button size="small" icon={<EditOutlined />} onClick={() => void openEdit(row.id)} />
-          <Button size="small" danger icon={<DeleteOutlined />} onClick={() => onDelete(row.id)} />
+          <Tooltip title="Delete invoice">
+            <Button size="small" danger icon={<DeleteOutlined />} aria-label="Delete invoice" onClick={() => setDeletingInvoiceId(row.id)} />
+          </Tooltip>
         </Space>
       ),
     },
@@ -594,29 +828,32 @@ export function InvoicesPage() {
       </Card>
 
       <Drawer
-        title={drawerMode === 'create' ? 'Add invoice' : 'Edit invoice'}
+        title={drawerMode === 'create' ? (utilitySourceId ? 'Create invoice from utility reading' : 'Add invoice') : 'Edit invoice'}
         placement="right"
         open={drawerOpen}
         width={isMobile ? '100%' : 500}
-        onClose={() => setDrawerOpen(false)}
+        onClose={closeInvoiceDrawer}
         destroyOnClose
       >
-        <Form form={form} layout="vertical" initialValues={invoiceFormDefaultValues}>
-          <InvoiceFormFields
-            form={form}
-            buildings={buildings}
-            rooms={rooms}
-            contracts={contracts}
-            tenantName={selectedTenantName ?? undefined}
-            invoiceStatusOptions={invoiceStatusOptions.map((item) => ({ label: item.label, value: item.value }))}
-            currencyFormatter={(value) => currency.format(value)}
-            autoFillFromLatest={drawerMode === 'create'}
-          />
-          <Space className="invoice-drawer-actions">
-            <Button onClick={() => setDrawerOpen(false)}>Cancel</Button>
-            <Button type="primary" loading={saveLoading} onClick={() => void onSave()}>Save</Button>
-          </Space>
-        </Form>
+        <Spin spinning={utilityPrefillLoading} tip="Loading approved utility reading...">
+          <Form form={form} layout="vertical" initialValues={invoiceFormDefaultValues}>
+            <InvoiceFormFields
+              form={form}
+              buildings={buildings}
+              rooms={rooms}
+              contracts={contracts}
+              tenantName={selectedTenantName ?? undefined}
+              invoiceStatusOptions={invoiceStatusOptions.map((item) => ({ label: item.label, value: item.value }))}
+              currencyFormatter={(value) => currency.format(value)}
+              sourceLocked={Boolean(utilitySourceId)}
+              autoFillFromLatest={drawerMode === 'create' && !utilitySourceId}
+            />
+            <Space className="invoice-drawer-actions">
+              <Button onClick={closeInvoiceDrawer}>Cancel</Button>
+              <Button type="primary" loading={saveLoading} disabled={utilityPrefillLoading} onClick={() => void onSave()}>Save</Button>
+            </Space>
+          </Form>
+        </Spin>
       </Drawer>
 
       <Drawer title="Invoice detail" placement="right" open={detailOpen} width={isMobile ? '100%' : 720} onClose={closeDetail}>
@@ -630,7 +867,19 @@ export function InvoicesPage() {
                 <Typography.Text type="secondary">{dayjs(detailItem.month).format('MM/YYYY')}</Typography.Text>
               </Space>
               <Space wrap>
-                <Button loading={statusActionLoading === 'issue'} disabled={detailItem.status === 'PAID' || detailItem.status === 'VOID'} onClick={() => void runStatusAction('issue')}>Issue</Button>
+                {pendingPaymentProof ? (
+                  <Button
+                    type="primary"
+                    icon={<CheckOutlined />}
+                    onClick={() => setConfirmingPaymentProof(pendingPaymentProof)}
+                  >
+                    {pendingPaymentProof.transfer_amount >= paymentRemainingAmount
+                      ? 'Confirm and complete invoice'
+                      : 'Confirm payment'}
+                  </Button>
+                ) : null}
+                {detailItem.status === 'DRAFT' ? <Button type="primary" icon={<QrcodeOutlined />} onClick={openIssueModal}>Issue and create QR</Button> : null}
+                {detailItem.status === 'DRAFT' ? <Button icon={<PlusOutlined />} onClick={() => setAdjustmentOpen(true)}>Adjustment</Button> : null}
                 <Button loading={statusActionLoading === 'overdue'} disabled={detailItem.status !== 'ISSUED'} onClick={() => void runStatusAction('overdue')}>Mark overdue</Button>
                 <Button danger loading={statusActionLoading === 'void'} disabled={detailItem.status === 'PAID' || detailItem.status === 'VOID'} onClick={() => void runStatusAction('void')}>Void</Button>
               </Space>
@@ -678,7 +927,7 @@ export function InvoicesPage() {
               size="small"
               title="Bank transfer payment"
               extra={
-                paymentRequestIsClosed && detailItem.status !== 'PAID' && detailItem.status !== 'VOID' ? (
+                paymentRequestIsClosed && ['ISSUED', 'OVERDUE'].includes(detailItem.status) ? (
                   <Button size="small" type="primary" icon={<BankOutlined />} onClick={openPaymentRequestModal}>
                     Create payment request
                   </Button>
@@ -703,6 +952,13 @@ export function InvoicesPage() {
                     <Descriptions.Item label="Expires at">{detailPaymentRequest.expires_at ? dayjs(detailPaymentRequest.expires_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
                     <Descriptions.Item label="Sent at">{detailPaymentRequest.sent_at ? dayjs(detailPaymentRequest.sent_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
                   </Descriptions>
+                  {detailPaymentRequest.qr_image_url ? (
+                    <img
+                      src={detailPaymentRequest.qr_image_url}
+                      alt="VietQR bank transfer"
+                      style={{ display: 'block', width: '100%', maxWidth: 280, margin: '0 auto' }}
+                    />
+                  ) : null}
                   {!['VERIFIED', 'CANCELLED', 'EXPIRED'].includes(detailPaymentRequest.status) ? (
                     <Space>
                       <Button danger loading={paymentActionLoading === 'cancel'} onClick={() => void runPaymentRequestAction('cancel')}>Cancel request</Button>
@@ -739,6 +995,79 @@ export function InvoicesPage() {
       </Drawer>
 
       <Modal
+        open={Boolean(confirmingPaymentProof)}
+        title="Confirm invoice payment?"
+        okText="Confirm payment"
+        confirmLoading={paymentConfirmationLoading}
+        cancelButtonProps={{ disabled: paymentConfirmationLoading }}
+        closable={!paymentConfirmationLoading}
+        maskClosable={!paymentConfirmationLoading}
+        onOk={() => void confirmInvoicePayment()}
+        onCancel={() => setConfirmingPaymentProof(null)}
+      >
+        <Typography.Paragraph>
+          Confirm receipt of {currency.format(confirmingPaymentProof?.transfer_amount ?? 0)} for the{' '}
+          {detailItem ? dayjs(detailItem.month).format('MM/YYYY') : ''} invoice.
+        </Typography.Paragraph>
+        <Typography.Text type="secondary">
+          This will approve the tenant's payment proof and complete the invoice when the full balance has been received.
+        </Typography.Text>
+      </Modal>
+
+      <Modal
+        open={Boolean(deletingInvoiceId)}
+        title="Delete this invoice?"
+        okText="Delete"
+        okButtonProps={{ danger: true }}
+        cancelButtonProps={{ disabled: deleteLoading }}
+        confirmLoading={deleteLoading}
+        closable={!deleteLoading}
+        maskClosable={!deleteLoading}
+        onOk={() => void confirmDelete()}
+        onCancel={() => setDeletingInvoiceId(null)}
+      >
+        <Typography.Text>
+          This permanently removes the invoice, its line items, and all related payment records. This action cannot be undone.
+        </Typography.Text>
+      </Modal>
+
+      <Modal
+        open={issueOpen}
+        title="Issue invoice and create VietQR"
+        okText="Issue invoice"
+        confirmLoading={issueLoading}
+        closable={!issueLoading}
+        maskClosable={!issueLoading}
+        onOk={() => void onIssueInvoice()}
+        onCancel={() => setIssueOpen(false)}
+        destroyOnHidden
+      >
+        <Form form={issueForm} layout="vertical">
+          <Form.Item label="Transfer amount">
+            <Input value={currency.format(paymentRemainingAmount)} disabled />
+          </Form.Item>
+          <VietQrBankFields />
+        </Form>
+      </Modal>
+
+      <Modal
+        open={adjustmentOpen}
+        title="Add draft adjustment"
+        okText="Add adjustment"
+        confirmLoading={adjustmentLoading}
+        onOk={() => void submitAdjustment()}
+        onCancel={() => setAdjustmentOpen(false)}
+        destroyOnClose
+      >
+        <Form form={adjustmentForm} layout="vertical">
+          <Form.Item name="amount" label="Amount" extra="Use a negative amount for a discount." rules={[{ required: true, type: 'number', message: 'Please enter a non-zero amount.' }]}>
+            <InputNumber style={{ width: '100%' }} precision={0} />
+          </Form.Item>
+          <Form.Item name="reason" label="Reason" rules={[{ required: true, whitespace: true, message: 'Please enter a reason.' }]}><Input.TextArea rows={3} /></Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
         open={paymentRequestOpen}
         title="Create payment request"
         okText="Create request"
@@ -751,21 +1080,7 @@ export function InvoicesPage() {
           <Form.Item name="amount" label="Amount" rules={[{ required: true, type: 'number', min: 1, message: 'Please enter amount' }]}>
             <InputNumber min={1} max={paymentRemainingAmount || undefined} precision={0} style={{ width: '100%' }} formatter={(value) => `${value ?? ''}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')} parser={(value) => Number(value?.replace(/\D/g, '') || 0)} />
           </Form.Item>
-          <Form.Item name="bank_code" label="Bank code">
-            <Input placeholder="VCB, ACB, TCB..." />
-          </Form.Item>
-          <Form.Item name="bank_account_no" label="Bank account number">
-            <Input />
-          </Form.Item>
-          <Form.Item name="bank_account_name" label="Bank account name">
-            <Input />
-          </Form.Item>
-          <Form.Item name="transfer_note" label="Transfer note">
-            <Input />
-          </Form.Item>
-          <Form.Item name="qr_image_url" label="QR image URL">
-            <Input placeholder="https://..." />
-          </Form.Item>
+          <VietQrBankFields />
           <Form.Item name="expires_at" label="Expires at">
             <Input type="datetime-local" />
           </Form.Item>

@@ -175,6 +175,13 @@ export interface InvoiceGeneratePayload {
   building_id?: string
 }
 
+export interface InvoiceIssuePaymentPayload {
+  bank_code: string
+  bank_account_no: string
+  bank_account_name: string
+  transfer_note: string
+}
+
 export interface InvoiceGenerationResult {
   month: string
   generated: InvoiceListItem[]

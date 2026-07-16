@@ -1,19 +1,12 @@
 import { query, withTransaction } from '../../db';
 import { env } from '../../config/env';
 import { AppError } from '../../shared/errors/app-error';
+import { createVietQrPaymentData } from './vietqr.service';
 
 type DbRow = Record<string, any>;
 type AuthScope = { userId: string; role: 'MANAGER' | 'TENANT' };
 
 const toNumber = (value: unknown) => Number(value ?? 0);
-
-const buildQrContent = (amount: number, transferNote: string, payload: any) =>
-  JSON.stringify({
-    bankCode: payload.bank_code ?? env.DEFAULT_BANK_CODE ?? null,
-    accountNo: payload.bank_account_no ?? env.DEFAULT_BANK_ACCOUNT_NO ?? null,
-    amount,
-    transferNote
-  });
 
 const paymentRequestSummarySelect = `
   pr.*,
@@ -83,7 +76,7 @@ export const createPaymentRequest = async (invoiceId: string, managerId: string,
     );
     const inv = invRs.rows[0];
     if (!inv) throw new AppError(404, 'Invoice not found');
-    if (inv.status === 'PAID' || inv.status === 'VOID') throw new AppError(409, 'Cannot request payment for closed invoice');
+    if (!['ISSUED', 'OVERDUE'].includes(inv.status)) throw new AppError(409, 'Payment requests require an issued invoice', 'INVOICE_NOT_ISSUED');
 
     const paidAmount = await getInvoicePaidAmount(client, invoiceId);
     const remainingAmount = toNumber(inv.total) - paidAmount;
@@ -101,6 +94,19 @@ export const createPaymentRequest = async (invoiceId: string, managerId: string,
     if (amount > remainingAmount) throw new AppError(400, 'Amount cannot exceed invoice remaining balance');
 
     const transferNote = payload.transfer_note ?? `INV-${invoiceId.slice(0, 8)}`;
+    const bankCode = payload.bank_code ?? env.DEFAULT_BANK_CODE;
+    const bankAccountNo = payload.bank_account_no ?? env.DEFAULT_BANK_ACCOUNT_NO;
+    const bankAccountName = payload.bank_account_name ?? env.DEFAULT_BANK_ACCOUNT_NAME;
+    if (!bankCode || !bankAccountNo || !bankAccountName) {
+      throw new AppError(400, 'Bank account information is required to create a payment request', 'BANK_ACCOUNT_REQUIRED');
+    }
+    const vietQr = createVietQrPaymentData({
+      bankCode,
+      accountNo: bankAccountNo,
+      accountName: bankAccountName,
+      amount,
+      transferNote
+    });
 
     const pr = await client.query<DbRow>(
       `INSERT INTO payment_request(invoice_id,status,amount,currency,qr_content,qr_image_url,bank_code,bank_account_no,bank_account_name,transfer_note,expires_at,sent_at,created_by_user_id)
@@ -110,12 +116,12 @@ export const createPaymentRequest = async (invoiceId: string, managerId: string,
         invoiceId,
         amount,
         payload.currency ?? 'VND',
-        buildQrContent(amount, transferNote, payload),
-        payload.qr_image_url ?? null,
-        payload.bank_code ?? env.DEFAULT_BANK_CODE ?? null,
-        payload.bank_account_no ?? env.DEFAULT_BANK_ACCOUNT_NO ?? null,
-        payload.bank_account_name ?? env.DEFAULT_BANK_ACCOUNT_NAME ?? null,
-        transferNote,
+        vietQr.qrContent,
+        vietQr.qrImageUrl,
+        bankCode.trim().toUpperCase(),
+        bankAccountNo.trim(),
+        bankAccountName.trim(),
+        vietQr.normalizedTransferNote,
         payload.expires_at ?? null,
         managerId
       ]
@@ -129,7 +135,7 @@ export const submitPaymentProof = async (paymentRequestId: string, payload: any,
       `SELECT pr.*, i.total invoice_total, t.user_id tenant_user_id
        FROM payment_request pr
        JOIN invoice i ON i.id=pr.invoice_id
-       JOIN contract_tenant ct ON ct.contract_id=i.contract_id AND ct.left_at IS NULL
+       JOIN contract_tenant ct ON ct.contract_id=i.contract_id
        JOIN tenant t ON t.id=ct.tenant_id
        WHERE pr.id=$1 AND t.user_id=$2`,
       [paymentRequestId, tenantUserId]
@@ -202,11 +208,12 @@ export const reviewPaymentProof = async (proofId: string, approve: boolean, mana
 
     const paidAmount = await getInvoicePaidAmount(client, proof.invoice_id);
     const fullyPaid = paidAmount >= toNumber(proof.invoice_total);
+    const nextRequestStatus = fullyPaid ? 'VERIFIED' : 'WAITING_TRANSFER';
     await client.query(
       `UPDATE payment_request
-       SET status=$2, approved_by_user_id=$3, approved_at=CASE WHEN $2='VERIFIED' THEN now() ELSE approved_at END
+       SET status=$2, approved_by_user_id=$3, approved_at=CASE WHEN $4 THEN now() ELSE approved_at END
        WHERE id=$1`,
-      [proof.payment_request_id, fullyPaid ? 'VERIFIED' : 'WAITING_TRANSFER', managerId]
+      [proof.payment_request_id, nextRequestStatus, managerId, fullyPaid]
     );
 
     if (fullyPaid) {
@@ -235,7 +242,7 @@ export const getPaymentRequestDetail = async (id: string, scope: AuthScope) => {
       `SELECT ${paymentRequestSummarySelect}
        FROM payment_request pr
        ${paymentRequestSummaryJoins}
-       JOIN contract_tenant ct ON ct.contract_id=i.contract_id AND ct.left_at IS NULL
+       JOIN contract_tenant ct ON ct.contract_id=i.contract_id
        JOIN tenant t ON t.id=ct.tenant_id
        WHERE pr.id=$1 AND t.user_id=$2`,
       [id, scope.userId]
@@ -266,7 +273,7 @@ export const listPaymentRequests = async (scope: AuthScope) => {
     `SELECT ${paymentRequestSummarySelect}
      FROM payment_request pr
      ${paymentRequestSummaryJoins}
-     JOIN contract_tenant ct ON ct.contract_id=i.contract_id AND ct.left_at IS NULL
+     JOIN contract_tenant ct ON ct.contract_id=i.contract_id
      JOIN tenant t ON t.id=ct.tenant_id
      WHERE t.user_id=$1
      ORDER BY pr.created_at DESC`,
@@ -281,6 +288,7 @@ export const getPaymentRequestForInvoice = async (invoiceId: string, scope: Auth
        FROM payment_request pr
        ${paymentRequestSummaryJoins}
        WHERE pr.invoice_id=$1 AND b.manager_user_id=$2
+         AND pr.status NOT IN ('CANCELLED', 'EXPIRED')
        ORDER BY pr.created_at DESC
        LIMIT 1`,
       [invoiceId, scope.userId]
@@ -289,9 +297,10 @@ export const getPaymentRequestForInvoice = async (invoiceId: string, scope: Auth
       `SELECT ${paymentRequestSummarySelect}
        FROM payment_request pr
        ${paymentRequestSummaryJoins}
-       JOIN contract_tenant ct ON ct.contract_id=i.contract_id AND ct.left_at IS NULL
+       JOIN contract_tenant ct ON ct.contract_id=i.contract_id
        JOIN tenant t ON t.id=ct.tenant_id
        WHERE pr.invoice_id=$1 AND t.user_id=$2
+         AND pr.status NOT IN ('CANCELLED', 'EXPIRED')
        ORDER BY pr.created_at DESC
        LIMIT 1`,
       [invoiceId, scope.userId]

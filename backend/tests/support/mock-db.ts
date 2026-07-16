@@ -544,9 +544,42 @@ class FakeDb {
       return result<T>([reading as T]);
     }
 
+    if (sql.startsWith('insert into utility_reading_evidence(') && sql.includes("($1,'electric'")) {
+      this.utilityEvidence.push(
+        {
+          id: this.newId(),
+          utility_reading_id: params[0],
+          evidence_type: 'ELECTRIC',
+          file_name: params[1],
+          file_url: params[2],
+          mime_type: params[3],
+          file_size: params[4],
+          uploaded_by_user_id: params[9]
+        },
+        {
+          id: this.newId(),
+          utility_reading_id: params[0],
+          evidence_type: 'WATER',
+          file_name: params[5],
+          file_url: params[6],
+          mime_type: params[7],
+          file_size: params[8],
+          uploaded_by_user_id: params[9]
+        }
+      );
+      return result<T>([]);
+    }
+
     if (sql.startsWith('select ur.* from utility_reading ur') && sql.includes('for update of ur')) {
       const reading = this.getReadingForManager(String(params[0]), String(params[1]));
       return result<T>(reading ? [reading as T] : []);
+    }
+
+    if (sql.startsWith("update utility_reading ur set status='approved'")) {
+      const reading = this.utilityReadings.find((item) => item.id === params[0]);
+      const stillInvoiced = this.invoices.some((item) => item.utility_reading_id === params[0]);
+      if (reading?.status === 'INVOICED' && !stillInvoiced) reading.status = 'APPROVED';
+      return result<T>([]);
     }
 
     if (sql.startsWith("update utility_reading set status='approved'")) {
@@ -666,15 +699,15 @@ class FakeDb {
         room_id: params[1],
         utility_reading_id: params[2],
         month: params[3],
-        status: 'ISSUED',
-        issued_at: now,
+        status: sql.includes("'draft'") ? 'DRAFT' : 'ISSUED',
+        issued_at: sql.includes("'draft'") ? null : now,
         due_date: params[4],
         note: params[5] ?? null,
         subtotal: params[6],
         discount: 0,
         total: params[6],
-        approved_by_user_id: params[7],
-        approved_at: now,
+        approved_by_user_id: sql.includes("'draft'") ? null : params[7],
+        approved_at: sql.includes("'draft'") ? null : now,
         created_at: now,
         updated_at: now
       };
@@ -706,7 +739,7 @@ class FakeDb {
       return result<T>([]);
     }
 
-    if (sql.startsWith('select i.* from invoice i') && sql.includes('where i.id=$1 and b.manager_user_id=$2')) {
+    if ((sql.startsWith('select i.* from invoice i') || sql.startsWith('select i.*, b.id as building_id')) && sql.includes('where i.id=$1 and b.manager_user_id=$2')) {
       const invoice = this.getInvoiceForManager(String(params[0]), String(params[1]));
       return result<T>(invoice ? [invoice as T] : []);
     }
@@ -716,27 +749,69 @@ class FakeDb {
       return result<T>([{ paid_amount: paid } as T]);
     }
 
+    if (sql.startsWith("update invoice set status='issued'")) {
+      const invoice = this.invoices.find((item) => item.id === params[0]);
+      if (invoice) {
+        invoice.status = 'ISSUED';
+        invoice.issued_at = now;
+        invoice.approved_by_user_id = params[1];
+        invoice.approved_at = now;
+      }
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('select * from invoice_item where invoice_id=$1')) {
+      return result<T>(this.invoiceItems.filter((item) => item.invoice_id === params[0]) as T[]);
+    }
+
+    if (sql.startsWith('select * from invoice_adjustment where invoice_id=$1')) {
+      return result<T>(this.invoiceAdjustments.filter((item) => item.invoice_id === params[0]) as T[]);
+    }
+
+    if (sql.startsWith('delete from payment where invoice_id=$1')) {
+      this.payments = this.payments.filter((item) => item.invoice_id !== params[0]);
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('delete from payment_request where invoice_id=$1')) {
+      const requestIds = this.paymentRequests
+        .filter((item) => item.invoice_id === params[0])
+        .map((item) => item.id);
+      this.paymentProofs = this.paymentProofs.filter((item) => !requestIds.includes(item.payment_request_id));
+      this.paymentRequests = this.paymentRequests.filter((item) => item.invoice_id !== params[0]);
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('delete from invoice where id=$1')) {
+      const invoiceId = params[0];
+      this.invoices = this.invoices.filter((item) => item.id !== invoiceId);
+      this.invoiceItems = this.invoiceItems.filter((item) => item.invoice_id !== invoiceId);
+      this.invoiceAdjustments = this.invoiceAdjustments.filter((item) => item.invoice_id !== invoiceId);
+      return result<T>([]);
+    }
+
     if (sql.startsWith('select id from payment_request')) {
       const request = this.paymentRequests.find((item) => item.invoice_id === params[0] && !['CANCELLED', 'EXPIRED'].includes(item.status));
       return result<T>(request ? [{ id: request.id } as T] : []);
     }
 
     if (sql.startsWith('insert into payment_request(')) {
+      const issuedByInvoice = sql.includes("'vnd'");
       const row = {
         id: this.newId(),
         invoice_id: params[0],
         status: 'WAITING_TRANSFER',
         amount: params[1],
-        currency: params[2],
-        qr_content: params[3],
-        qr_image_url: params[4] ?? null,
-        bank_code: params[5] ?? null,
-        bank_account_no: params[6] ?? null,
-        bank_account_name: params[7] ?? null,
-        transfer_note: params[8],
-        expires_at: params[9] ?? null,
+        currency: issuedByInvoice ? 'VND' : params[2],
+        qr_content: issuedByInvoice ? params[2] : params[3],
+        qr_image_url: issuedByInvoice ? params[3] : params[4] ?? null,
+        bank_code: issuedByInvoice ? params[4] ?? null : params[5] ?? null,
+        bank_account_no: issuedByInvoice ? params[5] ?? null : params[6] ?? null,
+        bank_account_name: issuedByInvoice ? params[6] ?? null : params[7] ?? null,
+        transfer_note: issuedByInvoice ? params[7] : params[8],
+        expires_at: issuedByInvoice ? null : params[9] ?? null,
         sent_at: now,
-        created_by_user_id: params[10],
+        created_by_user_id: issuedByInvoice ? params[8] : params[10],
         created_at: now
       };
       this.paymentRequests.push(row);
