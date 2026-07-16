@@ -90,6 +90,14 @@ export interface PaymentProofPayload {
   payer_note?: string | null
 }
 
+export interface PaymentProofReviewResult {
+  proof: PaymentProof
+  payment: PaymentRecord
+  paid_amount: number
+  remaining_amount: number
+  invoice_status: string
+}
+
 type NumericPaymentRequestFields = 'amount' | 'invoice_total' | 'paid_amount' | 'remaining_amount'
 type PaymentRequestApiRow = Omit<PaymentRequest, NumericPaymentRequestFields | 'proofs' | 'payments' | 'payment'> &
   Record<NumericPaymentRequestFields, number | string | null> & {
@@ -167,8 +175,8 @@ export function submitPaymentProof(id: string, payload: PaymentProofPayload): Pr
   return apiRequest<PaymentProof>(API_ROUTES.payments.submitProof(id), { method: 'POST', body: payload })
 }
 
-export function approvePaymentProof(id: string) {
-  return apiRequest(API_ROUTES.payments.approveProof(id), { method: 'POST' })
+export function approvePaymentProof(id: string): Promise<PaymentProofReviewResult> {
+  return apiRequest<PaymentProofReviewResult>(API_ROUTES.payments.approveProof(id), { method: 'POST' })
 }
 
 export function rejectPaymentProof(id: string, reason: string) {

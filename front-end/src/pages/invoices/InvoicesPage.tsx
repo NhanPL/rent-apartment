@@ -1,5 +1,6 @@
 import {
   BankOutlined,
+  CheckOutlined,
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
@@ -56,6 +57,7 @@ import {
 import { getUserErrorMessage } from '../../services/errorMessage'
 import { getUtilityReading } from '../../services/utilitiesService'
 import {
+  approvePaymentProof,
   cancelPaymentRequest,
   createPaymentRequest,
   expirePaymentRequest,
@@ -220,6 +222,8 @@ export function InvoicesPage() {
   const [paymentRequestOpen, setPaymentRequestOpen] = useState(false)
   const [paymentRequestLoading, setPaymentRequestLoading] = useState(false)
   const [paymentActionLoading, setPaymentActionLoading] = useState<string | null>(null)
+  const [confirmingPaymentProof, setConfirmingPaymentProof] = useState<PaymentProof | null>(null)
+  const [paymentConfirmationLoading, setPaymentConfirmationLoading] = useState(false)
   const [adjustmentOpen, setAdjustmentOpen] = useState(false)
   const [adjustmentLoading, setAdjustmentLoading] = useState(false)
   const [issueOpen, setIssueOpen] = useState(false)
@@ -458,6 +462,7 @@ export function InvoicesPage() {
   const closeDetail = useCallback(() => {
     setDetailOpen(false)
     setDetailPaymentRequest(null)
+    setConfirmingPaymentProof(null)
     const params = new URLSearchParams(window.location.search)
     if (params.has('invoiceId')) {
       params.delete('invoiceId')
@@ -595,6 +600,11 @@ export function InvoicesPage() {
     return Math.max(0, detailItem.total - detailItem.paid_amount)
   }, [detailItem])
 
+  const pendingPaymentProof = useMemo(
+    () => detailPaymentRequest?.proofs?.find((proof) => proof.status === 'PENDING') ?? null,
+    [detailPaymentRequest],
+  )
+
   const openIssueModal = useCallback(() => {
     if (!detailItem) return
     issueForm.resetFields()
@@ -655,6 +665,26 @@ export function InvoicesPage() {
     setDetailPaymentRequest(paymentRequest)
     await loadData()
   }, [detailItem, loadData])
+
+  const confirmInvoicePayment = useCallback(async () => {
+    if (!confirmingPaymentProof) return
+
+    setPaymentConfirmationLoading(true)
+    try {
+      const result = await approvePaymentProof(confirmingPaymentProof.id)
+      setConfirmingPaymentProof(null)
+      await refreshDetailPaymentRequest()
+      message.success(
+        result.invoice_status === 'PAID'
+          ? 'Payment confirmed. The invoice is now complete.'
+          : `Payment confirmed. Remaining balance: ${currency.format(result.remaining_amount)}.`,
+      )
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Unable to confirm this invoice payment.'))
+    } finally {
+      setPaymentConfirmationLoading(false)
+    }
+  }, [confirmingPaymentProof, refreshDetailPaymentRequest])
 
   const onCreatePaymentRequest = useCallback(async () => {
     if (!detailItem) return
@@ -886,7 +916,18 @@ export function InvoicesPage() {
               size="small"
               title="Bank transfer payment"
               extra={
-                paymentRequestIsClosed && ['ISSUED', 'OVERDUE'].includes(detailItem.status) ? (
+                pendingPaymentProof ? (
+                  <Button
+                    size="small"
+                    type="primary"
+                    icon={<CheckOutlined />}
+                    onClick={() => setConfirmingPaymentProof(pendingPaymentProof)}
+                  >
+                    {pendingPaymentProof.transfer_amount >= paymentRemainingAmount
+                      ? 'Confirm and complete invoice'
+                      : 'Confirm payment'}
+                  </Button>
+                ) : paymentRequestIsClosed && ['ISSUED', 'OVERDUE'].includes(detailItem.status) ? (
                   <Button size="small" type="primary" icon={<BankOutlined />} onClick={openPaymentRequestModal}>
                     Create payment request
                   </Button>
@@ -952,6 +993,26 @@ export function InvoicesPage() {
           </Space>
         )}
       </Drawer>
+
+      <Modal
+        open={Boolean(confirmingPaymentProof)}
+        title="Confirm invoice payment?"
+        okText="Confirm payment"
+        confirmLoading={paymentConfirmationLoading}
+        cancelButtonProps={{ disabled: paymentConfirmationLoading }}
+        closable={!paymentConfirmationLoading}
+        maskClosable={!paymentConfirmationLoading}
+        onOk={() => void confirmInvoicePayment()}
+        onCancel={() => setConfirmingPaymentProof(null)}
+      >
+        <Typography.Paragraph>
+          Confirm receipt of {currency.format(confirmingPaymentProof?.transfer_amount ?? 0)} for the{' '}
+          {detailItem ? dayjs(detailItem.month).format('MM/YYYY') : ''} invoice.
+        </Typography.Paragraph>
+        <Typography.Text type="secondary">
+          This will approve the tenant's payment proof and complete the invoice when the full balance has been received.
+        </Typography.Text>
+      </Modal>
 
       <Modal
         open={Boolean(deletingInvoiceId)}

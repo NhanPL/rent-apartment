@@ -21,6 +21,7 @@ const utilityServiceMocks = vi.hoisted(() => ({
 }))
 
 const paymentServiceMocks = vi.hoisted(() => ({
+  approvePaymentProof: vi.fn(),
   getPaymentRequestByInvoice: vi.fn(),
 }))
 
@@ -49,6 +50,7 @@ vi.mock('../../services/utilitiesService', () => ({
 }))
 
 vi.mock('../../services/paymentsService', () => ({
+  approvePaymentProof: paymentServiceMocks.approvePaymentProof,
   cancelPaymentRequest: vi.fn(),
   createPaymentRequest: vi.fn(),
   expirePaymentRequest: vi.fn(),
@@ -251,4 +253,86 @@ describe('InvoicesPage invoice deletion', () => {
     }))
     expect(await screen.findByAltText('VietQR bank transfer')).toHaveAttribute('src', paymentRequest.qr_image_url)
   })
+
+  it('confirms a pending tenant payment proof and completes the invoice', async () => {
+    const user = userEvent.setup()
+    const issuedInvoice = {
+      ...invoice,
+      status: 'ISSUED',
+      payment_status: null,
+      paid_at: null,
+      paid_amount: 0,
+      items: [],
+      adjustments: [],
+    }
+    const pendingProof = {
+      id: '00000000-0000-4000-8000-000000000961',
+      payment_request_id: '00000000-0000-4000-8000-000000000951',
+      status: 'PENDING',
+      file_name: 'payment-proof.jpg',
+      file_url: 'https://res.cloudinary.com/demo/image/upload/payment-proof.jpg',
+      mime_type: 'image/jpeg',
+      file_size: 120_000,
+      submitted_at: '2026-07-15T01:00:00.000Z',
+      transfer_amount: invoice.total,
+      transfer_time: null,
+      payer_note: null,
+      approved_at: null,
+      rejected_at: null,
+      rejection_reason: null,
+    }
+    const paymentRequest = {
+      id: pendingProof.payment_request_id,
+      invoice_id: invoice.id,
+      status: 'TRANSFER_SUBMITTED',
+      amount: invoice.total,
+      currency: 'VND',
+      qr_content: '{}',
+      qr_image_url: null,
+      bank_code: '970436',
+      bank_account_no: '1234567890',
+      bank_account_name: 'RentMate Manager',
+      transfer_note: `INV ${invoice.id.slice(0, 8)}`,
+      expires_at: null,
+      sent_at: '2026-07-15T00:00:00.000Z',
+      created_at: '2026-07-15T00:00:00.000Z',
+      updated_at: '2026-07-15T01:00:00.000Z',
+      paid_amount: 0,
+      remaining_amount: invoice.total,
+      proofs: [pendingProof],
+    }
+    invoiceServiceMocks.getInvoice
+      .mockResolvedValueOnce(issuedInvoice)
+      .mockResolvedValueOnce({ ...issuedInvoice, status: 'PAID', payment_status: 'SUCCEEDED', paid_amount: invoice.total })
+    paymentServiceMocks.getPaymentRequestByInvoice
+      .mockResolvedValueOnce(paymentRequest)
+      .mockResolvedValueOnce({
+        ...paymentRequest,
+        status: 'VERIFIED',
+        paid_amount: invoice.total,
+        remaining_amount: 0,
+        proofs: [{ ...pendingProof, status: 'APPROVED' }],
+      })
+    paymentServiceMocks.approvePaymentProof.mockResolvedValue({
+      invoice_status: 'PAID',
+      paid_amount: invoice.total,
+      remaining_amount: 0,
+    })
+
+    render(<InvoicesPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'View invoice' }))
+    await user.click(await screen.findByRole('button', { name: /confirm and complete invoice/i }))
+
+    const dialogTitle = await screen.findByText('Confirm invoice payment?')
+    const dialog = dialogTitle.closest('.ant-modal') as HTMLElement
+    expect(within(dialog).getByText(/07\/2026 invoice/i)).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Confirm payment' }))
+
+    await waitFor(() => expect(paymentServiceMocks.approvePaymentProof).toHaveBeenCalledWith(pendingProof.id))
+    await waitFor(() => expect(invoiceServiceMocks.getInvoice).toHaveBeenCalledTimes(2))
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /confirm and complete invoice/i })).not.toBeInTheDocument()
+    })
+  }, 10_000)
 })
