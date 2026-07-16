@@ -4,7 +4,6 @@ import { API_ROUTES } from './apiRoutes'
 export type PaymentRequestStatus = 'DRAFT' | 'WAITING_TRANSFER' | 'TRANSFER_SUBMITTED' | 'VERIFIED' | 'REJECTED' | 'CANCELLED' | 'EXPIRED'
 export type PaymentProofStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
 export type PaymentStatus = 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED' | 'CANCELLED'
-export type GatewayPaymentStatus = 'SUCCEEDED' | 'FAILED' | 'CANCELLED'
 
 export interface PaymentProof {
   id: string
@@ -91,47 +90,6 @@ export interface PaymentProofPayload {
   payer_note?: string | null
 }
 
-export interface VnpayCreatePaymentResponse {
-  provider: 'VNPAY'
-  reused: boolean
-  redirect_url: string
-  amount: number
-  currency: string
-  payment: PaymentRecord & {
-    reference_code?: string | null
-  }
-  transaction: {
-    id: string
-    payment_id: string
-    provider: 'VNPAY'
-    status: string
-    amount: number
-    currency: string
-    merchant_order_id: string
-    redirect_url: string
-    return_url: string
-    ipn_url: string
-    created_at?: string
-    updated_at?: string
-  }
-}
-
-export interface VnpayPaymentResult {
-  code: string
-  message: string
-  success: boolean
-  status: GatewayPaymentStatus
-  signature_valid: boolean
-  already_confirmed: boolean
-  invoice_id: string | null
-  payment_id: string | null
-  transaction_id: string | null
-  merchant_order_id: string | null
-  amount: number | null
-  paid_at: string | null
-  provider_txn_id: string | null
-}
-
 type NumericPaymentRequestFields = 'amount' | 'invoice_total' | 'paid_amount' | 'remaining_amount'
 type PaymentRequestApiRow = Omit<PaymentRequest, NumericPaymentRequestFields | 'proofs' | 'payments' | 'payment'> &
   Record<NumericPaymentRequestFields, number | string | null> & {
@@ -144,12 +102,6 @@ type PaymentProofApiRow = Omit<PaymentProof, 'transfer_amount' | 'file_size'> & 
   file_size: number | string | null
 }
 type PaymentRecordApiRow = Omit<PaymentRecord, 'amount'> & { amount: number | string | null }
-type VnpayCreatePaymentApiResponse = Omit<VnpayCreatePaymentResponse, 'amount' | 'payment' | 'transaction'> & {
-  amount: number | string | null
-  payment: PaymentRecordApiRow & { reference_code?: string | null }
-  transaction: Omit<VnpayCreatePaymentResponse['transaction'], 'amount'> & { amount: number | string | null }
-}
-type VnpayPaymentApiResult = Omit<VnpayPaymentResult, 'amount'> & { amount: number | string | null }
 
 const toNumber = (value: unknown): number => Number(value ?? 0)
 
@@ -178,25 +130,6 @@ function toPaymentRequest(row: PaymentRequestApiRow): PaymentRequest {
     proofs: row.proofs?.map(toPaymentProof) ?? [],
     payments: row.payments?.map(toPaymentRecord) ?? [],
     payment: row.payment ? toPaymentRecord(row.payment) : null,
-  }
-}
-
-function toVnpayCreatePaymentResponse(row: VnpayCreatePaymentApiResponse): VnpayCreatePaymentResponse {
-  return {
-    ...row,
-    amount: toNumber(row.amount),
-    payment: toPaymentRecord(row.payment) as VnpayCreatePaymentResponse['payment'],
-    transaction: {
-      ...row.transaction,
-      amount: toNumber(row.transaction.amount),
-    },
-  }
-}
-
-function toVnpayPaymentResult(row: VnpayPaymentApiResult): VnpayPaymentResult {
-  return {
-    ...row,
-    amount: row.amount === null || row.amount === undefined ? null : toNumber(row.amount),
   }
 }
 
@@ -240,18 +173,4 @@ export function approvePaymentProof(id: string) {
 
 export function rejectPaymentProof(id: string, reason: string) {
   return apiRequest(API_ROUTES.payments.rejectProof(id), { method: 'POST', body: { reason } })
-}
-
-export async function createVnpayPayment(payload: { invoice_id: string; bank_code?: string | null; locale?: 'vn' | 'en' }): Promise<VnpayCreatePaymentResponse> {
-  const row = await apiRequest<VnpayCreatePaymentApiResponse>(API_ROUTES.payments.vnpayCreate, { method: 'POST', body: payload })
-  return toVnpayCreatePaymentResponse(row)
-}
-
-export async function verifyVnpayReturn(params: URLSearchParams): Promise<VnpayPaymentResult> {
-  const queryString = params.toString()
-  const row = await apiRequest<VnpayPaymentApiResult>(
-    `${API_ROUTES.payments.vnpayReturn}${queryString ? `?${queryString}` : ''}`,
-    { skipAuth: true }
-  )
-  return toVnpayPaymentResult(row)
 }

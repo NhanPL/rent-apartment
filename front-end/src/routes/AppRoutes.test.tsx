@@ -82,10 +82,6 @@ vi.mock('../pages/payments/PaymentsPage', () => ({
   PaymentsPage: () => <div>Payments Page</div>,
 }))
 
-vi.mock('../pages/payments/PaymentResultPage', () => ({
-  PaymentResultPage: () => <div>Payment Result Page</div>,
-}))
-
 vi.mock('../pages/reports/ReportsPage', () => ({
   ReportsPage: () => <div>Reports Page</div>,
 }))
@@ -162,6 +158,16 @@ describe('AppRoutes', () => {
     expect(await screen.findByText('Tenant Room Page')).not.toBeNull()
     expect(screen.getAllByText('My Room')).toHaveLength(2)
     expect(screen.queryByText('Buildings')).toBeNull()
+  })
+
+  it('redirects the removed payment result route to the tenant room page', async () => {
+    setAuth(tenantUser)
+    window.history.replaceState(null, '', '/payment-result')
+
+    render(<AppRoutes />)
+
+    expect(window.location.pathname).toBe('/my-room')
+    expect(await screen.findByText('Tenant Room Page')).not.toBeNull()
   })
 
   it('sends authenticated users away from login to their role home route', async () => {

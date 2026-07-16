@@ -2,14 +2,12 @@ import dayjs from 'dayjs'
 import { apiRequest } from './apiClient'
 import { API_ROUTES } from './apiRoutes'
 import {
-  createVnpayPayment,
-  getPaymentRequest,
+  getPaymentRequestByInvoice,
   submitPaymentProof,
   type PaymentProofPayload,
   type PaymentRecord,
   type PaymentRequest,
   type PaymentRequestStatus,
-  type VnpayCreatePaymentResponse,
 } from './paymentsService'
 
 export type ContractStatus = 'DRAFT' | 'ACTIVE' | 'ENDED' | 'CANCELLED'
@@ -438,14 +436,10 @@ export async function attachMyUtilityReadingEvidence(readingId: string, payload:
   })
 }
 
-export function getMyPaymentRequest(paymentRequestId: string): Promise<PaymentRequest> {
-  return getPaymentRequest(paymentRequestId)
+export function getMyPaymentRequestForInvoice(invoiceId: string): Promise<PaymentRequest | null> {
+  return getPaymentRequestByInvoice(invoiceId)
 }
 
 export function submitMyPaymentProof(paymentRequestId: string, payload: PaymentProofPayload) {
   return submitPaymentProof(paymentRequestId, payload)
-}
-
-export function createMyVnpayPayment(invoiceId: string): Promise<VnpayCreatePaymentResponse> {
-  return createVnpayPayment({ invoice_id: invoiceId })
 }

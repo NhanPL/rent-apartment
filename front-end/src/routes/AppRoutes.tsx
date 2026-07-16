@@ -17,7 +17,6 @@ const FixedChargesPage = lazy(() => import('../pages/fixed-charges/FixedChargesP
 const TenantRoomPage = lazy(() => import('../pages/tenant-room/TenantRoomPage').then((module) => ({ default: module.TenantRoomPage })))
 const UtilitiesPage = lazy(() => import('../pages/utilities/UtilitiesPage').then((module) => ({ default: module.UtilitiesPage })))
 const PaymentsPage = lazy(() => import('../pages/payments/PaymentsPage').then((module) => ({ default: module.PaymentsPage })))
-const PaymentResultPage = lazy(() => import('../pages/payments/PaymentResultPage').then((module) => ({ default: module.PaymentResultPage })))
 const ReportsPage = lazy(() => import('../pages/reports/ReportsPage').then((module) => ({ default: module.ReportsPage })))
 
 const adminPaths = new Set(['/dashboard', '/buildings', '/rental-registration', '/contracts', '/utilities', '/fixed-charges', '/tenants', '/invoices', '/monthly-billing', '/payments', '/reports'])
@@ -43,10 +42,6 @@ function homePathByRole(role: AppRole) {
 
 function canAccess(pathname: string, role: AppRole) {
   if (pathname === '/my-room') {
-    return role === 'TENANT'
-  }
-
-  if (pathname === '/payment-result') {
     return role === 'TENANT'
   }
 
@@ -124,7 +119,6 @@ export function AppRoutes() {
     if (protectedPath === '/invoices') return <InvoicesPage />
     if (protectedPath === '/monthly-billing') return <MonthlyBillingPage />
     if (protectedPath === '/payments') return <PaymentsPage />
-    if (protectedPath === '/payment-result') return <PaymentResultPage />
     if (protectedPath === '/reports') return <ReportsPage />
     if (protectedPath === '/my-room') return <TenantRoomPage />
     return null

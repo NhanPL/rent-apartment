@@ -135,7 +135,7 @@ export const submitPaymentProof = async (paymentRequestId: string, payload: any,
       `SELECT pr.*, i.total invoice_total, t.user_id tenant_user_id
        FROM payment_request pr
        JOIN invoice i ON i.id=pr.invoice_id
-       JOIN contract_tenant ct ON ct.contract_id=i.contract_id AND ct.left_at IS NULL
+       JOIN contract_tenant ct ON ct.contract_id=i.contract_id
        JOIN tenant t ON t.id=ct.tenant_id
        WHERE pr.id=$1 AND t.user_id=$2`,
       [paymentRequestId, tenantUserId]
@@ -241,7 +241,7 @@ export const getPaymentRequestDetail = async (id: string, scope: AuthScope) => {
       `SELECT ${paymentRequestSummarySelect}
        FROM payment_request pr
        ${paymentRequestSummaryJoins}
-       JOIN contract_tenant ct ON ct.contract_id=i.contract_id AND ct.left_at IS NULL
+       JOIN contract_tenant ct ON ct.contract_id=i.contract_id
        JOIN tenant t ON t.id=ct.tenant_id
        WHERE pr.id=$1 AND t.user_id=$2`,
       [id, scope.userId]
@@ -272,7 +272,7 @@ export const listPaymentRequests = async (scope: AuthScope) => {
     `SELECT ${paymentRequestSummarySelect}
      FROM payment_request pr
      ${paymentRequestSummaryJoins}
-     JOIN contract_tenant ct ON ct.contract_id=i.contract_id AND ct.left_at IS NULL
+     JOIN contract_tenant ct ON ct.contract_id=i.contract_id
      JOIN tenant t ON t.id=ct.tenant_id
      WHERE t.user_id=$1
      ORDER BY pr.created_at DESC`,
@@ -287,6 +287,7 @@ export const getPaymentRequestForInvoice = async (invoiceId: string, scope: Auth
        FROM payment_request pr
        ${paymentRequestSummaryJoins}
        WHERE pr.invoice_id=$1 AND b.manager_user_id=$2
+         AND pr.status NOT IN ('CANCELLED', 'EXPIRED')
        ORDER BY pr.created_at DESC
        LIMIT 1`,
       [invoiceId, scope.userId]
@@ -295,9 +296,10 @@ export const getPaymentRequestForInvoice = async (invoiceId: string, scope: Auth
       `SELECT ${paymentRequestSummarySelect}
        FROM payment_request pr
        ${paymentRequestSummaryJoins}
-       JOIN contract_tenant ct ON ct.contract_id=i.contract_id AND ct.left_at IS NULL
+       JOIN contract_tenant ct ON ct.contract_id=i.contract_id
        JOIN tenant t ON t.id=ct.tenant_id
        WHERE pr.invoice_id=$1 AND t.user_id=$2
+         AND pr.status NOT IN ('CANCELLED', 'EXPIRED')
        ORDER BY pr.created_at DESC
        LIMIT 1`,
       [invoiceId, scope.userId]

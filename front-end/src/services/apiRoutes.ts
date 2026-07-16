@@ -63,8 +63,6 @@ export const API_ROUTES = {
     submitProof: (id: string) => `/payments/requests/${id}/proofs`,
     approveProof: (id: string) => `/payments/proofs/${id}/approve`,
     rejectProof: (id: string) => `/payments/proofs/${id}/reject`,
-    vnpayCreate: '/payments/vnpay/create',
-    vnpayReturn: '/payments/vnpay/return',
   },
   fixedCharges: {
     catalog: '/fixed-charges/catalog',

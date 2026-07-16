@@ -50,7 +50,6 @@ const errorMessages: Record<string, string> = {
   PAYMENT_CANCELLED: 'The payment request has been cancelled.',
   INVALID_AMOUNT: 'The amount is invalid.',
   INVALID_SIGNATURE: 'The verification signature is invalid.',
-  VNPAY_NOT_CONFIGURED: 'The VNPAY payment gateway has not been configured.',
   CLOUDINARY_NOT_CONFIGURED: 'Cloudinary file storage has not been configured.',
   CLOUDINARY_DELETE_FAILED: 'The file could not be removed from Cloudinary. No data was deleted.',
   CLOUDINARY_ASSET_METADATA_MISSING: 'The Cloudinary file could not be identified for deletion.',

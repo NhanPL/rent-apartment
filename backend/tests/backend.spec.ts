@@ -138,6 +138,21 @@ describe('backend API smoke tests', () => {
       .expect(403);
   });
 
+  it('does not expose the removed VNPAY payment endpoints', async () => {
+    const tenantSession = await login('tenant@example.com');
+
+    await request(app)
+      .post('/api/payments/vnpay/create')
+      .set(auth(tenantSession.accessToken))
+      .send({ invoice_id: ids.invoiceIssued })
+      .expect(404);
+
+    await request(app)
+      .get('/api/payments/vnpay/return')
+      .set(auth(tenantSession.accessToken))
+      .expect(404);
+  });
+
   it('isolates tenant data between managers', async () => {
     const managerSession = await login('manager@example.com');
 
