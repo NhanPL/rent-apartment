@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { AppLayout } from '../layout/AppLayout'
 import { routeItems, sidebarRouteItems } from './routeConfig'
 import { useAuth } from '../features/auth/useAuth'
+import { changePassword } from '../features/auth/authApi'
 import type { AppRole } from '../features/auth/types/auth'
 
 const LoginPage = lazy(() => import('../features/auth/pages/LoginPage').then((module) => ({ default: module.LoginPage })))
@@ -81,6 +82,12 @@ export function AppRoutes() {
     return () => window.removeEventListener('popstate', sync)
   }, [])
 
+  const handleLogout = async () => {
+    await logout()
+    window.history.replaceState(null, '', '/login')
+    setPathname('/login')
+  }
+
   if (!isAuthenticated || !user) {
     if (pathname !== '/login') {
       window.history.replaceState(null, '', '/login')
@@ -137,10 +144,10 @@ export function AppRoutes() {
       pageTitle={pageTitle}
       content={<Suspense fallback={<RouteFallback />}>{renderPage()}</Suspense>}
       currentUserName={user.fullName ?? user.username ?? user.email ?? 'User'}
-      onLogout={async () => {
-        await logout()
-        window.history.replaceState(null, '', '/login')
-        setPathname('/login')
+      onLogout={handleLogout}
+      onChangePassword={async (payload) => {
+        await changePassword(payload)
+        await handleLogout()
       }}
     />
   )

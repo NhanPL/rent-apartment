@@ -4,6 +4,7 @@ export const API_ROUTES = {
     refresh: '/auth/refresh',
     logout: '/auth/logout',
     me: '/auth/me',
+    password: '/auth/password',
   },
   buildings: {
     list: '/buildings',

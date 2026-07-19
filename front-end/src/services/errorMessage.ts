@@ -4,6 +4,8 @@ const errorMessages: Record<string, string> = {
   VALIDATION_ERROR: 'Some fields are invalid. Please review them and try again.',
   UNAUTHORIZED: 'Your session has expired. Please sign in again.',
   FORBIDDEN: 'You do not have permission to perform this action.',
+  CURRENT_PASSWORD_INCORRECT: 'The current password is incorrect.',
+  PASSWORD_REUSE_NOT_ALLOWED: 'The new password must be different from the current password.',
   BUILDING_NOT_FOUND: 'Building not found or you do not have access to it.',
   BUILDING_HAS_CONTRACTS: 'A building with contracts cannot be deleted.',
   ROOM_NOT_FOUND: 'Room not found or you do not have access to it.',

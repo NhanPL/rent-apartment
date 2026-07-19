@@ -165,6 +165,12 @@ class FakeDb {
       return result<T>([]);
     }
 
+    if (sql.startsWith('update app_user set password_hash')) {
+      const user = this.users.find((item) => item.id === params[1]);
+      if (user) user.password_hash = params[0] as string;
+      return result<T>([]);
+    }
+
     if (sql.startsWith('update app_user set is_active=false')) {
       const user = this.users.find((item) => item.id === params[0]);
       if (user) user.is_active = false;

@@ -25,3 +25,9 @@ export interface LoginResponse {
   refreshToken: string
   user: AuthUser
 }
+
+export interface ChangePasswordPayload {
+  currentPassword: string
+  newPassword: string
+  confirmPassword: string
+}
