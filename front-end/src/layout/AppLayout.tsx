@@ -1,5 +1,5 @@
 import { LockOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, UserOutlined } from '@ant-design/icons'
-import { Button, Drawer, Dropdown, Form, Grid, Input, Layout, Menu, Modal, Typography, message } from 'antd'
+import { Alert, Button, Drawer, Dropdown, Form, Grid, Input, Layout, Menu, Modal, Typography, message } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { ChangePasswordPayload } from '../features/auth/types/auth'
@@ -29,6 +29,7 @@ export function AppLayout({ pathname, onNavigate, items, pageTitle, content, cur
   const [mobileOpen, setMobileOpen] = useState(false)
   const [changePasswordOpen, setChangePasswordOpen] = useState(false)
   const [changingPassword, setChangingPassword] = useState(false)
+  const [changePasswordError, setChangePasswordError] = useState<string | null>(null)
   const [changePasswordForm] = Form.useForm<ChangePasswordPayload>()
 
   useEffect(() => {
@@ -60,13 +61,14 @@ export function AppLayout({ pathname, onNavigate, items, pageTitle, content, cur
 
   const handleChangePassword = async (values: ChangePasswordPayload) => {
     setChangingPassword(true)
+    setChangePasswordError(null)
     try {
       await onChangePassword(values)
       message.success('Password changed successfully. Please sign in again.')
       setChangePasswordOpen(false)
       changePasswordForm.resetFields()
     } catch (error) {
-      message.error(getUserErrorMessage(error, 'Unable to change your password.'))
+      setChangePasswordError(getUserErrorMessage(error, 'Unable to change your password.'))
     } finally {
       setChangingPassword(false)
     }
@@ -110,7 +112,10 @@ export function AppLayout({ pathname, onNavigate, items, pageTitle, content, cur
                   key: 'change-password',
                   label: 'Change password',
                   icon: <LockOutlined />,
-                  onClick: () => setChangePasswordOpen(true),
+                  onClick: () => {
+                    setChangePasswordError(null)
+                    setChangePasswordOpen(true)
+                  },
                 },
                 {
                   key: 'logout',
@@ -137,11 +142,26 @@ export function AppLayout({ pathname, onNavigate, items, pageTitle, content, cur
         okText="Change password"
         confirmLoading={changingPassword}
         onOk={() => changePasswordForm.submit()}
-        onCancel={() => setChangePasswordOpen(false)}
-        afterClose={() => changePasswordForm.resetFields()}
+        onCancel={() => {
+          setChangePasswordOpen(false)
+          setChangePasswordError(null)
+        }}
+        afterClose={() => {
+          changePasswordForm.resetFields()
+          setChangePasswordError(null)
+        }}
         destroyOnHidden
         width={480}
       >
+        {changePasswordError ? (
+          <Alert
+            showIcon
+            type="error"
+            message="Password change failed"
+            description={changePasswordError}
+            style={{ marginBottom: 16 }}
+          />
+        ) : null}
         <Form<ChangePasswordPayload>
           form={changePasswordForm}
           layout="vertical"
