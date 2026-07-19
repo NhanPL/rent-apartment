@@ -143,6 +143,8 @@ export function TenantRoomPage() {
   const [utilitySnapshot, setUtilitySnapshot] = useState<UtilityReadingSnapshot | null>(null)
   const [paymentProofSubmitting, setPaymentProofSubmitting] = useState(false)
   const [paymentProofFile, setPaymentProofFile] = useState<UploadedCloudinaryFile | null>(null)
+  const [billDetailPaymentProofSubmitting, setBillDetailPaymentProofSubmitting] = useState(false)
+  const [billDetailPaymentProofFile, setBillDetailPaymentProofFile] = useState<UploadedCloudinaryFile | null>(null)
   const [tenantDocuments, setTenantDocuments] = useState<TenantDocument[]>([])
   const [tenantDocumentSubmitting, setTenantDocumentSubmitting] = useState(false)
   const [electricityEvidenceFile, setElectricityEvidenceFile] = useState<File | null>(null)
@@ -150,6 +152,7 @@ export function TenantRoomPage() {
 
   const [form] = Form.useForm<TenantUtilityReadingFormValues>()
   const [paymentProofForm] = Form.useForm<PaymentProofFormValues>()
+  const [billDetailPaymentProofForm] = Form.useForm<PaymentProofFormValues>()
   const [tenantDocumentForm] = Form.useForm<TenantDocumentFormValues>()
   const monthValue = Form.useWatch('month', form)
   const electricityPrev = Form.useWatch('electricity_prev', form)
@@ -170,6 +173,15 @@ export function TenantRoomPage() {
   const currentReading = utilitySnapshot?.current_reading ?? null
   const readingLocked = isTenantUtilityReadingLocked(currentReading?.status)
   const currentRemainingAmount = currentBill ? Math.max(currentBill.total - currentBill.paid_amount, 0) : 0
+  const billDetailRemainingAmount = billDetail ? Math.max(billDetail.total - billDetail.paid_amount, 0) : 0
+  const canSubmitBillDetailPaymentProof = Boolean(
+    billDetail
+    && billDetailPaymentRequest
+    && dayjs(billDetail.month).isBefore(dayjs(), 'month')
+    && ['ISSUED', 'OVERDUE'].includes(billDetail.status)
+    && billDetailRemainingAmount > 0
+    && ['WAITING_TRANSFER', 'REJECTED'].includes(billDetailPaymentRequest.status),
+  )
 
   const hydrateFormByMonth = async (roomId: string, month: string) => {
     const snapshot = await getCurrentAndPreviousUtilityReadings(roomId, `${month}-01`)
@@ -322,6 +334,45 @@ export function TenantRoomPage() {
     }
   }
 
+  const handleBillDetailPaymentProofSubmit = async (values: PaymentProofFormValues) => {
+    if (!billDetail || !billDetailPaymentRequest) {
+      return
+    }
+
+    if (!billDetailPaymentProofFile) {
+      message.warning('Please upload payment proof before submitting.')
+      return
+    }
+
+    setBillDetailPaymentProofSubmitting(true)
+    try {
+      await submitMyPaymentProof(billDetailPaymentRequest.id, {
+        file_name: billDetailPaymentProofFile.file_name,
+        file_url: billDetailPaymentProofFile.file_url,
+        mime_type: billDetailPaymentProofFile.mime_type,
+        file_size: billDetailPaymentProofFile.file_size,
+        transfer_amount: values.transfer_amount ?? null,
+        payer_note: values.payer_note?.trim() || null,
+      })
+
+      const [updatedDetail, updatedPaymentRequest, updatedHistory] = await Promise.all([
+        getMyInvoiceDetail(billDetail.id),
+        getMyPaymentRequestForInvoice(billDetail.id),
+        listMyRecentBills(),
+      ])
+      setBillDetail(updatedDetail)
+      setBillDetailPaymentRequest(updatedPaymentRequest)
+      setBillHistory(updatedHistory)
+      billDetailPaymentProofForm.resetFields()
+      setBillDetailPaymentProofFile(null)
+      message.success('Payment proof submitted for manager review.')
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Unable to submit payment proof.'))
+    } finally {
+      setBillDetailPaymentProofSubmitting(false)
+    }
+  }
+
   const handleTenantDocumentSubmit = async (values: TenantDocumentFormValues) => {
     if (!values.file_url || !values.mime_type || !values.file_size) {
       message.warning('Please upload a document file before saving.')
@@ -355,11 +406,20 @@ export function TenantRoomPage() {
     setBillDetail(null)
     setBillDetailPaymentRequest(null)
     setBillDetailPaymentRequestError(null)
+    setBillDetailPaymentProofFile(null)
+    billDetailPaymentProofForm.resetFields()
     try {
       const detail = await getMyInvoiceDetail(invoiceId)
       setBillDetail(detail)
       try {
-        setBillDetailPaymentRequest(await getMyPaymentRequestForInvoice(detail.id))
+        const paymentRequest = await getMyPaymentRequestForInvoice(detail.id)
+        setBillDetailPaymentRequest(paymentRequest)
+        if (paymentRequest) {
+          billDetailPaymentProofForm.setFieldsValue({
+            transfer_amount: paymentRequest.remaining_amount ?? paymentRequest.amount,
+            payer_note: '',
+          })
+        }
       } catch (error) {
         setBillDetailPaymentRequest(null)
         setBillDetailPaymentRequestError(getUserErrorMessage(error, 'The bank transfer QR could not be loaded.'))
@@ -839,7 +899,14 @@ export function TenantRoomPage() {
               title: '',
               key: 'actions',
               width: 72,
-              render: (_, row) => <Button size="small" icon={<EyeOutlined />} onClick={() => void openBillDetail(row.id)} />,
+              render: (_, row) => (
+                <Button
+                  size="small"
+                  icon={<EyeOutlined />}
+                  aria-label={`View invoice ${dayjs(row.month).format('MM/YYYY')}`}
+                  onClick={() => void openBillDetail(row.id)}
+                />
+              ),
             },
           ]}
         />
@@ -854,6 +921,8 @@ export function TenantRoomPage() {
           setBillDetailOpen(false)
           setBillDetail(null)
           setBillDetailPaymentRequest(null)
+          setBillDetailPaymentProofFile(null)
+          billDetailPaymentProofForm.resetFields()
         }}
       >
         {billDetailLoading || !billDetail ? (
@@ -894,7 +963,60 @@ export function TenantRoomPage() {
                     maxWidth={320}
                   />
                 ) : null}
+                {canSubmitBillDetailPaymentProof ? (
+                  <Form<PaymentProofFormValues>
+                    form={billDetailPaymentProofForm}
+                    layout="vertical"
+                    onFinish={handleBillDetailPaymentProofSubmit}
+                  >
+                    <Form.Item
+                      name="transfer_amount"
+                      label="Amount paid"
+                      rules={[{ required: true, message: 'Please enter the amount paid.' }]}
+                    >
+                      <InputNumber
+                        min={1}
+                        max={billDetailPaymentRequest.remaining_amount || undefined}
+                        precision={0}
+                        style={{ width: '100%' }}
+                      />
+                    </Form.Item>
+                    <Form.Item label="Payment proof" required>
+                      <Space wrap>
+                        <CloudinaryUploadButton
+                          accept={imageAccept}
+                          context="PAYMENT_PROOF"
+                          onUploaded={setBillDetailPaymentProofFile}
+                        >
+                          Upload image
+                        </CloudinaryUploadButton>
+                        {billDetailPaymentProofFile ? (
+                          <Typography.Link href={billDetailPaymentProofFile.file_url} target="_blank" rel="noreferrer">
+                            {billDetailPaymentProofFile.file_name}
+                          </Typography.Link>
+                        ) : (
+                          <Typography.Text type="secondary">No image uploaded</Typography.Text>
+                        )}
+                      </Space>
+                    </Form.Item>
+                    <Form.Item name="payer_note" label="Notes">
+                      <Input.TextArea rows={2} />
+                    </Form.Item>
+                    <Button
+                      htmlType="submit"
+                      type="primary"
+                      loading={billDetailPaymentProofSubmitting}
+                      block={isMobile}
+                    >
+                      Submit payment proof
+                    </Button>
+                  </Form>
+                ) : billDetail.status !== 'PAID' && billDetailPaymentRequest.status === 'TRANSFER_SUBMITTED' ? (
+                  <Alert showIcon type="warning" message="Payment proof is waiting for manager review." />
+                ) : null}
               </Space>
+            ) : billDetail.status !== 'PAID' && billDetailRemainingAmount > 0 ? (
+              <Alert showIcon type="info" message="No bank transfer request is available for this invoice. Please contact the manager." />
             ) : null}
             <Table
               rowKey="id"
