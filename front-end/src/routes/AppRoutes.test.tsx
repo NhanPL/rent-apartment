@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppRoutes } from './AppRoutes'
@@ -9,8 +10,16 @@ const authMock = vi.hoisted(() => ({
   value: undefined as unknown as AuthContextValue,
 }))
 
+const authApiMock = vi.hoisted(() => ({
+  changePassword: vi.fn(),
+}))
+
 vi.mock('../features/auth/useAuth', () => ({
   useAuth: () => authMock.value,
+}))
+
+vi.mock('../features/auth/authApi', () => ({
+  changePassword: authApiMock.changePassword,
 }))
 
 interface MockRouteItem {
@@ -24,10 +33,11 @@ interface MockAppLayoutProps {
   pageTitle: string
   content: ReactNode
   currentUserName: string
+  onChangePassword: (payload: { currentPassword: string; newPassword: string; confirmPassword: string }) => Promise<void>
 }
 
 vi.mock('../layout/AppLayout', () => ({
-  AppLayout: ({ pathname, items, pageTitle, content, currentUserName }: MockAppLayoutProps) => (
+  AppLayout: ({ pathname, items, pageTitle, content, currentUserName, onChangePassword }: MockAppLayoutProps) => (
     <div>
       <h1 data-testid="page-title">{pageTitle}</h1>
       <div data-testid="layout-path">{pathname}</div>
@@ -37,6 +47,16 @@ vi.mock('../layout/AppLayout', () => ({
           <span key={item.path}>{item.label}</span>
         ))}
       </nav>
+      <button
+        type="button"
+        onClick={() => void onChangePassword({
+          currentPassword: 'current-password',
+          newPassword: 'new-password',
+          confirmPassword: 'new-password',
+        })}
+      >
+        Change password test action
+      </button>
       <main>{content}</main>
     </div>
   ),
@@ -209,5 +229,33 @@ describe('AppRoutes', () => {
     expect(window.location.pathname).toBe('/dashboard')
     expect(screen.getByTestId('page-title').textContent).toBe('Dashboard')
     expect(await screen.findByText('Dashboard Page')).not.toBeNull()
+  })
+
+  it('logs the user out and returns to login after changing the password', async () => {
+    const user = userEvent.setup()
+    const logout = vi.fn().mockImplementation(async () => {
+      authMock.value = {
+        ...authMock.value,
+        user: null,
+        isAuthenticated: false,
+      }
+    })
+    setAuth(managerUser)
+    authMock.value = { ...authMock.value, logout }
+    authApiMock.changePassword.mockResolvedValue({ success: true })
+    window.history.replaceState(null, '', '/dashboard')
+
+    render(<AppRoutes />)
+    await user.click(screen.getByRole('button', { name: 'Change password test action' }))
+
+    await waitFor(() => {
+      expect(authApiMock.changePassword).toHaveBeenCalledWith({
+        currentPassword: 'current-password',
+        newPassword: 'new-password',
+        confirmPassword: 'new-password',
+      })
+      expect(logout).toHaveBeenCalledTimes(1)
+      expect(window.location.pathname).toBe('/login')
+    })
   })
 })

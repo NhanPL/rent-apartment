@@ -123,6 +123,62 @@ describe('backend API smoke tests', () => {
       .expect(401);
   });
 
+  it.each([
+    ['manager@example.com', 'MANAGER'],
+    ['tenant@example.com', 'TENANT']
+  ])('changes the password for an authenticated %s account', async (identifier, role) => {
+    const session = await login(identifier);
+    const newPassword = `new-${role.toLowerCase()}-password`;
+
+    const incorrectCurrentPassword = await request(app)
+      .put('/api/auth/password')
+      .set(auth(session.accessToken))
+      .send({
+        currentPassword: 'incorrect-password',
+        newPassword,
+        confirmPassword: newPassword
+      })
+      .expect(400);
+    expect(incorrectCurrentPassword.body).toMatchObject({ code: 'CURRENT_PASSWORD_INCORRECT' });
+
+    await request(app)
+      .put('/api/auth/password')
+      .set(auth(session.accessToken))
+      .send({
+        currentPassword: 'password',
+        newPassword,
+        confirmPassword: newPassword
+      })
+      .expect(200, { success: true });
+
+    await request(app)
+      .post('/api/auth/login')
+      .send({ identifier, password: 'password' })
+      .expect(401);
+
+    const newSession = await request(app)
+      .post('/api/auth/login')
+      .send({ identifier, password: newPassword })
+      .expect(200);
+    expect(newSession.body.user).toMatchObject({ role });
+  });
+
+  it('rejects mismatched password confirmation', async () => {
+    const session = await login('manager@example.com');
+
+    const response = await request(app)
+      .put('/api/auth/password')
+      .set(auth(session.accessToken))
+      .send({
+        currentPassword: 'password',
+        newPassword: 'new-password',
+        confirmPassword: 'different-password'
+      })
+      .expect(400);
+
+    expect(response.body).toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
   it('enforces RBAC for manager-only tenant endpoints', async () => {
     const tenantSession = await login('tenant@example.com');
 

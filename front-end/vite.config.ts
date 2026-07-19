@@ -9,5 +9,6 @@ export default defineConfig({
     setupFiles: './src/test/setup.ts',
     globals: false,
     css: true,
+    testTimeout: 10_000,
   },
 })

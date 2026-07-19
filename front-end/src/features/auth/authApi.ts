@@ -1,6 +1,6 @@
 import { apiRequest } from '../../services/apiClient'
 import { API_ROUTES } from '../../services/apiRoutes'
-import type { AuthUser, LoginPayload, LoginResponse } from './types/auth'
+import type { AuthUser, ChangePasswordPayload, LoginPayload, LoginResponse } from './types/auth'
 
 export function login(payload: LoginPayload) {
   return apiRequest<LoginResponse>(API_ROUTES.auth.login, {
@@ -27,5 +27,12 @@ export function logoutApi(refreshToken: string | null) {
     method: 'POST',
     body: refreshToken ? { refreshToken } : {},
     skipAuth: true,
+  })
+}
+
+export function changePassword(payload: ChangePasswordPayload) {
+  return apiRequest<{ success: boolean }>(API_ROUTES.auth.password, {
+    method: 'PUT',
+    body: payload,
   })
 }

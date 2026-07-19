@@ -147,3 +147,26 @@ export const getCurrentUser = async (userId: string): Promise<UserProfile> => {
 
   return toUserProfile(user);
 };
+
+export const changePassword = async (userId: string, currentPassword: string, newPassword: string): Promise<void> => {
+  const { rows } = await query<UserRow>(
+    'SELECT id, role, email, username, password_hash, is_active FROM app_user WHERE id = $1 LIMIT 1',
+    [userId]
+  );
+
+  const user = rows[0];
+  if (!user || !user.is_active) {
+    throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
+  }
+
+  if (!hasPassword(user) || !(await verifyPassword(user, currentPassword))) {
+    throw new AppError(400, 'Current password is incorrect', 'CURRENT_PASSWORD_INCORRECT');
+  }
+
+  if (currentPassword === newPassword) {
+    throw new AppError(400, 'New password must be different from the current password', 'PASSWORD_REUSE_NOT_ALLOWED');
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  await query('UPDATE app_user SET password_hash = $1 WHERE id = $2', [passwordHash, userId]);
+};
