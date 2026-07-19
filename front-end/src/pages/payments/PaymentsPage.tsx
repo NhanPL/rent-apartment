@@ -1,5 +1,5 @@
-import { CheckOutlined, CloseOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons'
-import { Alert, Button, Card, Descriptions, Drawer, Empty, Form, Grid, Input, Modal, Skeleton, Space, Table, Tag, Typography, message } from 'antd'
+import { CheckOutlined, ClearOutlined, CloseOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons'
+import { Alert, Button, Card, Col, DatePicker, Descriptions, Drawer, Empty, Form, Grid, Input, Modal, Row, Select, Skeleton, Space, Table, Tag, Typography, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -10,6 +10,8 @@ import {
   rejectPaymentProof,
   type PaymentProof,
   type PaymentRequest,
+  type LatestProofFilter,
+  type PaymentRequestListFilters,
   type PaymentRequestStatus,
 } from '../../services/paymentsService'
 import { getUserErrorMessage } from '../../services/errorMessage'
@@ -30,6 +32,17 @@ interface RejectFormValues {
   reason: string
 }
 
+const requestStatusOptions: Array<{ label: string; value: PaymentRequestStatus }> = (Object.keys(paymentRequestStatusColor) as PaymentRequestStatus[])
+  .map((status) => ({ label: status, value: status }))
+const latestProofOptions: Array<{ label: string; value: LatestProofFilter }> = [
+  { label: 'Pending', value: 'PENDING' },
+  { label: 'Approved', value: 'APPROVED' },
+  { label: 'Rejected', value: 'REJECTED' },
+  { label: 'No proof', value: 'NONE' },
+]
+
+const hasFilters = (filters: PaymentRequestListFilters) => Object.values(filters).some(Boolean)
+
 export function PaymentsPage() {
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
@@ -41,19 +54,46 @@ export function PaymentsPage() {
   const [detailItem, setDetailItem] = useState<PaymentRequest | null>(null)
   const [reviewLoading, setReviewLoading] = useState<string | null>(null)
   const [rejectProofId, setRejectProofId] = useState<string | null>(null)
+  const [filters, setFilters] = useState<PaymentRequestListFilters>({})
+  const [filterSourceItems, setFilterSourceItems] = useState<PaymentRequest[]>([])
 
   const pendingProofs = useMemo(() => items.filter((item) => item.latest_proof_status === 'PENDING').length, [items])
+  const buildingOptions = useMemo(() => Array.from(new Map(
+    filterSourceItems
+      .filter((item) => item.building_id && item.building_name)
+      .map((item) => [item.building_id as string, { value: item.building_id as string, label: item.building_name as string }]),
+  ).values()).sort((left, right) => left.label.localeCompare(right.label)), [filterSourceItems])
+  const roomOptions = useMemo(() => Array.from(new Map(
+    filterSourceItems
+      .filter((item) => item.room_id && item.room_code && (!filters.building_id || item.building_id === filters.building_id))
+      .map((item) => [item.room_id as string, {
+        value: item.room_id as string,
+        label: filters.building_id ? item.room_code as string : `${item.building_name} / ${item.room_code}`,
+      }]),
+  ).values()).sort((left, right) => left.label.localeCompare(right.label)), [filterSourceItems, filters.building_id])
+  const tenantOptions = useMemo(() => Array.from(new Map(
+    filterSourceItems
+      .filter((item) => item.tenant_id && item.tenant_name
+        && (!filters.building_id || item.building_id === filters.building_id)
+        && (!filters.room_id || item.room_id === filters.room_id))
+      .map((item) => [item.tenant_id as string, {
+        value: item.tenant_id as string,
+        label: filters.room_id ? item.tenant_name as string : `${item.tenant_name} - Room ${item.room_code}`,
+      }]),
+  ).values()).sort((left, right) => left.label.localeCompare(right.label)), [filterSourceItems, filters.building_id, filters.room_id])
 
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      setItems(await listPaymentRequests())
+      const data = await listPaymentRequests(filters)
+      setItems(data)
+      if (!hasFilters(filters)) setFilterSourceItems(data)
     } catch (error) {
-      message.error(getUserErrorMessage(error, 'Khong tai duoc danh sach thanh toan.'))
+      message.error(getUserErrorMessage(error, 'Unable to load payment requests.'))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [filters])
 
   useEffect(() => {
     void loadData()
@@ -135,6 +175,94 @@ export function PaymentsPage() {
         <Typography.Title level={3} style={{ margin: 0 }}>Payments</Typography.Title>
         <Typography.Text type="secondary">Review manual bank transfer proofs and track invoice payment history.</Typography.Text>
       </div>
+
+      <Card
+        title="Filters"
+        extra={hasFilters(filters) ? (
+          <Button icon={<ClearOutlined />} onClick={() => setFilters({})}>Clear filters</Button>
+        ) : null}
+      >
+        <Row gutter={[12, 12]}>
+          <Col xs={24} sm={12} lg={8} xl={4}>
+            <Typography.Text strong>Month</Typography.Text>
+            <DatePicker
+              picker="month"
+              format="MM/YYYY"
+              value={filters.month ? dayjs(filters.month) : null}
+              onChange={(value) => setFilters((current) => ({ ...current, month: value?.format('YYYY-MM') }))}
+              placeholder="Select month"
+              aria-label="Month filter"
+              style={{ width: '100%', marginTop: 4 }}
+            />
+          </Col>
+          <Col xs={24} sm={12} lg={8} xl={4}>
+            <Typography.Text strong>Building</Typography.Text>
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              value={filters.building_id}
+              options={buildingOptions}
+              onChange={(value) => setFilters((current) => ({ ...current, building_id: value, room_id: undefined, tenant_id: undefined }))}
+              placeholder="All buildings"
+              aria-label="Building filter"
+              style={{ width: '100%', marginTop: 4 }}
+            />
+          </Col>
+          <Col xs={24} sm={12} lg={8} xl={4}>
+            <Typography.Text strong>Room</Typography.Text>
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              value={filters.room_id}
+              options={roomOptions}
+              onChange={(value) => setFilters((current) => ({ ...current, room_id: value, tenant_id: undefined }))}
+              placeholder="All rooms"
+              aria-label="Room filter"
+              style={{ width: '100%', marginTop: 4 }}
+            />
+          </Col>
+          <Col xs={24} sm={12} lg={8} xl={4}>
+            <Typography.Text strong>Tenant</Typography.Text>
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="label"
+              value={filters.tenant_id}
+              options={tenantOptions}
+              onChange={(value) => setFilters((current) => ({ ...current, tenant_id: value }))}
+              placeholder="All tenants"
+              aria-label="Tenant filter"
+              style={{ width: '100%', marginTop: 4 }}
+            />
+          </Col>
+          <Col xs={24} sm={12} lg={8} xl={4}>
+            <Typography.Text strong>Request status</Typography.Text>
+            <Select
+              allowClear
+              value={filters.request_status}
+              options={requestStatusOptions}
+              onChange={(value) => setFilters((current) => ({ ...current, request_status: value }))}
+              placeholder="All statuses"
+              aria-label="Request status filter"
+              style={{ width: '100%', marginTop: 4 }}
+            />
+          </Col>
+          <Col xs={24} sm={12} lg={8} xl={4}>
+            <Typography.Text strong>Latest proof</Typography.Text>
+            <Select
+              allowClear
+              value={filters.latest_proof_status}
+              options={latestProofOptions}
+              onChange={(value) => setFilters((current) => ({ ...current, latest_proof_status: value }))}
+              placeholder="All proof statuses"
+              aria-label="Latest proof filter"
+              style={{ width: '100%', marginTop: 4 }}
+            />
+          </Col>
+        </Row>
+      </Card>
 
       <Card>
         <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
+import { AppError } from '../../shared/errors/app-error';
 import { parseBody } from '../../shared/utils/validation';
 import { validateStoredUpload } from '../uploads/uploads.service';
 import {
@@ -41,8 +42,26 @@ const paymentRejectSchema = z.object({
   reason: z.string().trim().min(1).optional()
 });
 
+const paymentRequestFiltersSchema = z.object({
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional(),
+  building_id: z.string().uuid().optional(),
+  room_id: z.string().uuid().optional(),
+  tenant_id: z.string().uuid().optional(),
+  request_status: z.enum(['DRAFT', 'WAITING_TRANSFER', 'TRANSFER_SUBMITTED', 'VERIFIED', 'REJECTED', 'CANCELLED', 'EXPIRED']).optional(),
+  latest_proof_status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'NONE']).optional()
+});
+
 router.get('/requests', asyncHandler(async (req, res) => {
-  res.json(await listPaymentRequests(req.auth!));
+  const parsed = paymentRequestFiltersSchema.safeParse(req.query);
+  if (!parsed.success) throw new AppError(400, 'Invalid payment request filters', 'VALIDATION_ERROR');
+  res.json(await listPaymentRequests(req.auth!, {
+    month: parsed.data.month,
+    buildingId: parsed.data.building_id,
+    roomId: parsed.data.room_id,
+    tenantId: parsed.data.tenant_id,
+    requestStatus: parsed.data.request_status,
+    latestProofStatus: parsed.data.latest_proof_status
+  }));
 }));
 
 router.get('/requests/:id', asyncHandler(async (req, res) => {
