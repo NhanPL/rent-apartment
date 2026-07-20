@@ -1,11 +1,4 @@
-import {
-  DeleteOutlined,
-  EditOutlined,
-  EyeOutlined,
-  FileWordOutlined,
-  PlusOutlined,
-  ReloadOutlined,
-} from '@ant-design/icons'
+import { DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons'
 import {
   Button,
   Card,
@@ -14,15 +7,14 @@ import {
   Empty,
   Form,
   Grid,
+  Image,
   Input,
-  InputNumber,
   Modal,
   Radio,
   Select,
   Skeleton,
   Space,
   Table,
-  Tabs,
   Tag,
   Typography,
   message,
@@ -34,28 +26,26 @@ import {
   createTenant,
   deleteTenant,
   getTenant,
-  getTenantContractExportData,
-  listBuildings,
-  listRooms,
   listTenants,
   updateTenant,
+  updateTenantIdentityDocuments,
 } from '../../services/tenantsService'
 import { getUserErrorMessage } from '../../services/errorMessage'
+import { uploadFileToCloudinary } from '../../services/uploadService'
 import type {
-  BuildingOption,
-  ContractStatus,
-  RoomOption,
   TenantDetail,
+  TenantIdentityDocument,
+  TenantIdentityDocumentFilePayload,
+  TenantIdentityDocumentUpdatePayload,
   TenantListItem,
   TenantStatus,
 } from './types'
-import { exportRentalContractDocx } from '../../services/rentalContractDocx'
 import {
   defaultTenantFormValues,
   mapTenantFormValuesToPayload,
-  toNumberOrUndefined,
   type TenantFormValues,
 } from './tenantFormPayload'
+import { IdentityDocumentInput, type IdentityDocumentValue } from './IdentityDocumentInput'
 import './TenantsPage.css'
 
 const statusOptions: { label: string; value: TenantStatus; color: string }[] = [
@@ -64,62 +54,39 @@ const statusOptions: { label: string; value: TenantStatus; color: string }[] = [
   { label: 'Blacklist', value: 'BLACKLIST', color: 'red' },
 ]
 
-const contractStatusOptions: { label: string; value: ContractStatus }[] = [
-  { label: 'Draft', value: 'DRAFT' },
-  { label: 'Active', value: 'ACTIVE' },
-  { label: 'Ended', value: 'ENDED' },
-  { label: 'Cancelled', value: 'CANCELLED' },
-]
+const isFile = (value: IdentityDocumentValue | undefined): value is File => (
+  typeof File !== 'undefined' && value instanceof File
+)
 
-const formatMoneyInput = (value: string | number | undefined) => {
-  if (value === undefined || value === '') {
-    return ''
-  }
-
-  return `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+const documentSignature = (value: IdentityDocumentValue | undefined): string => {
+  if (!value) return ''
+  if (isFile(value)) return `file:${value.name}:${value.size}:${value.type}:${value.lastModified}`
+  return value.file_url
 }
 
-const parseMoneyInput = (value: string | undefined) => {
-  const numericValue = Number(value?.replace(/,/g, '') || 0)
-  return Number.isFinite(numericValue) ? numericValue : 0
-}
-
-const validateMoneyValue = async (_: unknown, value: unknown) => {
-  if (value === undefined || value === null || value === '') {
-    return
+const snapshotFormValues = (values: TenantFormValues): string => JSON.stringify(values, (_key, value) => {
+  if (isFile(value as IdentityDocumentValue)) {
+    const file = value as File
+    return { name: file.name, size: file.size, type: file.type, lastModified: file.lastModified }
   }
+  return value
+})
 
-  const numericValue = Number(value)
-
-  if (!Number.isFinite(numericValue)) {
-    throw new Error('Giá trị phải là số hợp lệ')
-  }
-
-  if (numericValue < 0) {
-    throw new Error('Giá trị không được âm')
-  }
-}
-
-const tenantInfoFieldNames = new Set([
-  'full_name',
-  'dob',
-  'gender',
-  'identity_number',
-  'identity_issued_date',
-  'identity_issued_place',
-  'email',
-  'phone',
-  'permanent_address',
-  'status',
-  'note',
-])
+const toIdentityDocumentPayload = (
+  value: TenantIdentityDocument | TenantIdentityDocumentFilePayload,
+): TenantIdentityDocumentFilePayload => ({
+  file_name: value.file_name ?? 'identity-card',
+  file_url: value.file_url,
+  mime_type: value.mime_type,
+  file_size: Number(value.file_size),
+  resource_type: 'image',
+})
 
 export function TenantsPage() {
   const screens = Grid.useBreakpoint()
   const isDesktop = Boolean(screens.xl)
   const isMobile = !screens.md
   const [form] = Form.useForm<TenantFormValues>()
-
   const initialSnapshotRef = useRef('')
   const didInitFormRef = useRef(false)
 
@@ -131,11 +98,7 @@ export function TenantsPage() {
   const [selectedTenant, setSelectedTenant] = useState<TenantDetail | null>(null)
   const [searchInput, setSearchInput] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<TenantStatus | undefined>(undefined)
-  const [buildingFilter, setBuildingFilter] = useState<string | undefined>(undefined)
-  const [roomFilter, setRoomFilter] = useState<string | undefined>(undefined)
-  const [buildingOptions, setBuildingOptions] = useState<BuildingOption[]>([])
-  const [roomOptions, setRoomOptions] = useState<RoomOption[]>([])
+  const [statusFilter, setStatusFilter] = useState<TenantStatus | undefined>()
 
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('create')
@@ -144,90 +107,51 @@ export function TenantsPage() {
   const [discardModalOpen, setDiscardModalOpen] = useState(false)
   const [editingTenantId, setEditingTenantId] = useState<string | null>(null)
   const [drawerInitialValues, setDrawerInitialValues] = useState<TenantFormValues>(defaultTenantFormValues)
-  const [activeFormTab, setActiveFormTab] = useState<'tenant' | 'rental'>('tenant')
 
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<TenantListItem | null>(null)
   const [deletingTenantId, setDeletingTenantId] = useState<string | null>(null)
-  const [exportingTenantId, setExportingTenantId] = useState<string | null>(null)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(searchInput), 300)
     return () => window.clearTimeout(timer)
   }, [searchInput])
 
-  const loadOptions = useCallback(async () => {
-    const [buildings, rooms] = await Promise.all([listBuildings(), listRooms()])
-    setBuildingOptions(buildings)
-    setRoomOptions(rooms)
-  }, [])
-
   const loadTenants = useCallback(async () => {
     setLoading(true)
     setError(null)
-
     try {
-      const data = await listTenants({
-        search: debouncedSearch,
-        status: statusFilter,
-        building_id: buildingFilter,
-        room_id: roomFilter,
-        page,
-        pageSize: 8,
-      })
+      const data = await listTenants({ search: debouncedSearch, status: statusFilter, page, pageSize: 8 })
       setItems(data.items)
       setTotal(data.total)
-    } catch (error) {
-      setError(getUserErrorMessage(error, 'Khong tai duoc danh sach nguoi thue.'))
+    } catch (loadError) {
+      setError(getUserErrorMessage(loadError, 'Unable to load tenants.'))
     } finally {
       setLoading(false)
     }
-  }, [debouncedSearch, statusFilter, buildingFilter, roomFilter, page])
-
-  useEffect(() => {
-    void loadOptions()
-  }, [loadOptions])
+  }, [debouncedSearch, page, statusFilter])
 
   useEffect(() => {
     void loadTenants()
   }, [loadTenants])
 
-  const isDirty = useCallback(() => JSON.stringify(form.getFieldsValue(true)) !== initialSnapshotRef.current, [form])
+  const isDirty = useCallback(() => (
+    snapshotFormValues(form.getFieldsValue(true)) !== initialSnapshotRef.current
+  ), [form])
 
   useEffect(() => {
     if (!drawerOpen) {
       didInitFormRef.current = false
       return
     }
-
-    if (didInitFormRef.current) {
-      return
-    }
+    if (didInitFormRef.current) return
 
     form.resetFields()
     form.setFieldsValue(drawerInitialValues)
-    initialSnapshotRef.current = JSON.stringify(drawerInitialValues)
-    setActiveFormTab('tenant')
+    initialSnapshotRef.current = snapshotFormValues(drawerInitialValues)
     didInitFormRef.current = true
-  }, [drawerOpen, drawerInitialValues, form])
-
-  const filteredRoomsForFilter = useMemo(() => {
-    if (!buildingFilter) {
-      return roomOptions
-    }
-    return roomOptions.filter((room) => room.building_id === buildingFilter)
-  }, [buildingFilter, roomOptions])
-
-  const selectedRentalBuildingId = Form.useWatch(['rental', 'building_id'], form)
-
-  const filteredRoomsForDrawer = useMemo(() => {
-    if (!selectedRentalBuildingId) {
-      return roomOptions
-    }
-
-    return roomOptions.filter((room) => room.building_id === selectedRentalBuildingId)
-  }, [roomOptions, selectedRentalBuildingId])
+  }, [drawerInitialValues, drawerOpen, form])
 
   const openCreate = useCallback(() => {
     setDrawerMode('create')
@@ -258,25 +182,13 @@ export function TenantsPage() {
         email: data.email ?? undefined,
         permanent_address: data.permanent_address ?? undefined,
         note: data.note ?? undefined,
-        rental: {
-          building_id: data.current_room?.building_id,
-          room_id: data.current_room?.room_id,
-          contract_status: data.current_contract?.status ?? 'DRAFT',
-          start_date: data.current_contract?.start_date ?? undefined,
-          end_date: data.current_contract?.end_date ?? undefined,
-          move_in_date: data.current_contract?.move_in_date ?? undefined,
-          move_out_date: data.current_contract?.move_out_date ?? undefined,
-          rent_price: toNumberOrUndefined(data.current_contract?.rent_price),
-          deposit_amount: toNumberOrUndefined(data.current_contract?.deposit_amount),
-          billing_day: data.current_contract?.billing_day,
-          contract_note: data.current_contract?.note ?? undefined,
-        },
+        identity_front: data.identity_documents.front,
+        identity_back: data.identity_documents.back,
       }
-
       didInitFormRef.current = false
       setDrawerInitialValues(values)
-    } catch (error) {
-      message.error(getUserErrorMessage(error, 'Khong tai duoc du lieu nguoi thue.'))
+    } catch (loadError) {
+      message.error(getUserErrorMessage(loadError, 'Unable to load tenant details.'))
       setDrawerOpen(false)
     } finally {
       setDrawerLoading(false)
@@ -288,81 +200,84 @@ export function TenantsPage() {
       setDiscardModalOpen(true)
       return
     }
-
     setDrawerOpen(false)
   }, [isDirty])
 
-  const getFieldTab = useCallback(
-    (fieldNamePath: (string | number)[]) => {
-      const [root] = fieldNamePath
-      if (root === 'rental') {
-        return 'rental'
-      }
-      if (typeof root === 'string' && tenantInfoFieldNames.has(root)) {
-        return 'tenant'
-      }
+  const resolveIdentityDocumentChange = useCallback(async (
+    field: 'identity_front' | 'identity_back',
+    current: IdentityDocumentValue | undefined,
+    initial: IdentityDocumentValue | undefined,
+  ): Promise<TenantIdentityDocumentFilePayload | null | undefined> => {
+    if (documentSignature(current) === documentSignature(initial)) return undefined
+    if (!current) return null
+    if (!isFile(current)) return toIdentityDocumentPayload(current)
 
-      return undefined
-    },
-    [],
-  )
+    const uploaded = await uploadFileToCloudinary(current, 'TENANT_DOCUMENT')
+    const payload: TenantIdentityDocumentFilePayload = {
+      file_name: uploaded.file_name,
+      file_url: uploaded.file_url,
+      mime_type: uploaded.mime_type,
+      file_size: uploaded.file_size,
+      resource_type: 'image',
+    }
+    form.setFieldValue(field, payload)
+    return payload
+  }, [form])
 
-  const showFirstValidationError = useCallback(
-    (fieldNamePath: (string | number)[]) => {
-      const fieldTab = getFieldTab(fieldNamePath)
-      if (fieldTab) {
-        setActiveFormTab(fieldTab)
-      }
-
-      window.setTimeout(() => {
-        form.scrollToField(fieldNamePath, { block: 'center' })
-      }, 0)
-    },
-    [form, getFieldTab],
-  )
+  const saveIdentityDocuments = useCallback(async (tenantId: string, values: TenantFormValues) => {
+    const [front, back] = await Promise.all([
+      resolveIdentityDocumentChange('identity_front', values.identity_front, drawerInitialValues.identity_front),
+      resolveIdentityDocumentChange('identity_back', values.identity_back, drawerInitialValues.identity_back),
+    ])
+    const changes: TenantIdentityDocumentUpdatePayload = {}
+    if (front !== undefined) changes.front = front
+    if (back !== undefined) changes.back = back
+    if (Object.keys(changes).length > 0) await updateTenantIdentityDocuments(tenantId, changes)
+  }, [drawerInitialValues.identity_back, drawerInitialValues.identity_front, resolveIdentityDocumentChange])
 
   const submitForm = useCallback(async () => {
     setSaveLoading(true)
-
+    let profileSaved = false
     try {
       const values = await form.validateFields()
       const payload = mapTenantFormValuesToPayload(values)
+      let tenantId = editingTenantId
 
       if (drawerMode === 'create') {
-        await createTenant(payload)
-        message.success('Tenant created successfully')
-      } else if (editingTenantId) {
-        await updateTenant(editingTenantId, payload)
-        message.success('Tenant updated successfully')
+        const created = await createTenant(payload)
+        tenantId = created.tenantId
+        setDrawerMode('edit')
+        setEditingTenantId(created.tenantId)
+      } else if (tenantId) {
+        await updateTenant(tenantId, payload)
       }
+      profileSaved = true
 
+      if (!tenantId) throw new Error('The tenant profile was saved without a tenant identifier.')
+      await saveIdentityDocuments(tenantId, values)
+      message.success(drawerMode === 'create' ? 'Tenant created successfully.' : 'Tenant updated successfully.')
       setDrawerOpen(false)
       await loadTenants()
-    } catch (error: unknown) {
-      const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
+    } catch (saveError: unknown) {
+      const formError = saveError as { errorFields?: Array<{ name: (string | number)[] }> }
       const firstError = formError.errorFields?.[0]
       if (firstError?.name) {
-        showFirstValidationError(firstError.name)
+        window.setTimeout(() => form.scrollToField(firstError.name, { block: 'center' }), 0)
+      } else if (profileSaved) {
+        message.error(getUserErrorMessage(saveError, 'Tenant information was saved, but the identity images could not be updated. Please retry.'))
+        await loadTenants()
       } else {
-        message.error(getUserErrorMessage(error, 'Khong the luu nguoi thue.'))
+        message.error(getUserErrorMessage(saveError, 'Unable to save the tenant.'))
       }
     } finally {
       setSaveLoading(false)
     }
-  }, [drawerMode, editingTenantId, form, loadTenants, showFirstValidationError])
-
-  const handleDeleteClick = useCallback((tenant: TenantListItem) => {
-    setDeleteTarget(tenant)
-  }, [])
+  }, [drawerMode, editingTenantId, form, loadTenants, saveIdentityDocuments])
 
   const confirmDeleteTenant = useCallback(async () => {
-    if (!deleteTarget || deletingTenantId) {
-      return
-    }
-
+    if (!deleteTarget || deletingTenantId) return
     const tenantId = deleteTarget.id
     setDeletingTenantId(tenantId)
-
     try {
       await deleteTenant(tenantId)
       setItems((currentItems) => currentItems.filter((item) => item.id !== tenantId))
@@ -371,10 +286,10 @@ export function TenantsPage() {
         setDetailOpen(false)
       }
       setDeleteTarget(null)
-      message.success('Xóa người thuê thành công')
+      message.success('Tenant deleted successfully.')
       await loadTenants()
-    } catch (error) {
-      message.error(getUserErrorMessage(error, 'Khong the xoa nguoi thue.'))
+    } catch (deleteError) {
+      message.error(getUserErrorMessage(deleteError, 'Unable to delete the tenant.'))
     } finally {
       setDeletingTenantId(null)
     }
@@ -383,112 +298,78 @@ export function TenantsPage() {
   const handleView = useCallback(async (id: string) => {
     setDetailOpen(true)
     setDetailLoading(true)
-
     try {
-      const tenant = await getTenant(id)
-      setSelectedTenant(tenant)
-    } catch (error) {
-      message.error(getUserErrorMessage(error, 'Khong tai duoc chi tiet nguoi thue.'))
+      setSelectedTenant(await getTenant(id))
+    } catch (loadError) {
+      message.error(getUserErrorMessage(loadError, 'Unable to load tenant details.'))
     } finally {
       setDetailLoading(false)
     }
   }, [])
 
-  const handleExportContract = useCallback(async (id: string) => {
-    setExportingTenantId(id)
+  const columns: ColumnsType<TenantListItem> = useMemo(() => [
+    { title: 'Tenant name', dataIndex: 'full_name', key: 'full_name', width: 190 },
+    {
+      title: 'Phone / Email',
+      key: 'contact',
+      width: 240,
+      render: (_, item) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text>{item.phone}</Typography.Text>
+          <Typography.Text type="secondary">{item.email ?? '-'}</Typography.Text>
+        </Space>
+      ),
+    },
+    { title: 'Identity number', dataIndex: 'identity_number', key: 'identity_number', width: 180 },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'status',
+      width: 130,
+      render: (value: TenantStatus) => {
+        const status = statusOptions.find((item) => item.value === value)
+        return <Tag color={status?.color}>{status?.label ?? value}</Tag>
+      },
+    },
+    {
+      title: 'Updated at',
+      dataIndex: 'updated_at',
+      key: 'updated_at',
+      width: 170,
+      render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm'),
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      fixed: 'right',
+      width: 136,
+      render: (_, item) => (
+        <Space size={2}>
+          <Button type="text" icon={<EyeOutlined />} aria-label={`View ${item.full_name}`} onClick={() => void handleView(item.id)} />
+          <Button type="text" icon={<EditOutlined />} aria-label={`Edit ${item.full_name}`} onClick={() => void openEdit(item.id)} />
+          <Button
+            type="text"
+            danger
+            icon={<DeleteOutlined />}
+            aria-label={`Delete ${item.full_name}`}
+            loading={deletingTenantId === item.id}
+            disabled={Boolean(deletingTenantId)}
+            onClick={() => setDeleteTarget(item)}
+          />
+        </Space>
+      ),
+    },
+  ], [deletingTenantId, handleView, openEdit])
 
-    try {
-      const exportData = await getTenantContractExportData(id)
-      await exportRentalContractDocx(exportData)
-      message.success('Contract exported successfully')
-    } catch (error) {
-      message.warning(getUserErrorMessage(error, 'Khong the xuat hop dong cua nguoi thue nay.'))
-    } finally {
-      setExportingTenantId(null)
-    }
-  }, [])
-
-  const navigateToContract = useCallback((contractId: string) => {
-    window.history.pushState(null, '', `/contracts?contractId=${encodeURIComponent(contractId)}`)
-    window.dispatchEvent(new PopStateEvent('popstate'))
-  }, [])
-
-  const columns: ColumnsType<TenantListItem> = useMemo(
-    () => [
-      { title: 'Tenant name', dataIndex: 'full_name', key: 'full_name', width: 180 },
-      {
-        title: 'Phone / Email',
-        key: 'contact',
-        width: 220,
-        render: (_, item) => (
-          <Space direction="vertical" size={0}>
-            <Typography.Text>{item.phone}</Typography.Text>
-            <Typography.Text type="secondary">{item.email ?? '—'}</Typography.Text>
-          </Space>
-        ),
-      },
-      { title: 'Identity number', dataIndex: 'identity_number', key: 'identity_number', width: 180 },
-      {
-        title: 'Current Building / Room',
-        key: 'room',
-        width: 220,
-        render: (_, item) =>
-          item.current_room ? (
-            `${item.current_room.building_name} / ${item.current_room.room_code}`
-          ) : (
-            <Typography.Text type="secondary">No active room</Typography.Text>
-          ),
-      },
-      {
-        title: 'Status',
-        dataIndex: 'status',
-        key: 'status',
-        width: 120,
-        render: (value: TenantStatus) => {
-          const status = statusOptions.find((item) => item.value === value)
-          return <Tag color={status?.color}>{value}</Tag>
-        },
-      },
-      {
-        title: 'Updated at',
-        dataIndex: 'updated_at',
-        key: 'updated_at',
-        width: 180,
-        render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm'),
-      },
-      {
-        title: 'Actions',
-        key: 'actions',
-        fixed: 'right',
-        width: 220,
-        render: (_, item) => (
-          <Space wrap>
-            <Button type="text" icon={<EyeOutlined />} onClick={() => void handleView(item.id)} />
-            <Button type="text" icon={<EditOutlined />} onClick={() => void openEdit(item.id)} />
-            <Button
-              type="text"
-              icon={<FileWordOutlined />}
-              loading={exportingTenantId === item.id}
-              onClick={() => void handleExportContract(item.id)}
-            >
-              Export
-            </Button>
-            <Button
-              type="text"
-              danger
-              icon={<DeleteOutlined />}
-              loading={deletingTenantId === item.id}
-              disabled={Boolean(deletingTenantId)}
-              onClick={(event) => {
-                event.stopPropagation()
-                handleDeleteClick(item)
-              }}
-            />
-          </Space>
-        ),
-      },
-    ],
-    [deletingTenantId, exportingTenantId, handleDeleteClick, handleExportContract, handleView, openEdit],
+  const renderIdentityDocument = (label: string, document: TenantIdentityDocument | null) => (
+    <div className="tenant-identity-detail-item">
+      <Typography.Text strong>{label}</Typography.Text>
+      {document ? (
+        <Image src={document.file_url} alt={label} />
+      ) : (
+        <div className="tenant-identity-detail-empty">No image</div>
+      )}
+    </div>
   )
 
   return (
@@ -497,23 +378,20 @@ export function TenantsPage() {
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <div className="tenants-toolbar">
             <div>
-              <Typography.Title level={4} style={{ margin: 0 }}>
-                Tenants
-              </Typography.Title>
-              <Typography.Text type="secondary">
-                Manage tenant profiles and occupancy from one workspace.
-              </Typography.Text>
+              <Typography.Title level={4} style={{ margin: 0 }}>Tenants</Typography.Title>
+              <Typography.Text type="secondary">Manage tenant profiles and identity information.</Typography.Text>
             </div>
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-              Add Tenant
-            </Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Add Tenant</Button>
           </div>
 
           <div className="tenants-filters">
             <Input.Search
               placeholder="Search name, phone, email, identity number"
               value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
+              onChange={(event) => {
+                setSearchInput(event.target.value)
+                setPage(1)
+              }}
               allowClear
             />
             <Select
@@ -521,51 +399,27 @@ export function TenantsPage() {
               placeholder="Status"
               allowClear
               options={statusOptions.map((item) => ({ label: item.label, value: item.value }))}
-              onChange={(value) => setStatusFilter(value)}
-            />
-            <Select
-              value={buildingFilter}
-              placeholder="Building"
-              allowClear
-              options={buildingOptions.map((building) => ({ label: building.name, value: building.id }))}
               onChange={(value) => {
-                setBuildingFilter(value)
-                setRoomFilter(undefined)
+                setStatusFilter(value)
+                setPage(1)
               }}
             />
-            <Select
-              value={roomFilter}
-              placeholder="Room"
-              allowClear
-              options={filteredRoomsForFilter.map((room) => ({ label: room.code, value: room.id }))}
-              onChange={(value) => setRoomFilter(value)}
-            />
-            <Button icon={<ReloadOutlined />} onClick={() => void loadTenants()}>
-              Retry
-            </Button>
+            <Button icon={<ReloadOutlined />} onClick={() => void loadTenants()}>Refresh</Button>
           </div>
 
           {loading ? (
             <Skeleton active paragraph={{ rows: 6 }} />
           ) : error ? (
-            <Empty description={error}>
-              <Button type="primary" onClick={() => void loadTenants()}>
-                Retry
-              </Button>
-            </Empty>
+            <Empty description={error}><Button type="primary" onClick={() => void loadTenants()}>Retry</Button></Empty>
           ) : items.length === 0 ? (
-            <Empty description="No tenants found">
-              <Button type="primary" onClick={openCreate}>
-                Add Tenant
-              </Button>
-            </Empty>
+            <Empty description="No tenants found"><Button type="primary" onClick={openCreate}>Add Tenant</Button></Empty>
           ) : (
             <Table<TenantListItem>
               rowKey="id"
               columns={columns}
               dataSource={items}
-              pagination={{ current: page, pageSize: 8, total, onChange: (nextPage) => setPage(nextPage) }}
-              scroll={{ x: 1100 }}
+              pagination={{ current: page, pageSize: 8, total, onChange: setPage }}
+              scroll={{ x: 900 }}
             />
           )}
         </Space>
@@ -575,193 +429,67 @@ export function TenantsPage() {
         open={drawerOpen}
         title={drawerMode === 'create' ? 'Add Tenant' : 'Edit Tenant'}
         placement="right"
-        width={screens.md ? 500 : '100%'}
+        width={screens.lg ? 720 : screens.md ? 620 : '100%'}
         onClose={requestCloseDrawer}
-        destroyOnClose
+        destroyOnHidden
         maskClosable
       >
         {drawerLoading ? (
           <Skeleton active paragraph={{ rows: 8 }} />
         ) : (
           <Form form={form} layout="vertical">
-            <Tabs
-              activeKey={activeFormTab}
-              onChange={(key) => setActiveFormTab(key as 'tenant' | 'rental')}
-              destroyOnHidden={false}
-              items={[
-                {
-                  key: 'tenant',
-                  forceRender: true,
-                  label: 'Thông tin người thuê',
-                  children: (
-                    <div className={`tenant-tab-grid ${isDesktop ? 'desktop-two-cols' : ''}`}>
-                      <Form.Item
-                        name="full_name"
-                        label="Họ và tên"
-                        rules={[{ required: true, whitespace: true, message: 'Vui lòng nhập tên người thuê' }]}
-                      >
-                        <Input placeholder="Nhập họ và tên người thuê" />
-                      </Form.Item>
-                      <Form.Item
-                        name="phone"
-                        label="Số điện thoại"
-                        rules={[
-                          { required: true, message: 'Vui lòng nhập số điện thoại' },
-                          { pattern: /^[0-9+\-\s]{8,20}$/, message: 'Số điện thoại không hợp lệ' },
-                        ]}
-                      >
-                        <Input placeholder="Nhập số điện thoại" />
-                      </Form.Item>
-                      <Form.Item name="email" label="Email" rules={[{ type: 'email', message: 'Email không hợp lệ' }]}>
-                        <Input placeholder="Nhập email (không bắt buộc)" />
-                      </Form.Item>
-                      <Form.Item name="gender" label="Giới tính">
-                        <Radio.Group
-                          options={[
-                            { label: 'Nam', value: 'MALE' },
-                            { label: 'Nữ', value: 'FEMALE' },
-                            { label: 'Khác', value: 'OTHER' },
-                          ]}
-                        />
-                      </Form.Item>
-                      <Form.Item name="dob" label="Ngày sinh">
-                        <Input type="date" />
-                      </Form.Item>
-                      <Form.Item
-                        name="identity_number"
-                        label="CCCD/CMND"
-                        rules={[
-                          { required: true, whitespace: true, message: 'Vui lòng nhập số CCCD/CMND' },
-                          { pattern: /^[A-Za-z0-9]{6,20}$/, message: 'Số CCCD/CMND không hợp lệ' },
-                        ]}
-                      >
-                        <Input placeholder="Nhập số CCCD/CMND" />
-                      </Form.Item>
-                      <Form.Item name="identity_issued_date" label="Ngày cấp">
-                        <Input type="date" />
-                      </Form.Item>
-                      <Form.Item name="identity_issued_place" label="Nơi cấp">
-                        <Input placeholder="Nhập nơi cấp CCCD/CMND" />
-                      </Form.Item>
-                      <Form.Item name="status" label="Trạng thái" rules={[{ required: true, message: 'Vui lòng chọn trạng thái' }]}>
-                        <Select options={statusOptions.map((item) => ({ label: item.label, value: item.value }))} />
-                      </Form.Item>
-                      <Form.Item name="permanent_address" label="Địa chỉ thường trú" className="tenant-tab-full-row">
-                        <Input.TextArea rows={3} placeholder="Nhập địa chỉ thường trú" />
-                      </Form.Item>
-                      <Form.Item name="note" label="Ghi chú" className="tenant-tab-full-row">
-                        <Input.TextArea rows={3} placeholder="Nhập ghi chú" />
-                      </Form.Item>
-                    </div>
-                  ),
-                },
-                {
-                  key: 'rental',
-                  forceRender: true,
-                  label: 'Thuê phòng',
-                  children: (
-                    <div className={`tenant-tab-grid ${isDesktop ? 'desktop-two-cols' : ''}`}>
-                      <Form.Item name={['rental', 'building_id']} label="Tòa nhà" rules={[{ required: true, message: 'Vui lòng chọn tòa nhà' }]}>
-                        <Select
-                          allowClear
-                          options={buildingOptions.map((building) => ({ label: building.name, value: building.id }))}
-                          onChange={() => {
-                            form.setFieldValue(['rental', 'room_id'], undefined)
-                          }}
-                        />
-                      </Form.Item>
-                      <Form.Item
-                        name={['rental', 'room_id']}
-                        label="Phòng"
-                        dependencies={[['rental', 'building_id']]}
-                        rules={[{ required: true, message: 'Vui lòng chọn phòng' }]}
-                      >
-                        <Select
-                          allowClear
-                          disabled={!selectedRentalBuildingId}
-                          options={filteredRoomsForDrawer.map((room) => ({ label: room.code, value: room.id }))}
-                        />
-                      </Form.Item>
-                      <Form.Item name={['rental', 'contract_status']} label="Trạng thái hợp đồng" initialValue="DRAFT">
-                        <Select options={contractStatusOptions.map((item) => ({ label: item.label, value: item.value }))} />
-                      </Form.Item>
-                      <Form.Item
-                        name={['rental', 'start_date']}
-                        label="Ngày bắt đầu thuê"
-                        rules={[{ required: true, message: 'Vui lòng chọn ngày bắt đầu thuê' }]}
-                      >
-                        <Input type="date" />
-                      </Form.Item>
-                      <Form.Item name={['rental', 'end_date']} label="Ngày kết thúc">
-                        <Input type="date" />
-                      </Form.Item>
-                      <Form.Item name={['rental', 'move_in_date']} label="Ngày vào ở">
-                        <Input type="date" />
-                      </Form.Item>
-                      <Form.Item name={['rental', 'move_out_date']} label="Ngày rời đi">
-                        <Input type="date" />
-                      </Form.Item>
-                      <Form.Item
-                        name={['rental', 'rent_price']}
-                        label="Tiền thuê"
-                        rules={[{ required: true, message: 'Vui lòng nhập tiền thuê' }, { validator: validateMoneyValue }]}
-                      >
-                        <InputNumber
-                          min={0}
-                          precision={0}
-                          controls={false}
-                          formatter={formatMoneyInput}
-                          parser={parseMoneyInput}
-                          style={{ width: '100%' }}
-                        />
-                      </Form.Item>
-                      <Form.Item
-                        name={['rental', 'deposit_amount']}
-                        label="Tiền cọc"
-                        rules={[{ required: true, message: 'Vui lòng nhập tiền cọc' }, { validator: validateMoneyValue }]}
-                      >
-                        <InputNumber
-                          min={0}
-                          precision={0}
-                          controls={false}
-                          formatter={formatMoneyInput}
-                          parser={parseMoneyInput}
-                          style={{ width: '100%' }}
-                        />
-                      </Form.Item>
-                      <Form.Item
-                        name={['rental', 'billing_day']}
-                        label="Ngày chốt tiền hàng tháng"
-                        rules={[
-                          { required: true, message: 'Vui lòng nhập ngày chốt tiền' },
-                          {
-                            validator: async (_, value: number | undefined) => {
-                              if (value === undefined) {
-                                return
-                              }
-                              if (value < 1 || value > 28) {
-                                throw new Error('Ngày chốt tiền phải từ 1 đến 28')
-                              }
-                            },
-                          },
-                        ]}
-                      >
-                        <InputNumber min={1} max={28} precision={0} controls={false} style={{ width: '100%' }} />
-                      </Form.Item>
-                      <Form.Item name={['rental', 'contract_note']} label="Ghi chú hợp đồng" className="tenant-tab-full-row">
-                        <Input.TextArea rows={3} placeholder="Nhập ghi chú hợp đồng" />
-                      </Form.Item>
-                    </div>
-                  ),
-                },
-              ]}
-            />
+            <div className={`tenant-tab-grid ${isDesktop ? 'desktop-two-cols' : ''}`}>
+              <Form.Item name="full_name" label="Full name" rules={[{ required: true, whitespace: true, message: 'Please enter the tenant name.' }]}>
+                <Input placeholder="Tenant full name" />
+              </Form.Item>
+              <Form.Item name="phone" label="Phone" rules={[
+                { required: true, message: 'Please enter the phone number.' },
+                { pattern: /^[0-9+\-\s]{8,20}$/, message: 'Please enter a valid phone number.' },
+              ]}>
+                <Input placeholder="Phone number" />
+              </Form.Item>
+              <Form.Item name="email" label="Email" rules={[
+                { required: true, message: 'Please enter the email address.' },
+                { type: 'email', message: 'Please enter a valid email address.' },
+              ]}>
+                <Input placeholder="Email address" />
+              </Form.Item>
+              <Form.Item name="gender" label="Gender">
+                <Radio.Group options={[
+                  { label: 'Male', value: 'MALE' },
+                  { label: 'Female', value: 'FEMALE' },
+                  { label: 'Other', value: 'OTHER' },
+                ]} />
+              </Form.Item>
+              <Form.Item name="dob" label="Date of birth"><Input type="date" /></Form.Item>
+              <Form.Item name="identity_number" label="Citizen ID number" rules={[
+                { required: true, whitespace: true, message: 'Please enter the citizen ID number.' },
+                { pattern: /^[A-Za-z0-9]{6,20}$/, message: 'Please enter a valid citizen ID number.' },
+              ]}>
+                <Input placeholder="Citizen ID number" />
+              </Form.Item>
+              <Form.Item name="identity_issued_date" label="Issue date"><Input type="date" /></Form.Item>
+              <Form.Item name="identity_issued_place" label="Place of issue"><Input placeholder="Place of issue" /></Form.Item>
+              <Form.Item name="status" label="Status" rules={[{ required: true, message: 'Please select a status.' }]}>
+                <Select options={statusOptions.map((item) => ({ label: item.label, value: item.value }))} />
+              </Form.Item>
+              <Form.Item name="permanent_address" label="Permanent address" className="tenant-tab-full-row">
+                <Input.TextArea rows={3} placeholder="Permanent address" />
+              </Form.Item>
+              <Form.Item name="identity_front" label="Citizen ID - Front" className="tenant-identity-form-item">
+                <IdentityDocumentInput disabled={saveLoading} />
+              </Form.Item>
+              <Form.Item name="identity_back" label="Citizen ID - Back" className="tenant-identity-form-item">
+                <IdentityDocumentInput disabled={saveLoading} />
+              </Form.Item>
+              <Form.Item name="note" label="Note" className="tenant-tab-full-row">
+                <Input.TextArea rows={3} placeholder="Tenant note" />
+              </Form.Item>
+            </div>
 
             <div className="tenant-drawer-actions">
               <Space style={{ width: '100%', justifyContent: isMobile ? 'space-between' : 'flex-end' }}>
-                <Button size={isMobile ? 'large' : 'middle'} onClick={requestCloseDrawer}>
-                  Cancel
-                </Button>
+                <Button size={isMobile ? 'large' : 'middle'} onClick={requestCloseDrawer}>Cancel</Button>
                 <Button
                   size={isMobile ? 'large' : 'middle'}
                   type="primary"
@@ -781,85 +509,52 @@ export function TenantsPage() {
         open={detailOpen}
         title="Tenant Detail"
         placement="right"
-        width={screens.lg ? 520 : screens.md ? 480 : '100%'}
+        width={screens.md ? 560 : '100%'}
         onClose={() => setDetailOpen(false)}
       >
         {detailLoading || !selectedTenant ? (
           <Skeleton active paragraph={{ rows: 8 }} />
         ) : (
-          <Space direction="vertical" style={{ width: '100%' }} size={16}>
+          <Space direction="vertical" style={{ width: '100%' }} size={20}>
             <Descriptions bordered size="small" column={1}>
-              <Descriptions.Item label="full_name">{selectedTenant.full_name}</Descriptions.Item>
-              <Descriptions.Item label="phone">{selectedTenant.phone}</Descriptions.Item>
-              <Descriptions.Item label="email">{selectedTenant.email ?? '—'}</Descriptions.Item>
-              <Descriptions.Item label="identity_number">{selectedTenant.identity_number}</Descriptions.Item>
-              <Descriptions.Item label="status">{selectedTenant.status}</Descriptions.Item>
-              <Descriptions.Item label="permanent_address">
-                {selectedTenant.permanent_address ?? '—'}
-              </Descriptions.Item>
-              <Descriptions.Item label="note">{selectedTenant.note ?? '—'}</Descriptions.Item>
+              <Descriptions.Item label="Full name">{selectedTenant.full_name}</Descriptions.Item>
+              <Descriptions.Item label="Phone">{selectedTenant.phone}</Descriptions.Item>
+              <Descriptions.Item label="Email">{selectedTenant.email ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label="Gender">{selectedTenant.gender ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label="Date of birth">{selectedTenant.dob ? dayjs(selectedTenant.dob).format('DD/MM/YYYY') : '-'}</Descriptions.Item>
+              <Descriptions.Item label="Citizen ID number">{selectedTenant.identity_number}</Descriptions.Item>
+              <Descriptions.Item label="Issue date">{selectedTenant.identity_issued_date ? dayjs(selectedTenant.identity_issued_date).format('DD/MM/YYYY') : '-'}</Descriptions.Item>
+              <Descriptions.Item label="Place of issue">{selectedTenant.identity_issued_place ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label="Status">{selectedTenant.status}</Descriptions.Item>
+              <Descriptions.Item label="Permanent address">{selectedTenant.permanent_address ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label="Note">{selectedTenant.note ?? '-'}</Descriptions.Item>
             </Descriptions>
-
-            <Card
-              size="small"
-              title="Current Contract / Room"
-              extra={
-                <Button
-                  icon={<FileWordOutlined />}
-                  loading={exportingTenantId === selectedTenant.id}
-                  onClick={() => void handleExportContract(selectedTenant.id)}
-                >
-                  Export Contract
-                </Button>
-              }
-            >
-              {selectedTenant.current_room ? (
-                <Descriptions size="small" column={1}>
-                  <Descriptions.Item label="building_name">
-                    {selectedTenant.current_room.building_name}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="room_code">{selectedTenant.current_room.room_code}</Descriptions.Item>
-                  <Descriptions.Item label="contract_id">
-                    <Button
-                      type="link"
-                      style={{ padding: 0, height: 'auto' }}
-                      onClick={() => {
-                        const contractId = selectedTenant.current_room?.contract_id
-                        if (contractId) {
-                          navigateToContract(contractId)
-                        }
-                      }}
-                    >
-                      {selectedTenant.current_room.contract_id}
-                    </Button>
-                  </Descriptions.Item>
-                  <Descriptions.Item label="start_date">
-                    {dayjs(selectedTenant.current_room.start_date).format('DD/MM/YYYY')}
-                  </Descriptions.Item>
-                </Descriptions>
-              ) : (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No active contract" />
-              )}
-            </Card>
+            <div>
+              <Typography.Title level={5}>Citizen ID images</Typography.Title>
+              <div className="tenant-identity-detail-grid">
+                {renderIdentityDocument('Front', selectedTenant.identity_documents.front)}
+                {renderIdentityDocument('Back', selectedTenant.identity_documents.back)}
+              </div>
+            </div>
           </Space>
         )}
       </Drawer>
 
       <Modal
         open={Boolean(deleteTarget)}
-        title="Xác nhận xóa người thuê"
+        title="Delete tenant?"
         onCancel={() => setDeleteTarget(null)}
         onOk={() => void confirmDeleteTenant()}
-        okText="Xóa"
+        okText="Delete"
         okButtonProps={{ danger: true, loading: Boolean(deletingTenantId) }}
-        cancelText="Hủy"
+        cancelText="Cancel"
         maskClosable={!deletingTenantId}
         keyboard={!deletingTenantId}
         confirmLoading={Boolean(deletingTenantId)}
         zIndex={1200}
         getContainer={() => document.body}
       >
-        Bạn có chắc muốn xóa người thuê này không?
+        This tenant profile will be removed. This action cannot be undone.
       </Modal>
 
       <Modal

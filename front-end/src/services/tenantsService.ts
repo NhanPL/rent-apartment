@@ -4,8 +4,11 @@ import type {
   BuildingOption,
   RentalContractExportData,
   RoomOption,
+  TenantCreateResult,
   TenantDetail,
   TenantFormPayload,
+  TenantIdentityDocumentUpdatePayload,
+  TenantIdentityDocuments,
   TenantListItem,
   TenantListParams,
 } from '../pages/tenants/types'
@@ -34,12 +37,16 @@ export function getTenant(id: string): Promise<TenantDetail> {
   return apiRequest<TenantDetail>(API_ROUTES.tenants.detail(id))
 }
 
-export function createTenant(payload: TenantFormPayload): Promise<TenantListItem> {
-  return apiRequest<TenantListItem>(API_ROUTES.tenants.list, { method: 'POST', body: payload })
+export function createTenant(payload: TenantFormPayload): Promise<TenantCreateResult> {
+  return apiRequest<TenantCreateResult>(API_ROUTES.tenants.list, { method: 'POST', body: payload })
 }
 
 export function updateTenant(id: string, payload: TenantFormPayload): Promise<TenantListItem> {
   return apiRequest<TenantListItem>(API_ROUTES.tenants.detail(id), { method: 'PATCH', body: payload })
+}
+
+export function updateTenantIdentityDocuments(id: string, payload: TenantIdentityDocumentUpdatePayload): Promise<TenantIdentityDocuments> {
+  return apiRequest<TenantIdentityDocuments>(API_ROUTES.tenants.identityDocuments(id), { method: 'PUT', body: payload })
 }
 
 export function deleteTenant(id: string): Promise<void> {
