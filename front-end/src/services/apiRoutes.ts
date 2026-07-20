@@ -25,6 +25,7 @@ export const API_ROUTES = {
   tenants: {
     list: '/tenants',
     detail: (id: string) => `/tenants/${id}`,
+    identityDocuments: (id: string) => `/tenants/${id}/identity-documents`,
   },
   contracts: {
     list: '/contracts',
