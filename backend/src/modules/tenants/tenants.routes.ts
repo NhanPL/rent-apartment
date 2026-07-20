@@ -13,6 +13,12 @@ import {
   validateTenantContractRoom
 } from './tenants.service';
 import { assertTenantBelongsToManager } from './tenants.repository';
+import { validateStoredUpload } from '../uploads/uploads.service';
+import {
+  mapTenantIdentityDocuments,
+  updateTenantIdentityDocuments,
+  type TenantIdentityDocumentRow
+} from './tenant-identity-documents.service';
 
 const router = Router();
 const db = { query };
@@ -86,6 +92,22 @@ const tenantCreatePayloadSchema = z.object({
 const tenantUpdatePayloadSchema = tenantCreatePayloadSchema.partial().extend({
   email: z.string().trim().email().nullable().optional()
 });
+
+const identityDocumentFileSchema = z.object({
+  file_name: z.string().trim().min(1),
+  file_url: z.string().trim().url(),
+  mime_type: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+  file_size: z.coerce.number().int().positive(),
+  resource_type: z.literal('image').optional()
+});
+
+const identityDocumentUpdateSchema = z.object({
+  front: identityDocumentFileSchema.nullable().optional(),
+  back: identityDocumentFileSchema.nullable().optional()
+}).refine(
+  (value) => Object.prototype.hasOwnProperty.call(value, 'front') || Object.prototype.hasOwnProperty.call(value, 'back'),
+  { message: 'At least one identity document change is required' }
+);
 
 const tenantCreateSchema = z.union([
   tenantCreatePayloadSchema.extend({ contract: tenantContractSchema.nullable().optional() }),
@@ -254,7 +276,7 @@ router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const tenant = tenantRs.rows[0];
   if (!tenant) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
 
-  const [roomRs, contractRs] = await Promise.all([
+  const [roomRs, contractRs, documentRs] = await Promise.all([
     query(
       `SELECT t.id AS tenant_id, t.full_name, t.phone, t.identity_number,
               c.room_id, r.code AS room_code, b.id AS building_id, b.name AS building_name,
@@ -278,10 +300,22 @@ router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
        ORDER BY c.created_at DESC
        LIMIT 1`,
       [req.params.id, req.auth!.userId]
+    ),
+    query<TenantIdentityDocumentRow>(
+      `SELECT id, tenant_id, doc_type, file_name, file_url, mime_type, file_size, uploaded_at
+       FROM tenant_document
+       WHERE tenant_id=$1 AND doc_type IN ('IDENTITY_FRONT', 'IDENTITY_BACK')
+       ORDER BY uploaded_at DESC, created_at DESC`,
+      [req.params.id]
     )
   ]);
 
-  res.json({ ...tenant, current_room: roomRs.rows[0] ?? null, current_contract: contractRs.rows[0] ?? null });
+  res.json({
+    ...tenant,
+    current_room: roomRs.rows[0] ?? null,
+    current_contract: contractRs.rows[0] ?? null,
+    identity_documents: mapTenantIdentityDocuments(documentRs.rows)
+  });
 }));
 
 router.post('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
@@ -349,6 +383,20 @@ router.patch('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
     return updated.rows[0];
   });
   res.json(result);
+}));
+
+router.put('/:id/identity-documents', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  const body = parseBody(identityDocumentUpdateSchema, req.body);
+  for (const document of [body.front, body.back]) {
+    if (document) validateStoredUpload('TENANT_DOCUMENT', document, req.auth!.role);
+  }
+
+  res.json(await updateTenantIdentityDocuments(
+    req.params.id,
+    req.auth!.userId,
+    req.auth!.userId,
+    body
+  ));
 }));
 
 router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
