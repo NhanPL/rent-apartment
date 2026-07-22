@@ -31,6 +31,7 @@ import {
   updateTenantIdentityDocuments,
 } from '../../services/tenantsService'
 import { getUserErrorMessage } from '../../services/errorMessage'
+import { Localized } from '../../shared/components/Localized'
 import { uploadFileToCloudinary } from '../../services/uploadService'
 import type {
   TenantDetail,
@@ -373,6 +374,7 @@ export function TenantsPage() {
   )
 
   return (
+    <Localized>
     <div className="tenants-page">
       <Card>
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -574,5 +576,6 @@ export function TenantsPage() {
         You have unsaved changes.
       </Modal>
     </div>
+    </Localized>
   )
 }

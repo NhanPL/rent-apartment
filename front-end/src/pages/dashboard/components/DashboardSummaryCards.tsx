@@ -8,6 +8,7 @@ import {
 import { Card, Col, Grid, Row, Skeleton, Space, Statistic, Typography } from 'antd'
 import type { CSSProperties, ReactNode } from 'react'
 import type { DashboardSummary } from '../types'
+import { Localized } from '../../../shared/components/Localized'
 
 interface DashboardSummaryCardsProps {
   loading: boolean
@@ -142,6 +143,7 @@ export function DashboardSummaryCards({ loading, summary, currencyFormatter }: D
   ]
 
   return (
+    <Localized>
     <Row gutter={[16, 16]}>
       {items.map((item) => (
         <Col key={item.key} xs={24} sm={12} xl={6}>
@@ -168,5 +170,6 @@ export function DashboardSummaryCards({ loading, summary, currencyFormatter }: D
         </Col>
       ))}
     </Row>
+    </Localized>
   )
 }

@@ -46,6 +46,8 @@ import {
   updateUtilityRate,
 } from '../../services/utilitiesService'
 import { getUserErrorMessage } from '../../services/errorMessage'
+import { Localized } from '../../shared/components/Localized'
+import { vndCurrency } from '../../i18n'
 import type {
   BuildingOption,
   RoomOption,
@@ -77,7 +79,7 @@ const readingStatusOptions: { label: string; value: UtilityReadingStatus; color:
   { label: 'Invoiced', value: 'INVOICED', color: 'blue' },
 ]
 
-const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
+const currency = vndCurrency
 
 const formatDate = (value: string | null | undefined) => (value ? dayjs(value).format('DD/MM/YYYY') : '-')
 const formatMonth = (value: string) => dayjs(value).format('MM/YYYY')
@@ -475,6 +477,7 @@ export function UtilitiesPage() {
   )
 
   return (
+    <Localized>
     <div className="utilities-page">
       <Card>
         <div className="utilities-toolbar">
@@ -736,5 +739,6 @@ export function UtilitiesPage() {
         </Form>
       </Modal>
     </div>
+    </Localized>
   )
 }

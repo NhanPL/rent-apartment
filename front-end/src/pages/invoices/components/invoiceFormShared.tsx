@@ -4,6 +4,7 @@ import type { FormInstance } from 'antd/es/form'
 import { getEffectiveUtilityRate, getInvoicePrefill } from '../../../services/invoicesService'
 import type { Building, Contract, InvoiceStatus, Room } from '../types'
 import { useInvoiceDerivedValues, type InvoiceFormValues } from './invoiceFormState'
+import { Localized } from '../../../shared/components/Localized'
 
 interface InvoiceFormFieldsProps {
   form: FormInstance<InvoiceFormValues>
@@ -146,6 +147,7 @@ export function InvoiceFormFields({
   }, [activeContracts, autoFillFromLatest, buildings.length, selectedRoomId, selectedMonth, rooms, form])
 
   return (
+    <Localized>
     <div className="invoice-form-grid">
       {buildings.length > 0 ? (
         <Form.Item label="Building" name="building_id" rules={[{ required: true, message: 'Please select building' }]}>
@@ -313,5 +315,6 @@ export function InvoiceFormFields({
         <Input.TextArea rows={3} />
       </Form.Item>
     </div>
+    </Localized>
   )
 }

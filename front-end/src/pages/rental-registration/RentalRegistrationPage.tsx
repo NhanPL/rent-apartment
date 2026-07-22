@@ -56,6 +56,8 @@ import type {
 import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
 import { uploadFileToCloudinary, type UploadedCloudinaryFile } from '../../services/uploadService'
 import { getUserErrorMessage } from '../../services/errorMessage'
+import { Localized } from '../../shared/components/Localized'
+import { vndCurrency } from '../../i18n'
 import './RentalRegistrationPage.css'
 
 interface ReserveFormValues {
@@ -97,7 +99,7 @@ interface CancelFormValues {
 
 type WorkspaceTab = 'reserve' | 'documents' | 'handover'
 
-const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
+const currency = vndCurrency
 const documentAccept = 'image/jpeg,image/png,image/webp,application/pdf'
 
 const documentTypeOptions: Array<{ label: string; value: ContractDocumentType }> = [
@@ -636,6 +638,7 @@ export function RentalRegistrationPage() {
   )
 
   return (
+    <Localized>
     <div className="rental-registration-page">
       <div className="registration-toolbar registration-page-header">
         <div>
@@ -836,5 +839,6 @@ export function RentalRegistrationPage() {
         </Form>
       </Modal>
     </div>
+    </Localized>
   )
 }

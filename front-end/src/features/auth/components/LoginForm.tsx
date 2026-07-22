@@ -3,6 +3,9 @@ import { useState } from 'react'
 import { useAuth } from '../useAuth'
 import type { LoginFormValues } from '../types/auth'
 import { getUserErrorMessage } from '../../../services/errorMessage'
+import { useI18n } from '../../../i18n'
+import { LanguageSwitcher } from '../../../shared/components/LanguageSwitcher'
+import { Localized } from '../../../shared/components/Localized'
 import './LoginForm.css'
 
 const { Title, Text } = Typography
@@ -12,6 +15,7 @@ function getHomePathByRole(role: 'MANAGER' | 'TENANT') {
 }
 
 export function LoginForm() {
+  const { t } = useI18n()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>('')
   const { login } = useAuth()
@@ -30,14 +34,18 @@ export function LoginForm() {
       window.history.replaceState(null, '', targetPath)
       window.dispatchEvent(new PopStateEvent('popstate'))
     } catch (loginError) {
-      setError(getUserErrorMessage(loginError, 'Khong the dang nhap. Vui long kiem tra tai khoan.'))
+      setError(getUserErrorMessage(loginError, t('Unable to sign in. Please check your account details.')))
     } finally {
       setLoading(false)
     }
   }
 
   return (
+    <Localized>
     <Card className="login-card" bordered={false}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <LanguageSwitcher />
+      </div>
       <div className="login-header">
         <Text className="login-eyebrow">Rent Apartment Management</Text>
         <Title level={2}>Welcome back</Title>
@@ -76,5 +84,6 @@ export function LoginForm() {
         </Button>
       </Form>
     </Card>
+    </Localized>
   )
 }

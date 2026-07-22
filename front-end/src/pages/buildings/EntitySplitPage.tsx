@@ -7,6 +7,7 @@ import { UpsertDrawer } from './components/UpsertDrawer'
 import type { BuildingEntity, BuildingFormValues } from './components/types'
 import { createBuilding, deleteBuilding, listBuildings, updateBuilding } from './components/roomService'
 import { getUserErrorMessage } from '../../services/errorMessage'
+import { Localized } from '../../shared/components/Localized'
 import './EntitySplitPage.css'
 
 
@@ -142,6 +143,7 @@ export function EntitySplitPage() {
   }, [drawerMode, items, selectedItem])
 
   return (
+    <Localized>
     <div className="split-page">
       {(!isMobile || !showMobileDetail) && (
         <Card className="master-card" styles={{ body: { padding: isTablet ? 12 : 16 } }}>
@@ -178,5 +180,6 @@ export function EntitySplitPage() {
         onSubmit={handleSubmit}
       />
     </div>
+    </Localized>
   )
 }

@@ -15,8 +15,10 @@ import {
   type PaymentRequestStatus,
 } from '../../services/paymentsService'
 import { getUserErrorMessage } from '../../services/errorMessage'
+import { Localized } from '../../shared/components/Localized'
+import { vndCurrency } from '../../i18n'
 
-const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
+const currency = vndCurrency
 
 const paymentRequestStatusColor: Record<PaymentRequestStatus, string> = {
   DRAFT: 'default',
@@ -170,6 +172,7 @@ export function PaymentsPage() {
   ]
 
   return (
+    <Localized>
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <div>
         <Typography.Title level={3} style={{ margin: 0 }}>Payments</Typography.Title>
@@ -372,5 +375,6 @@ export function PaymentsPage() {
         </Form>
       </Modal>
     </Space>
+    </Localized>
   )
 }

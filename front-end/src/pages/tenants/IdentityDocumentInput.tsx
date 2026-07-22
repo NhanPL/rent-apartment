@@ -3,6 +3,7 @@ import { Button, Image, Space, Typography } from 'antd'
 import { useEffect, useState } from 'react'
 import type { TenantIdentityDocument, TenantIdentityDocumentFilePayload } from './types'
 import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
+import { Localized } from '../../shared/components/Localized'
 
 export type IdentityDocumentValue = TenantIdentityDocument | TenantIdentityDocumentFilePayload | File | null
 
@@ -37,6 +38,7 @@ export function IdentityDocumentInput({ value = null, onChange, disabled }: Iden
   const fileName = isFile(value) ? value.name : value?.file_name
 
   return (
+    <Localized>
     <div className="tenant-identity-image-input">
       <div className="tenant-identity-image-preview">
         {previewUrl ? (
@@ -70,5 +72,6 @@ export function IdentityDocumentInput({ value = null, onChange, disabled }: Iden
       </Space>
       {fileName ? <Typography.Text type="secondary" ellipsis={{ tooltip: fileName }}>{fileName}</Typography.Text> : null}
     </div>
+    </Localized>
   )
 }

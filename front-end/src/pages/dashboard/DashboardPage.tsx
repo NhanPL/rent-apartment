@@ -4,6 +4,8 @@ import dayjs, { type Dayjs } from 'dayjs'
 import { useCallback, useEffect, useState } from 'react'
 import { dashboardFormatters, getDashboardData, listDashboardBuildings } from '../../services/dashboardService'
 import { getUserErrorMessage } from '../../services/errorMessage'
+import { Localized } from '../../shared/components/Localized'
+import { useI18n } from '../../i18n'
 import { DashboardCharts } from './components/DashboardCharts'
 import { DashboardRecentActivity } from './components/DashboardRecentActivity'
 import { DashboardSummaryCards } from './components/DashboardSummaryCards'
@@ -15,6 +17,7 @@ interface DashboardPageProps {
 }
 
 export function DashboardPage({ onNavigate }: DashboardPageProps) {
+  const { language } = useI18n()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<DashboardData | null>(null)
@@ -37,7 +40,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
     } finally {
       setLoading(false)
     }
-  }, [buildingId, month])
+  }, [buildingId, language, month])
 
   useEffect(() => {
     void loadDashboard()
@@ -60,6 +63,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
   }, [])
 
   return (
+    <Localized>
     <Space direction="vertical" size={16} className="dashboard-page">
       <div className="dashboard-page-header">
         <div>
@@ -117,5 +121,6 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
         onNavigate={onNavigate}
       />
     </Space>
+    </Localized>
   )
 }
