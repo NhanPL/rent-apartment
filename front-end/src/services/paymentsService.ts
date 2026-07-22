@@ -4,6 +4,7 @@ import { API_ROUTES } from './apiRoutes'
 export type PaymentRequestStatus = 'DRAFT' | 'WAITING_TRANSFER' | 'TRANSFER_SUBMITTED' | 'VERIFIED' | 'REJECTED' | 'CANCELLED' | 'EXPIRED'
 export type PaymentProofStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
 export type PaymentStatus = 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED' | 'CANCELLED'
+export type LatestProofFilter = PaymentProofStatus | 'NONE'
 
 export interface PaymentProof {
   id: string
@@ -61,6 +62,7 @@ export interface PaymentRequest {
   room_id?: string
   room_code?: string
   tenant_name?: string | null
+  tenant_id?: string | null
   latest_proof_id?: string | null
   latest_proof_status?: PaymentProofStatus | null
   latest_proof_submitted_at?: string | null
@@ -88,6 +90,15 @@ export interface PaymentProofPayload {
   transfer_amount?: number | null
   transfer_time?: string | null
   payer_note?: string | null
+}
+
+export interface PaymentRequestListFilters {
+  month?: string
+  building_id?: string
+  room_id?: string
+  tenant_id?: string
+  request_status?: PaymentRequestStatus
+  latest_proof_status?: LatestProofFilter
 }
 
 export interface PaymentProofReviewResult {
@@ -141,8 +152,14 @@ function toPaymentRequest(row: PaymentRequestApiRow): PaymentRequest {
   }
 }
 
-export async function listPaymentRequests(): Promise<PaymentRequest[]> {
-  const rows = await apiRequest<PaymentRequestApiRow[]>(API_ROUTES.payments.requests)
+export async function listPaymentRequests(filters: PaymentRequestListFilters = {}): Promise<PaymentRequest[]> {
+  const search = new URLSearchParams()
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) search.set(key, value)
+  })
+  const queryString = search.toString()
+  const route = queryString ? `${API_ROUTES.payments.requests}?${queryString}` : API_ROUTES.payments.requests
+  const rows = await apiRequest<PaymentRequestApiRow[]>(route)
   return rows.map(toPaymentRequest)
 }
 

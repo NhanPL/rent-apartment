@@ -6,6 +6,15 @@ import { createVietQrPaymentData } from './vietqr.service';
 type DbRow = Record<string, any>;
 type AuthScope = { userId: string; role: 'MANAGER' | 'TENANT' };
 
+export interface PaymentRequestListFilters {
+  month?: string;
+  buildingId?: string;
+  roomId?: string;
+  tenantId?: string;
+  requestStatus?: 'DRAFT' | 'WAITING_TRANSFER' | 'TRANSFER_SUBMITTED' | 'VERIFIED' | 'REJECTED' | 'CANCELLED' | 'EXPIRED';
+  latestProofStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'NONE';
+}
+
 const toNumber = (value: unknown) => Number(value ?? 0);
 
 const paymentRequestSummarySelect = `
@@ -20,6 +29,7 @@ const paymentRequestSummarySelect = `
   b.name AS building_name,
   r.id AS room_id,
   r.code AS room_code,
+  tenant_info.tenant_id,
   tenant_info.tenant_name,
   latest_proof.id AS latest_proof_id,
   latest_proof.status AS latest_proof_status,
@@ -32,7 +42,7 @@ const paymentRequestSummaryJoins = `
   JOIN room r ON r.id=c.room_id
   JOIN building b ON b.id=r.building_id
   LEFT JOIN LATERAL (
-    SELECT t.full_name AS tenant_name
+    SELECT t.id AS tenant_id, t.full_name AS tenant_name
     FROM contract_tenant ct
     JOIN tenant t ON t.id=ct.tenant_id
     WHERE ct.contract_id=c.id
@@ -257,27 +267,31 @@ export const getPaymentRequestDetail = async (id: string, scope: AuthScope) => {
   return { ...reqRs.rows[0], proofs: proofs.rows, payments: payment.rows, payment: payment.rows[0] ?? null };
 };
 
-export const listPaymentRequests = async (scope: AuthScope) => {
-  if (scope.role === 'MANAGER') {
-    return (await query(
-      `SELECT ${paymentRequestSummarySelect}
-       FROM payment_request pr
-       ${paymentRequestSummaryJoins}
-       WHERE b.manager_user_id=$1
-       ORDER BY pr.created_at DESC`,
-      [scope.userId]
-    )).rows;
-  }
+export const listPaymentRequests = async (scope: AuthScope, filters: PaymentRequestListFilters = {}) => {
+  const params: unknown[] = [scope.userId];
+  const conditions = [scope.role === 'MANAGER' ? 'b.manager_user_id=$1' : 't.user_id=$1'];
+  const addCondition = (condition: string, value: unknown) => {
+    params.push(value);
+    conditions.push(condition.replace('?', `$${params.length}`));
+  };
+
+  if (filters.month) addCondition('i.month=?', `${filters.month}-01`);
+  if (filters.buildingId) addCondition('b.id=?', filters.buildingId);
+  if (filters.roomId) addCondition('r.id=?', filters.roomId);
+  if (filters.tenantId) addCondition('tenant_info.tenant_id=?', filters.tenantId);
+  if (filters.requestStatus) addCondition('pr.status=?', filters.requestStatus);
+  if (filters.latestProofStatus === 'NONE') conditions.push('latest_proof.id IS NULL');
+  else if (filters.latestProofStatus) addCondition('latest_proof.status=?', filters.latestProofStatus);
 
   return (await query(
     `SELECT ${paymentRequestSummarySelect}
      FROM payment_request pr
      ${paymentRequestSummaryJoins}
-     JOIN contract_tenant ct ON ct.contract_id=i.contract_id
-     JOIN tenant t ON t.id=ct.tenant_id
-     WHERE t.user_id=$1
+     ${scope.role === 'TENANT' ? `JOIN contract_tenant ct ON ct.contract_id=i.contract_id
+     JOIN tenant t ON t.id=ct.tenant_id` : ''}
+     WHERE ${conditions.join(' AND ')}
      ORDER BY pr.created_at DESC`,
-    [scope.userId]
+    params
   )).rows;
 };
 
