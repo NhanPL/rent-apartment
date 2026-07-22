@@ -1,7 +1,8 @@
 import dayjs from 'dayjs'
 import type { RentalContractExportData } from '../pages/tenants/types'
+import { vndCurrency } from '../i18n'
 
-const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
+const currency = vndCurrency
 
 interface ContractSection {
   heading: string

@@ -4,6 +4,7 @@ import type {
   DashboardMonthlyRevenuePoint,
   DashboardRoomStatusPoint,
 } from '../types'
+import { Localized } from '../../../shared/components/Localized'
 
 interface DashboardChartsProps {
   loading: boolean
@@ -49,6 +50,7 @@ export function DashboardCharts({
   }
 
   return (
+    <Localized>
     <Row gutter={[16, 16]}>
       <Col xs={24} lg={12}>
         <Card title="Room occupancy / status" className="dashboard-card" bordered={false}>
@@ -145,5 +147,6 @@ export function DashboardCharts({
         </Card>
       </Col>
     </Row>
+    </Localized>
   )
 }

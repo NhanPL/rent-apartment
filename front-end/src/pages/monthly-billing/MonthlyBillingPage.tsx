@@ -6,9 +6,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { listBuildings } from '../../services/invoicesService'
 import { generateMonthlyInvoice, listMonthlyBilling, type MonthlyBillingAction, type MonthlyBillingItem } from '../../services/monthlyBillingService'
 import { getUserErrorMessage } from '../../services/errorMessage'
+import { Localized } from '../../shared/components/Localized'
+import { vndCurrency } from '../../i18n'
 import './MonthlyBillingPage.css'
 
-const currency = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
+const currency = vndCurrency
 const actionLabels: Record<MonthlyBillingAction, string> = {
   ENTER_READING: 'Enter reading', REVIEW_READING: 'Review reading', CORRECT_READING: 'Correct reading', GENERATE_INVOICE: 'Generate invoice', REVIEW_DRAFT: 'Review draft', WAITING_PAYMENT: 'Awaiting payment', RECONCILE_PAYMENT: 'Reconcile payment', PAID: 'Paid',
 }
@@ -65,9 +67,9 @@ export function MonthlyBillingPage() {
     { title: '', fixed: 'right', width: 180, render: (_, row) => row.next_action === 'REVIEW_DRAFT' ? <Button type="primary" icon={<SendOutlined />} onClick={() => navigate(`/invoices?invoiceId=${encodeURIComponent(row.invoice_id ?? '')}`)}>Review & issue</Button> : <Button type={row.next_action === 'GENERATE_INVOICE' ? 'primary' : 'default'} icon={row.next_action === 'GENERATE_INVOICE' ? <FileAddOutlined /> : row.next_action === 'PAID' ? <CheckCircleOutlined /> : <ThunderboltOutlined />} loading={actionId === row.room_id} onClick={() => void runAction(row)}>{actionLabels[row.next_action]}</Button> },
   ], [actionId, runAction])
 
-  return <Space direction="vertical" size={16} className="monthly-billing-page">
+  return <Localized><Space direction="vertical" size={16} className="monthly-billing-page">
     <div className="monthly-billing-toolbar"><div><Typography.Title level={3}>Monthly billing</Typography.Title><Typography.Text type="secondary">Close the billing cycle from readings through payment reconciliation.</Typography.Text></div><Button icon={<ReloadOutlined />} loading={loading} onClick={() => void load()}>Reload</Button></div>
     <div className="monthly-billing-filters"><Select allowClear placeholder="All buildings" value={buildingId} onChange={setBuildingId} options={buildings.map((item) => ({ label: item.name, value: item.id }))} /><input aria-label="Billing month" type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></div>
     <Table rowKey="contract_id" loading={loading} columns={columns} dataSource={items} scroll={{ x: 1200 }} pagination={{ pageSize: 20 }} locale={{ emptyText: <Empty description="No active contracts found for this period" /> }} />
-  </Space>
+  </Space></Localized>
 }

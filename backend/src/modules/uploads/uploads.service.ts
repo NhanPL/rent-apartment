@@ -40,7 +40,7 @@ const contextConfig: Record<UploadContext, UploadContextConfig> = {
     maxBytes: 10 * 1024 * 1024,
     allowedMimeTypes: imageAndPdfMimeTypes,
     allowedResourceTypes: ['image', 'raw'],
-    roles: ['TENANT']
+    roles: ['TENANT', 'MANAGER']
   },
   UTILITY_EVIDENCE: {
     folder: `${rootFolder}/utility-evidence`,

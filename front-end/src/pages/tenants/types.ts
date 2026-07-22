@@ -51,6 +51,25 @@ export interface TenantListItem extends Tenant {
 
 export interface TenantDetail extends TenantListItem {
   current_contract: Contract | null
+  identity_documents: TenantIdentityDocuments
+}
+
+export type TenantIdentityDocumentType = 'IDENTITY_FRONT' | 'IDENTITY_BACK'
+
+export interface TenantIdentityDocument {
+  id: string
+  tenant_id: string
+  doc_type: TenantIdentityDocumentType
+  file_name: string | null
+  file_url: string
+  mime_type: string
+  file_size: number
+  uploaded_at: string
+}
+
+export interface TenantIdentityDocuments {
+  front: TenantIdentityDocument | null
+  back: TenantIdentityDocument | null
 }
 
 export interface TenantListParams {
@@ -92,7 +111,26 @@ export interface ContractUpsertPayload {
 
 export interface TenantFormPayload {
   tenant: TenantUpsertPayload
-  contract: ContractUpsertPayload | null
+}
+
+export interface TenantCreateResult {
+  message: string
+  tenantId: string
+  userId: string
+  emailSent: boolean
+}
+
+export interface TenantIdentityDocumentFilePayload {
+  file_name: string
+  file_url: string
+  mime_type: string
+  file_size: number
+  resource_type: 'image'
+}
+
+export interface TenantIdentityDocumentUpdatePayload {
+  front?: TenantIdentityDocumentFilePayload | null
+  back?: TenantIdentityDocumentFilePayload | null
 }
 
 export interface BuildingOption {

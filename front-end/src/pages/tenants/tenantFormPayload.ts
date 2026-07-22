@@ -1,4 +1,4 @@
-import type { ContractStatus, TenantFormPayload, TenantStatus } from './types'
+import type { TenantFormPayload, TenantIdentityDocument, TenantIdentityDocumentFilePayload, TenantStatus } from './types'
 
 export interface TenantFormValues {
   full_name: string
@@ -12,19 +12,8 @@ export interface TenantFormValues {
   permanent_address?: string
   status: TenantStatus
   note?: string
-  rental: {
-    building_id?: string
-    room_id?: string
-    contract_status?: ContractStatus
-    start_date?: string
-    end_date?: string
-    move_in_date?: string
-    move_out_date?: string
-    rent_price?: number
-    deposit_amount?: number
-    billing_day?: number
-    contract_note?: string
-  }
+  identity_front?: TenantIdentityDocument | TenantIdentityDocumentFilePayload | File | null
+  identity_back?: TenantIdentityDocument | TenantIdentityDocumentFilePayload | File | null
 }
 
 export const defaultTenantFormValues: TenantFormValues = {
@@ -32,30 +21,11 @@ export const defaultTenantFormValues: TenantFormValues = {
   phone: '',
   identity_number: '',
   status: 'ACTIVE',
-  rental: {
-    contract_status: 'DRAFT',
-    billing_day: 1,
-  },
+  identity_front: null,
+  identity_back: null,
 }
-
-export const toNumberOrUndefined = (value: unknown): number | undefined => {
-  if (value === null || value === undefined || value === '') {
-    return undefined
-  }
-
-  const numericValue = Number(value)
-  return Number.isFinite(numericValue) ? numericValue : undefined
-}
-
-const toNumberOrNull = (value: unknown): number | null => toNumberOrUndefined(value) ?? null
 
 export function mapTenantFormValuesToPayload(values: TenantFormValues): TenantFormPayload {
-  const hasRental =
-    Boolean(values.rental.room_id) ||
-    Boolean(values.rental.start_date) ||
-    values.rental.rent_price !== undefined ||
-    values.rental.deposit_amount !== undefined
-
   return {
     tenant: {
       full_name: values.full_name,
@@ -70,20 +40,5 @@ export function mapTenantFormValuesToPayload(values: TenantFormValues): TenantFo
       permanent_address: values.permanent_address ?? null,
       note: values.note ?? null,
     },
-    contract: hasRental
-      ? {
-          building_id: values.rental.building_id ?? null,
-          room_id: values.rental.room_id ?? null,
-          status: values.rental.contract_status ?? 'DRAFT',
-          start_date: values.rental.start_date ?? null,
-          end_date: values.rental.end_date ?? null,
-          move_in_date: values.rental.move_in_date ?? null,
-          move_out_date: values.rental.move_out_date ?? null,
-          rent_price: toNumberOrNull(values.rental.rent_price),
-          deposit_amount: toNumberOrNull(values.rental.deposit_amount),
-          billing_day: values.rental.billing_day ?? null,
-          note: values.rental.contract_note ?? null,
-        }
-      : null,
   }
 }

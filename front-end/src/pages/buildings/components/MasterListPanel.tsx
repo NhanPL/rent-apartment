@@ -2,6 +2,7 @@ import { BankOutlined, PlusOutlined } from '@ant-design/icons'
 import { Button, Empty, Grid, Input, List, Skeleton, Space, Tag, Typography } from 'antd'
 import type { ChangeEvent } from 'react'
 import type { BuildingEntity } from './types'
+import { Localized } from '../../../shared/components/Localized'
 
 interface MasterListPanelProps {
   loading: boolean
@@ -26,6 +27,7 @@ export function MasterListPanel({
   const isMobile = !screens.md
 
   return (
+    <Localized>
     <div>
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
         <Typography.Title level={5} style={{ margin: 0 }}>
@@ -86,5 +88,6 @@ export function MasterListPanel({
         )}
       </div>
     </div>
+    </Localized>
   )
 }

@@ -4,6 +4,8 @@ import { routeItems, sidebarRouteItems } from './routeConfig'
 import { useAuth } from '../features/auth/useAuth'
 import { changePassword } from '../features/auth/authApi'
 import type { AppRole } from '../features/auth/types/auth'
+import { useI18n } from '../i18n'
+import { Localized } from '../shared/components/Localized'
 
 const LoginPage = lazy(() => import('../features/auth/pages/LoginPage').then((module) => ({ default: module.LoginPage })))
 const BuildingsPage = lazy(() => import('../pages/buildings/BuildingsPage').then((module) => ({ default: module.BuildingsPage })))
@@ -24,9 +26,11 @@ const adminPaths = new Set(['/dashboard', '/buildings', '/rental-registration', 
 
 function RouteFallback() {
   return (
-    <div role="status" aria-live="polite">
-      Loading page...
-    </div>
+    <Localized>
+      <div role="status" aria-live="polite">
+        Loading page...
+      </div>
+    </Localized>
   )
 }
 
@@ -74,6 +78,7 @@ function resolveProtectedPath(pathname: string, role: AppRole) {
 
 export function AppRoutes() {
   const { user, isAuthenticated, logout } = useAuth()
+  const { t } = useI18n()
   const [pathname, setPathname] = useState(window.location.pathname)
 
   useEffect(() => {
@@ -106,8 +111,8 @@ export function AppRoutes() {
   const protectedPath = targetPath
 
   const pageTitle = protectedPath.startsWith('/rooms/')
-    ? 'Room Detail'
-    : routeItems.find((item) => item.path === protectedPath)?.label ?? 'Dashboard'
+    ? t('Room Detail')
+    : t(routeItems.find((item) => item.path === protectedPath)?.label ?? 'Dashboard')
 
   const renderPage = () => {
     if (protectedPath === '/dashboard') {
@@ -131,7 +136,9 @@ export function AppRoutes() {
     return null
   }
 
-  const allowedSidebarItems = sidebarRouteItems.filter((item) => canAccess(item.path, user.role))
+  const allowedSidebarItems = sidebarRouteItems
+    .filter((item) => canAccess(item.path, user.role))
+    .map((item) => ({ ...item, label: t(item.label) }))
 
   return (
     <AppLayout
@@ -143,7 +150,7 @@ export function AppRoutes() {
       items={allowedSidebarItems}
       pageTitle={pageTitle}
       content={<Suspense fallback={<RouteFallback />}>{renderPage()}</Suspense>}
-      currentUserName={user.fullName ?? user.username ?? user.email ?? 'User'}
+      currentUserName={user.fullName ?? user.username ?? user.email ?? t('User')}
       onLogout={handleLogout}
       onChangePassword={async (payload) => {
         await changePassword(payload)

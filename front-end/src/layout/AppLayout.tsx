@@ -5,6 +5,9 @@ import type { ReactNode } from 'react'
 import type { ChangePasswordPayload } from '../features/auth/types/auth'
 import type { SidebarRouteItem } from '../routes/routeConfig'
 import { getUserErrorMessage } from '../services/errorMessage'
+import { useI18n } from '../i18n'
+import { LanguageSwitcher } from '../shared/components/LanguageSwitcher'
+import { Localized } from '../shared/components/Localized'
 import './AppLayout.css'
 
 const { Header, Sider, Content, Footer } = Layout
@@ -22,6 +25,7 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({ pathname, onNavigate, items, pageTitle, content, currentUserName, onLogout, onChangePassword }: AppLayoutProps) {
+  const { t } = useI18n()
   const screens = Grid.useBreakpoint()
   const isDesktop = Boolean(screens.lg)
 
@@ -64,17 +68,18 @@ export function AppLayout({ pathname, onNavigate, items, pageTitle, content, cur
     setChangePasswordError(null)
     try {
       await onChangePassword(values)
-      message.success('Password changed successfully. Please sign in again.')
+      message.success(t('Password changed successfully. Please sign in again.'))
       setChangePasswordOpen(false)
       changePasswordForm.resetFields()
     } catch (error) {
-      setChangePasswordError(getUserErrorMessage(error, 'Unable to change your password.'))
+      setChangePasswordError(getUserErrorMessage(error, t('Unable to change your password.')))
     } finally {
       setChangingPassword(false)
     }
   }
 
   return (
+    <Localized>
     <Layout className="app-layout">
       {isDesktop ? (
         <Sider theme="light" collapsible collapsed={collapsed} trigger={null} width={240} collapsedWidth={80} className="app-sider">
@@ -104,6 +109,7 @@ export function AppLayout({ pathname, onNavigate, items, pageTitle, content, cur
               </Typography.Text>
             </div>
           </div>
+          <LanguageSwitcher compact />
           <Dropdown
             trigger={['click']}
             menu={{
@@ -212,5 +218,6 @@ export function AppLayout({ pathname, onNavigate, items, pageTitle, content, cur
         </Form>
       </Modal>
     </Layout>
+    </Localized>
   )
 }
