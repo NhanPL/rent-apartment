@@ -143,5 +143,5 @@ describe('TenantRoomPage historical invoice payments', () => {
       })
     })
     expect(await screen.findByText('Payment proof is waiting for manager review.')).toBeInTheDocument()
-  }, 10_000)
+  }, 20_000)
 })

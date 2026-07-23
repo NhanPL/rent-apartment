@@ -77,6 +77,20 @@ const statusMessages: Record<number, string> = {
   503: 'The system is temporarily unavailable. Please try again later.',
 }
 
+interface FormValidationError {
+  errorFields?: Array<{
+    errors?: unknown[]
+  }>
+}
+
+export function isFormValidationError(error: unknown): error is FormValidationError {
+  return Boolean(
+    error
+    && typeof error === 'object'
+    && Array.isArray((error as FormValidationError).errorFields),
+  )
+}
+
 export function getUserErrorMessage(error: unknown, fallback = 'Unable to complete this action. Please try again.'): string {
   if (error instanceof ApiError) {
     return translate(errorMessages[error.code] ?? (error.status ? statusMessages[error.status] : undefined) ?? error.message ?? fallback)
@@ -87,5 +101,20 @@ export function getUserErrorMessage(error: unknown, fallback = 'Unable to comple
   }
 
   if (error instanceof Error && error.message.trim()) return translate(error.message)
+  return translate(fallback)
+}
+
+export function getFormErrorMessage(
+  error: unknown,
+  fallback = 'Please review the highlighted fields and try again.',
+): string {
+  if (!isFormValidationError(error)) return getUserErrorMessage(error, fallback)
+
+  const firstError = error.errorFields
+    ?.flatMap((field) => field.errors ?? [])
+    .find((item) => (typeof item === 'string' && item.trim()) || item instanceof Error)
+
+  if (typeof firstError === 'string') return translate(firstError)
+  if (firstError instanceof Error && firstError.message.trim()) return translate(firstError.message)
   return translate(fallback)
 }

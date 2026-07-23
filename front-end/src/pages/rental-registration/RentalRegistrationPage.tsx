@@ -55,7 +55,7 @@ import type {
 } from '../../services/rentalRegistrationService'
 import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
 import { uploadFileToCloudinary, type UploadedCloudinaryFile } from '../../services/uploadService'
-import { getUserErrorMessage } from '../../services/errorMessage'
+import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
 import { Localized } from '../../shared/components/Localized'
 import { vndCurrency } from '../../i18n'
 import './RentalRegistrationPage.css'
@@ -222,7 +222,7 @@ export function RentalRegistrationPage() {
     try {
       const values = await reserveForm.validateFields()
       if (!values.room_id || !values.start_date || !values.rent_price || values.deposit_amount === undefined || !values.billing_day) {
-        throw new Error('Missing reservation fields')
+        throw new Error('Please complete all required reservation fields.')
       }
       const payload: ReservePayload = {
         room_id: values.room_id,
@@ -257,10 +257,7 @@ export function RentalRegistrationPage() {
       await Promise.all([loadOptions(), loadWorkQueues()])
       message.success('Room reserved. Documents and handover can be completed later.')
     } catch (error: unknown) {
-      const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
-      if (!formError.errorFields) {
-        message.error(getUserErrorMessage(error, 'Unable to reserve the room.'))
-      }
+      message.error(getFormErrorMessage(error, 'Unable to reserve the room.'))
     } finally {
       setSaving(false)
     }
@@ -327,12 +324,9 @@ export function RentalRegistrationPage() {
       await loadWorkQueues()
       message.success(`Added ${savedCount} and removed ${deletedCount} document(s).`)
     } catch (error: unknown) {
-      const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
-      if (!formError.errorFields) {
-        const reason = getUserErrorMessage(error, 'Unable to save documents.')
-        const completedCount = savedCount + deletedCount
-        message.error(completedCount > 0 ? `Completed ${completedCount} change(s). The remaining changes failed: ${reason}` : reason)
-      }
+      const reason = getFormErrorMessage(error, 'Unable to save documents.')
+      const completedCount = savedCount + deletedCount
+      message.error(completedCount > 0 ? `Completed ${completedCount} change(s). The remaining changes failed: ${reason}` : reason)
     } finally {
       setDocumentSaving(false)
     }
@@ -374,7 +368,7 @@ export function RentalRegistrationPage() {
       await Promise.all([loadOptions(), loadWorkQueues()])
       message.success('Contract activated and initial utility readings recorded.')
     } catch (error) {
-      message.error(getUserErrorMessage(error, 'Unable to complete the room handover.'))
+      message.error(getFormErrorMessage(error, 'Unable to complete the room handover.'))
     } finally {
       setHandoverSaving(false)
     }
@@ -400,7 +394,7 @@ export function RentalRegistrationPage() {
       await Promise.all([loadOptions(), loadWorkQueues()])
       message.success('Rental registration cancelled.')
     } catch (error) {
-      message.error(getUserErrorMessage(error, 'Unable to cancel the rental registration.'))
+      message.error(getFormErrorMessage(error, 'Unable to cancel the rental registration.'))
     } finally {
       setCancelSaving(false)
     }

@@ -25,7 +25,7 @@ import {
 import type { PaymentRequest, PaymentRequestStatus } from '../../services/paymentsService'
 import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
 import { uploadFileToCloudinary, type UploadedCloudinaryFile } from '../../services/uploadService'
-import { getUserErrorMessage } from '../../services/errorMessage'
+import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
 import { Localized } from '../../shared/components/Localized'
 import { vndCurrency } from '../../i18n'
 import {
@@ -50,6 +50,10 @@ interface TenantDocumentFormValues {
 }
 
 const currency = vndCurrency
+
+const notifyFormFailure = (error: unknown) => {
+  message.error(getFormErrorMessage(error))
+}
 
 const invoiceStatusColor: Record<InvoiceSummary['status'], string> = {
   DRAFT: 'default',
@@ -244,6 +248,8 @@ export function TenantRoomPage() {
       }
       setBillHistory(historyData)
       await hydrateFormByMonth(roomContext.room.id, selectedMonth)
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Unable to load your room information.'))
     } finally {
       setLoading(false)
     }
@@ -260,7 +266,9 @@ export function TenantRoomPage() {
       return
     }
 
-    void hydrateFormByMonth(context.room.id, monthValue)
+    void hydrateFormByMonth(context.room.id, monthValue).catch((error) => {
+      message.error(getUserErrorMessage(error, 'Unable to load utility readings for the selected month.'))
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [context?.room.id, monthValue])
 
@@ -524,7 +532,12 @@ export function TenantRoomPage() {
                         <Input.TextArea value={currentPaymentRequest.qr_content} autoSize readOnly />
                       ) : null}
                       {(currentPaymentRequest.status === 'WAITING_TRANSFER' || currentPaymentRequest.status === 'REJECTED') && currentBill.status !== 'PAID' ? (
-                        <Form<PaymentProofFormValues> form={paymentProofForm} layout="vertical" onFinish={handlePaymentProofSubmit}>
+                        <Form<PaymentProofFormValues>
+                          form={paymentProofForm}
+                          layout="vertical"
+                          onFinish={handlePaymentProofSubmit}
+                          onFinishFailed={notifyFormFailure}
+                        >
                           <Form.Item
                             name="transfer_amount"
                             label="Số tiền đã chuyển"
@@ -595,6 +608,7 @@ export function TenantRoomPage() {
             layout="vertical"
             initialValues={{ doc_type: 'IDENTITY_FRONT' }}
             onFinish={handleTenantDocumentSubmit}
+            onFinishFailed={notifyFormFailure}
           >
             <Row gutter={[16, 8]}>
               <Col xs={24} md={8}>
@@ -718,6 +732,7 @@ export function TenantRoomPage() {
           form={form}
           layout="vertical"
           onFinish={handleSubmit}
+          onFinishFailed={notifyFormFailure}
           initialValues={{
             month: dayjs().format('YYYY-MM'),
             electricity_prev: null,
@@ -975,6 +990,7 @@ export function TenantRoomPage() {
                     form={billDetailPaymentProofForm}
                     layout="vertical"
                     onFinish={handleBillDetailPaymentProofSubmit}
+                    onFinishFailed={notifyFormFailure}
                   >
                     <Form.Item
                       name="transfer_amount"

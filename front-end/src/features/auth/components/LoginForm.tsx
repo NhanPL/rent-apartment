@@ -2,7 +2,7 @@ import { Alert, Button, Card, Checkbox, Form, Input, Typography } from 'antd'
 import { useState } from 'react'
 import { useAuth } from '../useAuth'
 import type { LoginFormValues } from '../types/auth'
-import { getUserErrorMessage } from '../../../services/errorMessage'
+import { getFormErrorMessage, getUserErrorMessage } from '../../../services/errorMessage'
 import { useI18n } from '../../../i18n'
 import { LanguageSwitcher } from '../../../shared/components/LanguageSwitcher'
 import { Localized } from '../../../shared/components/Localized'
@@ -58,12 +58,14 @@ export function LoginForm() {
         layout="vertical"
         requiredMark={false}
         onFinish={onFinish}
+        onFinishFailed={(formError) => setError(getFormErrorMessage(formError))}
         initialValues={{ identifier: '', password: '', rememberMe: true }}
         size="large"
       >
         <Form.Item
           label="Username or email"
           name="identifier"
+          rules={[{ required: true, message: 'Please enter your username or email.' }]}
         >
           <Input autoComplete="username" placeholder="manager@rent.vn or username" allowClear />
         </Form.Item>

@@ -1,8 +1,9 @@
 import { ExclamationCircleOutlined } from '@ant-design/icons'
-import { Button, Drawer, Form, Grid, Input, InputNumber, Modal, Select, Space } from 'antd'
+import { Button, Drawer, Form, Grid, Input, InputNumber, Modal, Select, Space, message } from 'antd'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Room, RoomStatus, RoomUpsertPayload } from './roomTypes'
 import { Localized } from '../../../shared/components/Localized'
+import { getFormErrorMessage, isFormValidationError } from '../../../services/errorMessage'
 
 interface RoomsUpsertDrawerProps {
   open: boolean
@@ -81,9 +82,15 @@ export function RoomsUpsertDrawer({ open, mode, room, building_id, loading, exis
   }
 
   const handleSave = async () => {
-    const values = await form.validateFields()
-    await onSubmit({ ...values, building_id, note: values.note ?? null })
-    closeDrawer()
+    try {
+      const values = await form.validateFields()
+      await onSubmit({ ...values, building_id, note: values.note ?? null })
+      closeDrawer()
+    } catch (error) {
+      if (isFormValidationError(error)) {
+        message.error(getFormErrorMessage(error))
+      }
+    }
   }
 
   return (

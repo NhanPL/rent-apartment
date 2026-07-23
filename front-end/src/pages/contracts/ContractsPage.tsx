@@ -61,7 +61,7 @@ import type {
 } from './types'
 import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
 import type { UploadedCloudinaryFile } from '../../services/uploadService'
-import { getUserErrorMessage } from '../../services/errorMessage'
+import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
 import { Localized } from '../../shared/components/Localized'
 import { vndCurrency } from '../../i18n'
 import './ContractsPage.css'
@@ -169,7 +169,7 @@ const nullableNumber = (value: number | undefined): number | null => {
 
 const toContractCreatePayload = (values: ContractFormValues): ContractCreatePayload => {
   if (!values.room_id || !values.start_date) {
-    throw new Error('Missing required contract fields')
+    throw new Error('Please complete all required contract fields.')
   }
 
   const coTenantIds = values.co_tenant_ids?.filter((tenantId) => tenantId !== values.primary_tenant_id) ?? []
@@ -206,7 +206,7 @@ const toContractCreatePayload = (values: ContractFormValues): ContractCreatePayl
 
 const toContractUpdatePayload = (values: ContractFormValues): ContractUpdatePayload => {
   if (!values.room_id || !values.start_date) {
-    throw new Error('Missing required contract fields')
+    throw new Error('Please complete all required contract fields.')
   }
 
   return {
@@ -465,10 +465,7 @@ export function ContractsPage() {
       setFormDrawerOpen(false)
       await loadData()
     } catch (error: unknown) {
-      const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
-      if (!formError.errorFields) {
-        message.error(getUserErrorMessage(error, 'Khong the luu hop dong.'))
-      }
+      message.error(getFormErrorMessage(error, 'Unable to save the contract.'))
     } finally {
       setSaveLoading(false)
     }
@@ -520,10 +517,7 @@ export function ContractsPage() {
       setCloseAction(null)
       await refreshDetailAndList(detailItem.id)
     } catch (error: unknown) {
-      const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
-      if (!formError.errorFields) {
-        message.error(getUserErrorMessage(error, 'Khong the dong hop dong.'))
-      }
+      message.error(getFormErrorMessage(error, 'Unable to close the contract.'))
     } finally {
       setCloseLoading(false)
     }
@@ -547,10 +541,7 @@ export function ContractsPage() {
       message.success('Tenant added to contract')
       await refreshDetailAndList(detailItem.id)
     } catch (error: unknown) {
-      const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
-      if (!formError.errorFields) {
-        message.error(getUserErrorMessage(error, 'Khong the them nguoi thue vao hop dong.'))
-      }
+      message.error(getFormErrorMessage(error, 'Unable to add the tenant to the contract.'))
     } finally {
       setActionLoading(null)
     }
@@ -619,10 +610,7 @@ export function ContractsPage() {
       message.success('Contract document uploaded')
       await refreshDetailAndList(detailItem.id)
     } catch (error: unknown) {
-      const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
-      if (!formError.errorFields) {
-        message.error(getUserErrorMessage(error, 'Khong the luu giay to hop dong.'))
-      }
+      message.error(getFormErrorMessage(error, 'Unable to save the contract document.'))
     } finally {
       setDocumentSaving(false)
     }

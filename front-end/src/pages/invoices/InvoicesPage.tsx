@@ -54,7 +54,7 @@ import {
   updateInvoice,
   voidInvoice,
 } from '../../services/invoicesService'
-import { getUserErrorMessage } from '../../services/errorMessage'
+import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
 import { Localized } from '../../shared/components/Localized'
 import { vndCurrency } from '../../i18n'
 import { getUtilityReading } from '../../services/utilitiesService'
@@ -239,17 +239,21 @@ export function InvoicesPage() {
   }, [searchInput])
 
   const loadOptions = useCallback(async () => {
-    const [buildingRows, roomRows, tenantRows, contractRows] = await Promise.all([
-      listBuildings(),
-      listRooms(),
-      listTenants(),
-      listContracts(),
-    ])
+    try {
+      const [buildingRows, roomRows, tenantRows, contractRows] = await Promise.all([
+        listBuildings(),
+        listRooms(),
+        listTenants(),
+        listContracts(),
+      ])
 
-    setBuildings(buildingRows)
-    setRooms(roomRows)
-    setTenants(tenantRows)
-    setContracts(contractRows)
+      setBuildings(buildingRows)
+      setRooms(roomRows)
+      setTenants(tenantRows)
+      setContracts(contractRows)
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Unable to load the invoice form options.'))
+    }
   }, [])
 
   const loadData = useCallback(async () => {
@@ -328,32 +332,36 @@ export function InvoicesPage() {
 
   const openEdit = useCallback(async (id: string) => {
     utilityPrefillRequest.current += 1
-    const row = await getInvoice(id)
-    setDrawerMode('edit')
-    setEditingId(id)
-    setUtilitySourceId(null)
-    setUtilityPrefillLoading(false)
-    form.resetFields()
-    form.setFieldsValue({
-      building_id: row.building_id,
-      contract_id: row.contract_id,
-      room_id: row.room_id,
-      month: row.month,
-      status: row.status,
-      issued_at: row.issued_at ?? undefined,
-      due_date: row.due_date ?? undefined,
-      rent_amount: row.rent_amount,
-      electricity_prev: row.electricity_prev ?? 0,
-      electricity_curr: row.electricity_curr ?? 0,
-      water_prev: row.water_prev ?? 0,
-      water_curr: row.water_curr ?? 0,
-      electric_unit_price: row.electric_unit_price,
-      water_unit_price: row.water_unit_price,
-      other_fees: row.other_fees,
-      discount: row.discount,
-      note: row.note ?? undefined,
-    })
-    setDrawerOpen(true)
+    try {
+      const row = await getInvoice(id)
+      setDrawerMode('edit')
+      setEditingId(id)
+      setUtilitySourceId(null)
+      setUtilityPrefillLoading(false)
+      form.resetFields()
+      form.setFieldsValue({
+        building_id: row.building_id,
+        contract_id: row.contract_id,
+        room_id: row.room_id,
+        month: row.month,
+        status: row.status,
+        issued_at: row.issued_at ?? undefined,
+        due_date: row.due_date ?? undefined,
+        rent_amount: row.rent_amount,
+        electricity_prev: row.electricity_prev ?? 0,
+        electricity_curr: row.electricity_curr ?? 0,
+        water_prev: row.water_prev ?? 0,
+        water_curr: row.water_curr ?? 0,
+        electric_unit_price: row.electric_unit_price,
+        water_unit_price: row.water_unit_price,
+        other_fees: row.other_fees,
+        discount: row.discount,
+        note: row.note ?? undefined,
+      })
+      setDrawerOpen(true)
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Unable to load the invoice for editing.'))
+    }
   }, [form])
 
   const openCreateFromUtilityReading = useCallback(async (utilityReadingId: string) => {
@@ -476,13 +484,12 @@ export function InvoicesPage() {
   }, [])
 
   const onSave = useCallback(async () => {
-    const values = await form.validateFields()
-    if (!values.contract_id || !values.room_id) {
-      return
-    }
-
     setSaveLoading(true)
     try {
+      const values = await form.validateFields()
+      if (!values.contract_id || !values.room_id) {
+        throw new Error('Please select a contract and room.')
+      }
       const payload = {
         contract_id: values.contract_id,
         room_id: values.room_id,
@@ -513,7 +520,7 @@ export function InvoicesPage() {
       closeInvoiceDrawer()
       void loadData()
     } catch (error) {
-      message.error(getUserErrorMessage(error, 'Khong the luu hoa don. Vui long kiem tra du lieu.'))
+      message.error(getFormErrorMessage(error, 'Unable to save the invoice. Please review the submitted data.'))
     } finally {
       setSaveLoading(false)
     }
@@ -558,7 +565,7 @@ export function InvoicesPage() {
       message.success(`Generated ${result.generated.length} invoice(s).`)
       await loadData()
     } catch (error) {
-      message.error(getUserErrorMessage(error, 'Khong the tao hoa don.'))
+      message.error(getFormErrorMessage(error, 'Unable to generate invoices.'))
     } finally {
       setGenerateLoading(false)
     }
@@ -594,8 +601,7 @@ export function InvoicesPage() {
       await loadData()
       message.success('Adjustment added to the draft invoice.')
     } catch (error) {
-      const formError = error as { errorFields?: unknown[] }
-      if (!formError.errorFields) message.error(getUserErrorMessage(error, 'Unable to add the adjustment.'))
+      message.error(getFormErrorMessage(error, 'Unable to add the adjustment.'))
     } finally { setAdjustmentLoading(false) }
   }, [adjustmentForm, detailItem, loadData])
 
@@ -637,10 +643,7 @@ export function InvoicesPage() {
       await loadData()
       message.success('Invoice issued and VietQR payment request created.')
     } catch (error) {
-      const formError = error as { errorFields?: unknown[] }
-      if (!formError.errorFields) {
-        message.error(getUserErrorMessage(error, 'Unable to issue the invoice and create its VietQR payment request.'))
-      }
+      message.error(getFormErrorMessage(error, 'Unable to issue the invoice and create its VietQR payment request.'))
     } finally {
       setIssueLoading(false)
     }
@@ -692,9 +695,9 @@ export function InvoicesPage() {
 
   const onCreatePaymentRequest = useCallback(async () => {
     if (!detailItem) return
-    const values = await paymentRequestForm.validateFields()
     setPaymentRequestLoading(true)
     try {
+      const values = await paymentRequestForm.validateFields()
       const request = await createPaymentRequest({
         invoice_id: detailItem.id,
         amount: values.amount,
@@ -709,7 +712,7 @@ export function InvoicesPage() {
       setPaymentRequestOpen(false)
       message.success('Payment request created.')
     } catch (error) {
-      message.error(getUserErrorMessage(error, 'Khong the tao yeu cau thanh toan.'))
+      message.error(getFormErrorMessage(error, 'Unable to create the payment request.'))
     } finally {
       setPaymentRequestLoading(false)
     }

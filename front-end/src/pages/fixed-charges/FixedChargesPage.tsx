@@ -53,7 +53,7 @@ import {
   updateRoomChargeOverride,
   updateRoomMonthExtra,
 } from '../../services/fixedChargesService'
-import { getUserErrorMessage } from '../../services/errorMessage'
+import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
 import { Localized } from '../../shared/components/Localized'
 import { vndCurrency } from '../../i18n'
 import type {
@@ -181,14 +181,18 @@ export function FixedChargesPage() {
   const selectedExtraBuilding = Form.useWatch('building_id', extraForm)
 
   const loadOptions = useCallback(async () => {
-    const [buildingRows, roomRows, contractRows] = await Promise.all([
-      listBuildings(),
-      listRooms(),
-      listContracts(),
-    ])
-    setBuildings(buildingRows)
-    setRooms(roomRows)
-    setContracts(contractRows)
+    try {
+      const [buildingRows, roomRows, contractRows] = await Promise.all([
+        listBuildings(),
+        listRooms(),
+        listContracts(),
+      ])
+      setBuildings(buildingRows)
+      setRooms(roomRows)
+      setContracts(contractRows)
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Unable to load the fixed charge form options.'))
+    }
   }, [])
 
   const loadTables = useCallback(async () => {
@@ -386,7 +390,9 @@ export function FixedChargesPage() {
 
   const submitCatalog = useCallback(async () => {
     const values = await catalogForm.validateFields()
-    if (!values.code || !values.name || !values.charge_type) return
+    if (!values.code || !values.name || !values.charge_type) {
+      throw new Error('Please complete the required charge catalog fields.')
+    }
 
     const payload: ChargeCatalogPayload = {
       code: values.code,
@@ -407,10 +413,12 @@ export function FixedChargesPage() {
 
   const submitCharge = useCallback(async () => {
     const values = await chargeForm.validateFields()
-    if (!values.charge_id || values.unit_price === undefined || !values.effective_from) return
+    if (!values.charge_id || values.unit_price === undefined || !values.effective_from) {
+      throw new Error('Please complete the required charge fields.')
+    }
 
     if (drawerKind === 'building') {
-      if (!values.building_id) return
+      if (!values.building_id) throw new Error('Please select a building.')
       const payload: BuildingChargePayload = {
         building_id: values.building_id,
         charge_id: values.charge_id,
@@ -428,7 +436,7 @@ export function FixedChargesPage() {
     }
 
     if (drawerKind === 'room') {
-      if (!values.room_id) return
+      if (!values.room_id) throw new Error('Please select a room.')
       const payload: RoomChargeOverridePayload = {
         room_id: values.room_id,
         charge_id: values.charge_id,
@@ -446,7 +454,7 @@ export function FixedChargesPage() {
     }
 
     if (drawerKind === 'contract') {
-      if (!values.contract_id) return
+      if (!values.contract_id) throw new Error('Please select a contract.')
       const payload: ContractChargeOverridePayload = {
         contract_id: values.contract_id,
         charge_id: values.charge_id,
@@ -467,7 +475,9 @@ export function FixedChargesPage() {
 
   const submitExtra = useCallback(async () => {
     const values = await extraForm.validateFields()
-    if (!values.room_id || !values.month) return
+    if (!values.room_id || !values.month) {
+      throw new Error('Please select a room and month.')
+    }
 
     const payload: RoomMonthExtraPayload = {
       room_id: values.room_id,
@@ -498,10 +508,7 @@ export function FixedChargesPage() {
       closeDrawer()
       await loadTables()
     } catch (error: unknown) {
-      const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
-      if (!formError.errorFields) {
-        message.error(getUserErrorMessage(error, 'Khong the luu khoan phi.'))
-      }
+      message.error(getFormErrorMessage(error, 'Unable to save the fixed charge.'))
     } finally {
       setSaving(false)
     }
@@ -531,14 +538,15 @@ export function FixedChargesPage() {
   }, [loadTables])
 
   const submitPreview = useCallback(async () => {
-    const values = await previewForm.validateFields()
-    if (!values.contract_id || !values.month) return
-
     setPreviewLoading(true)
     try {
+      const values = await previewForm.validateFields()
+      if (!values.contract_id || !values.month) {
+        throw new Error('Please select a contract and month.')
+      }
       setPreview(await resolveFixedCharges(values.contract_id, monthToDate(values.month)))
     } catch (error) {
-      message.error(getUserErrorMessage(error, 'Khong the tinh cac khoan phi.'))
+      message.error(getFormErrorMessage(error, 'Unable to calculate the fixed charges.'))
     } finally {
       setPreviewLoading(false)
     }

@@ -130,6 +130,7 @@ export function EntitySplitPage() {
       setDrawerOpen(false)
     } catch (error) {
       message.error(getUserErrorMessage(error, 'Khong the luu toa nha.'))
+      throw error
     } finally {
       setSaving(false)
     }
