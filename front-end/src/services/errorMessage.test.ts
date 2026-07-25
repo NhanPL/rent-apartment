@@ -10,7 +10,7 @@ describe('getUserErrorMessage', () => {
 
   it('uses a generic message for invalid login credentials', () => {
     expect(getUserErrorMessage(new ApiError('Invalid credentials', 'INVALID_CREDENTIALS', 401)))
-      .toBe('The username or password is incorrect.')
+      .toBe('The username or password is incorrect. Please try again.')
   })
 
   it('uses an HTTP fallback when the backend code is unknown', () => {

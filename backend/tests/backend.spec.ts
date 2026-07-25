@@ -99,7 +99,7 @@ describe('backend API smoke tests', () => {
       .send({ identifier: 'tenant@example.com', password: 'any-password' })
       .expect(401);
     expect(nullPasswordResponse.body).toMatchObject({
-      message: 'Invalid credentials',
+      message: 'The username or password is incorrect. Please try again.',
       code: 'INVALID_CREDENTIALS'
     });
 
@@ -113,7 +113,7 @@ describe('backend API smoke tests', () => {
       .send({ identifier: 'tenant-b@example.com', password: 'any-password' })
       .expect(401);
     expect(emptyPasswordResponse.body).toMatchObject({
-      message: 'Invalid credentials',
+      message: 'The username or password is incorrect. Please try again.',
       code: 'INVALID_CREDENTIALS'
     });
   });
@@ -127,7 +127,7 @@ describe('backend API smoke tests', () => {
       .send(payload)
       .expect(401);
     expect(response.body).toMatchObject({
-      message: 'Invalid credentials',
+      message: 'The username or password is incorrect. Please try again.',
       code: 'INVALID_CREDENTIALS'
     });
   });
@@ -149,7 +149,7 @@ describe('backend API smoke tests', () => {
         .send(payload)
         .expect(401);
       expect(response.body).toMatchObject({
-        message: 'Invalid credentials',
+        message: 'The username or password is incorrect. Please try again.',
         code: 'INVALID_CREDENTIALS'
       });
     }

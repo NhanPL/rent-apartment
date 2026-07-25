@@ -31,6 +31,8 @@ export interface LoginResult {
   user: UserProfile;
 }
 
+export const INVALID_CREDENTIALS_MESSAGE = 'The username or password is incorrect. Please try again.';
+
 const toUserProfile = async (user: UserRow): Promise<UserProfile> => {
   const managerProfilePromise =
     user.role === 'MANAGER'
@@ -79,7 +81,9 @@ const verifyPassword = async (user: UserRow, plainPassword: string): Promise<boo
   return true;
 };
 
-const invalidCredentials = (): AppError => new AppError(401, 'Invalid credentials', 'INVALID_CREDENTIALS');
+const invalidCredentials = (): AppError => (
+  new AppError(401, INVALID_CREDENTIALS_MESSAGE, 'INVALID_CREDENTIALS')
+);
 
 const canAuthenticate = (user: UserRow | undefined): user is UserRow & { password_hash: string } => {
   if (!user) return false;

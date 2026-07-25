@@ -3,7 +3,13 @@ import { z } from 'zod';
 import { requireAuth } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
-import { authenticateLogin, changePassword, getCurrentUser, refreshAccessToken } from './auth.service';
+import {
+  authenticateLogin,
+  changePassword,
+  getCurrentUser,
+  INVALID_CREDENTIALS_MESSAGE,
+  refreshAccessToken
+} from './auth.service';
 
 const router = Router();
 
@@ -41,7 +47,7 @@ const changePasswordSchema = z.object({
 router.post('/login', asyncHandler(async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
-    throw new AppError(401, 'Invalid credentials', 'INVALID_CREDENTIALS');
+    throw new AppError(401, INVALID_CREDENTIALS_MESSAGE, 'INVALID_CREDENTIALS');
   }
 
   const result = await authenticateLogin(parsed.data.identifier, parsed.data.password);

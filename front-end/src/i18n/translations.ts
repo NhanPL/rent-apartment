@@ -57,7 +57,7 @@ const auth = [
   entry('The new password must be different from the current password.', 'Mật khẩu mới phải khác mật khẩu hiện tại.'),
   entry('The password confirmation does not match.', 'Mật khẩu nhập lại không khớp.'),
   entry('Unable to sign in. Please check your account details.', 'Không thể đăng nhập. Vui lòng kiểm tra thông tin tài khoản.'),
-  entry('The username or password is incorrect.', 'Tên đăng nhập hoặc mật khẩu không chính xác.'),
+  entry('The username or password is incorrect. Please try again.', 'Tên đăng nhập hoặc mật khẩu không đúng. Vui lòng nhập lại.'),
 ]
 
 const common = [
