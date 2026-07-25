@@ -4,6 +4,27 @@
   box-shadow: 0 14px 40px rgba(12, 23, 48, 0.14);
 }
 
+.login-topbar {
+  min-height: 32px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.login-topbar > .login-eyebrow,
+.login-language-switcher {
+  height: 32px;
+  display: flex;
+  align-items: center;
+}
+
+.login-language-switcher .ant-btn {
+  height: 32px;
+  padding-inline: 8px;
+}
+
 .login-header {
   margin-bottom: 16px;
 }
@@ -14,10 +35,12 @@
 
 .login-eyebrow {
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
   font-weight: 600;
   color: #486581;
   font-size: 0.78rem;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .login-error {

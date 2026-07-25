@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { ChangePasswordPayload } from '../features/auth/types/auth'
 import type { SidebarRouteItem } from '../routes/routeConfig'
-import { getUserErrorMessage } from '../services/errorMessage'
+import { getFormErrorMessage, getUserErrorMessage } from '../services/errorMessage'
 import { useI18n } from '../i18n'
 import { LanguageSwitcher } from '../shared/components/LanguageSwitcher'
 import { Localized } from '../shared/components/Localized'
@@ -172,6 +172,7 @@ export function AppLayout({ pathname, onNavigate, items, pageTitle, content, cur
           form={changePasswordForm}
           layout="vertical"
           onFinish={handleChangePassword}
+          onFinishFailed={(error) => setChangePasswordError(getFormErrorMessage(error))}
           requiredMark={false}
         >
           <Form.Item

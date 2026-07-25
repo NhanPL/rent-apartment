@@ -14,7 +14,7 @@ import {
   type PaymentRequestListFilters,
   type PaymentRequestStatus,
 } from '../../services/paymentsService'
-import { getUserErrorMessage } from '../../services/errorMessage'
+import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
 import { Localized } from '../../shared/components/Localized'
 import { vndCurrency } from '../../i18n'
 
@@ -136,16 +136,16 @@ export function PaymentsPage() {
 
   const rejectProof = useCallback(async () => {
     if (!rejectProofId) return
-    const values = await rejectForm.validateFields()
-    setReviewLoading(rejectProofId)
     try {
+      const values = await rejectForm.validateFields()
+      setReviewLoading(rejectProofId)
       await rejectPaymentProof(rejectProofId, values.reason)
       setRejectProofId(null)
       rejectForm.resetFields()
       await refreshDetail()
       message.success('Payment proof rejected.')
     } catch (error) {
-      message.error(getUserErrorMessage(error, 'Khong the tu choi chung tu thanh toan.'))
+      message.error(getFormErrorMessage(error, 'Unable to reject the payment proof.'))
     } finally {
       setReviewLoading(null)
     }

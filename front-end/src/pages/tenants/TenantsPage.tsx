@@ -30,7 +30,7 @@ import {
   updateTenant,
   updateTenantIdentityDocuments,
 } from '../../services/tenantsService'
-import { getUserErrorMessage } from '../../services/errorMessage'
+import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
 import { Localized } from '../../shared/components/Localized'
 import { uploadFileToCloudinary } from '../../services/uploadService'
 import type {
@@ -264,6 +264,7 @@ export function TenantsPage() {
       const firstError = formError.errorFields?.[0]
       if (firstError?.name) {
         window.setTimeout(() => form.scrollToField(firstError.name, { block: 'center' }), 0)
+        message.error(getFormErrorMessage(saveError))
       } else if (profileSaved) {
         message.error(getUserErrorMessage(saveError, 'Tenant information was saved, but the identity images could not be updated. Please retry.'))
         await loadTenants()

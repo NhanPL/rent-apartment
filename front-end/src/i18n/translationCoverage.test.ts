@@ -70,7 +70,7 @@ describe('translation catalog coverage', () => {
         }
         if (
           ts.isCallExpression(node) && node.arguments.length > 0 && ts.isStringLiteralLike(node.arguments[0])
-          && /message\.(success|error|warning|info)|getUserErrorMessage|Promise\.reject/.test(node.expression.getText(source))
+          && /message\.(success|error|warning|info)|get(Form|User)ErrorMessage|Promise\.reject/.test(node.expression.getText(source))
         ) addCandidate(node.arguments[0].text)
         ts.forEachChild(node, visit)
       }

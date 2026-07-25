@@ -45,7 +45,7 @@ import {
   requestUtilityReadingCorrection,
   updateUtilityRate,
 } from '../../services/utilitiesService'
-import { getUserErrorMessage } from '../../services/errorMessage'
+import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
 import { Localized } from '../../shared/components/Localized'
 import { vndCurrency } from '../../i18n'
 import type {
@@ -96,7 +96,7 @@ const nullableText = (value: string | undefined) => {
 
 const toRatePayload = (values: UtilityRateFormValues): UtilityRatePayload => {
   if (!values.building_id || !values.effective_from || values.electricity_unit_price === undefined || values.water_unit_price === undefined) {
-    throw new Error('Missing required rate fields')
+    throw new Error('Please complete all required utility rate fields.')
   }
 
   return {
@@ -142,9 +142,13 @@ export function UtilitiesPage() {
   const [rateSaving, setRateSaving] = useState(false)
 
   const loadOptions = useCallback(async () => {
-    const [buildingRows, roomRows] = await Promise.all([listBuildings(), listRooms()])
-    setBuildings(buildingRows)
-    setRooms(roomRows)
+    try {
+      const [buildingRows, roomRows] = await Promise.all([listBuildings(), listRooms()])
+      setBuildings(buildingRows)
+      setRooms(roomRows)
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Unable to load the utility form options.'))
+    }
   }, [])
 
   const loadReadings = useCallback(async () => {
@@ -256,10 +260,7 @@ export function UtilitiesPage() {
       setRejectTarget(null)
       await refreshReadingDetailAndList(rejectTarget.id)
     } catch (error: unknown) {
-      const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
-      if (!formError.errorFields) {
-        message.error(getUserErrorMessage(error, 'Unable to update the utility reading.'))
-      }
+      message.error(getFormErrorMessage(error, 'Unable to update the utility reading.'))
     } finally {
       setRejectLoading(false)
     }
@@ -319,10 +320,7 @@ export function UtilitiesPage() {
       setRateDrawerOpen(false)
       await loadRates()
     } catch (error: unknown) {
-      const formError = error as { errorFields?: Array<{ name: (string | number)[] }> }
-      if (!formError.errorFields) {
-        message.error(getUserErrorMessage(error, 'Khong the luu don gia dien nuoc.'))
-      }
+      message.error(getFormErrorMessage(error, 'Unable to save the utility rate.'))
     } finally {
       setRateSaving(false)
     }
@@ -335,9 +333,14 @@ export function UtilitiesPage() {
       okText: 'Delete',
       okButtonProps: { danger: true },
       onOk: async () => {
-        await deleteUtilityRate(rate.id)
-        message.success('Utility rate deleted')
-        await loadRates()
+        try {
+          await deleteUtilityRate(rate.id)
+          message.success('Utility rate deleted')
+          await loadRates()
+        } catch (error) {
+          message.error(getUserErrorMessage(error, 'Unable to delete the utility rate.'))
+          throw error
+        }
       },
     })
   }, [loadRates])

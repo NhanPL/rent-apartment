@@ -1,4 +1,4 @@
-import { Button, Drawer, Form, Grid, Space } from 'antd'
+import { Button, Drawer, Form, Grid, Space, message } from 'antd'
 import { useEffect, useMemo } from 'react'
 import { InvoiceFormFields } from '../../invoices/components/invoiceFormShared'
 import {
@@ -11,6 +11,7 @@ import type { Contract, InvoiceStatus, Room } from '../../invoices/types'
 import type { MonthlyBill, MonthlyBillUpsertPayload } from '../../buildings/components/roomTypes'
 import { Localized } from '../../../shared/components/Localized'
 import { vndCurrency } from '../../../i18n'
+import { getFormErrorMessage } from '../../../services/errorMessage'
 
 interface BillUpsertDrawerProps {
   open: boolean
@@ -92,31 +93,35 @@ export function BillUpsertDrawer({
   }, [open, form, initialValues])
 
   const handleSubmit = async () => {
-    const values = await form.validateFields()
-    if (!values.contract_id || !values.room_id) {
-      return
+    try {
+      const values = await form.validateFields()
+      if (!values.contract_id || !values.room_id) {
+        throw new Error('Please select a contract and room.')
+      }
+
+      await onSubmit({
+        room_id: values.room_id,
+        contract_id: values.contract_id,
+        month: values.month,
+        electricity_prev: values.electricity_prev,
+        electricity_curr: values.electricity_curr,
+        water_prev: values.water_prev,
+        water_curr: values.water_curr,
+        electric_unit_price: values.electric_unit_price,
+        water_unit_price: values.water_unit_price,
+        rent_amount: values.rent_amount,
+        other_fees: values.other_fees,
+        discount: values.discount,
+        invoice_status: values.status,
+        issued_at: values.issued_at ?? null,
+        due_date: values.due_date ?? null,
+        note: values.note ?? null,
+      })
+
+      onClose()
+    } catch (error) {
+      message.error(getFormErrorMessage(error, 'Unable to save the invoice.'))
     }
-
-    await onSubmit({
-      room_id: values.room_id,
-      contract_id: values.contract_id,
-      month: values.month,
-      electricity_prev: values.electricity_prev,
-      electricity_curr: values.electricity_curr,
-      water_prev: values.water_prev,
-      water_curr: values.water_curr,
-      electric_unit_price: values.electric_unit_price,
-      water_unit_price: values.water_unit_price,
-      rent_amount: values.rent_amount,
-      other_fees: values.other_fees,
-      discount: values.discount,
-      invoice_status: values.status,
-      issued_at: values.issued_at ?? null,
-      due_date: values.due_date ?? null,
-      note: values.note ?? null,
-    })
-
-    onClose()
   }
 
   return (

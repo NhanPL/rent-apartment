@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ApiError } from './apiClient'
-import { getUserErrorMessage } from './errorMessage'
+import { getFormErrorMessage, getUserErrorMessage, isFormValidationError } from './errorMessage'
 
 describe('getUserErrorMessage', () => {
   it('translates business error codes into readable messages', () => {
@@ -16,5 +16,27 @@ describe('getUserErrorMessage', () => {
   it('explains network failures', () => {
     expect(getUserErrorMessage(new TypeError('Failed to fetch')))
       .toBe('Unable to connect to the system. Check your network connection or the backend service.')
+  })
+
+  it('uses the first field message for form validation failures', () => {
+    const error = {
+      errorFields: [
+        { name: ['email'], errors: ['Please enter a valid email address.'] },
+        { name: ['phone'], errors: ['Please enter a phone number.'] },
+      ],
+    }
+
+    expect(isFormValidationError(error)).toBe(true)
+    expect(getFormErrorMessage(error)).toBe('Please enter a valid email address.')
+  })
+
+  it('uses a readable fallback when form validation has no field message', () => {
+    expect(getFormErrorMessage({ errorFields: [] }))
+      .toBe('Please review the highlighted fields and try again.')
+  })
+
+  it('keeps API errors meaningful when used by form submit handlers', () => {
+    expect(getFormErrorMessage(new ApiError('technical message', 'TENANT_DUPLICATE', 409)))
+      .toBe('The phone number or identity document already exists.')
   })
 })

@@ -34,6 +34,7 @@ const auth = [
   entry('Welcome back', 'Chào mừng bạn trở lại'),
   entry('Sign in to manage buildings, tenants, and invoices.', 'Đăng nhập để quản lý tòa nhà, người thuê và hóa đơn.'),
   entry('Username or email', 'Tên đăng nhập hoặc email'),
+  entry('Please enter your username or email.', 'Vui lòng nhập tên đăng nhập hoặc email.'),
   entry('manager@rent.vn or username', 'manager@rent.vn hoặc tên đăng nhập'),
   entry('Password', 'Mật khẩu'),
   entry('Enter password if your account has one', 'Nhập mật khẩu của tài khoản'),
@@ -671,6 +672,17 @@ const tenantRoom = [
 ]
 
 const errors = [
+  entry('Please review the highlighted fields and try again.', 'Vui lòng kiểm tra các trường được đánh dấu và thử lại.'),
+  entry('Please complete all required utility rate fields.', 'Vui lòng điền đầy đủ các trường đơn giá điện nước bắt buộc.'),
+  entry('Please complete all required contract fields.', 'Vui lòng điền đầy đủ các trường hợp đồng bắt buộc.'),
+  entry('Please complete all required reservation fields.', 'Vui lòng điền đầy đủ các trường đặt phòng bắt buộc.'),
+  entry('Please complete the required charge catalog fields.', 'Vui lòng điền đầy đủ các trường danh mục khoản phí bắt buộc.'),
+  entry('Please complete the required charge fields.', 'Vui lòng điền đầy đủ các trường khoản phí bắt buộc.'),
+  entry('Please select a building.', 'Vui lòng chọn tòa nhà.'),
+  entry('Please select a contract.', 'Vui lòng chọn hợp đồng.'),
+  entry('Please select a room and month.', 'Vui lòng chọn phòng và tháng.'),
+  entry('Please select a contract and month.', 'Vui lòng chọn hợp đồng và tháng.'),
+  entry('Please select a contract and room.', 'Vui lòng chọn hợp đồng và phòng.'),
   entry('Some fields are invalid. Please review them and try again.', 'Một số trường không hợp lệ. Vui lòng kiểm tra và thử lại.'),
   entry('Your session has expired. Please sign in again.', 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'),
   entry('You do not have permission to perform this action.', 'Bạn không có quyền thực hiện thao tác này.'),
