@@ -37,7 +37,8 @@ const auth = [
   entry('Please enter your username or email.', 'Vui lòng nhập tên đăng nhập hoặc email.'),
   entry('manager@rent.vn or username', 'manager@rent.vn hoặc tên đăng nhập'),
   entry('Password', 'Mật khẩu'),
-  entry('Enter password if your account has one', 'Nhập mật khẩu của tài khoản'),
+  entry('Enter your password', 'Nhập mật khẩu của bạn'),
+  entry('Please enter your password.', 'Vui lòng nhập mật khẩu.'),
   entry('Remember me', 'Ghi nhớ đăng nhập'),
   entry('Sign in', 'Đăng nhập'),
   entry('Logout', 'Đăng xuất'),
@@ -56,6 +57,7 @@ const auth = [
   entry('The new password must be different from the current password.', 'Mật khẩu mới phải khác mật khẩu hiện tại.'),
   entry('The password confirmation does not match.', 'Mật khẩu nhập lại không khớp.'),
   entry('Unable to sign in. Please check your account details.', 'Không thể đăng nhập. Vui lòng kiểm tra thông tin tài khoản.'),
+  entry('The username or password is incorrect.', 'Tên đăng nhập hoặc mật khẩu không chính xác.'),
 ]
 
 const common = [

@@ -334,5 +334,5 @@ describe('InvoicesPage invoice deletion', () => {
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: /confirm and complete invoice/i })).not.toBeInTheDocument()
     })
-  }, 10_000)
+  })
 })

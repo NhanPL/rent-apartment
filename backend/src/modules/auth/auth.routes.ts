@@ -9,7 +9,7 @@ const router = Router();
 
 const loginSchema = z.object({
   identifier: z.string().trim().min(1),
-  password: z.string().optional().default('')
+  password: z.string().min(1).max(72)
 });
 
 const refreshSchema = z.object({
@@ -41,7 +41,7 @@ const changePasswordSchema = z.object({
 router.post('/login', asyncHandler(async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
-    throw new AppError(400, 'Invalid login payload');
+    throw new AppError(401, 'Invalid credentials', 'INVALID_CREDENTIALS');
   }
 
   const result = await authenticateLogin(parsed.data.identifier, parsed.data.password);

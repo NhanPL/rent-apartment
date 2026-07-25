@@ -88,39 +88,71 @@ describe('backend API smoke tests', () => {
     });
   });
 
-  it('allows users without a stored password to log in without submitting one', async () => {
+  it('rejects users without a stored password using the generic credentials error', async () => {
     const tenantWithNullPassword = fakeDb.users.find((user) => user.id === ids.tenantAUser)!;
     tenantWithNullPassword.password_hash = null;
+    tenantWithNullPassword.account_status = 'PENDING_ACTIVATION';
+    tenantWithNullPassword.is_active = false;
 
-    const nullPasswordSession = await request(app)
+    const nullPasswordResponse = await request(app)
       .post('/api/auth/login')
-      .send({ identifier: 'tenant@example.com' })
-      .expect(200);
-
-    expect(nullPasswordSession.body.user).toMatchObject({
-      id: ids.tenantAUser,
-      role: 'TENANT'
+      .send({ identifier: 'tenant@example.com', password: 'any-password' })
+      .expect(401);
+    expect(nullPasswordResponse.body).toMatchObject({
+      message: 'Invalid credentials',
+      code: 'INVALID_CREDENTIALS'
     });
 
     const tenantWithEmptyPassword = fakeDb.users.find((user) => user.id === ids.tenantBUser)!;
     tenantWithEmptyPassword.password_hash = '';
+    tenantWithEmptyPassword.account_status = 'PENDING_ACTIVATION';
+    tenantWithEmptyPassword.is_active = false;
 
-    const emptyPasswordSession = await request(app)
+    const emptyPasswordResponse = await request(app)
       .post('/api/auth/login')
-      .send({ identifier: 'tenant-b@example.com', password: '' })
-      .expect(200);
-
-    expect(emptyPasswordSession.body.user).toMatchObject({
-      id: ids.tenantBUser,
-      role: 'TENANT'
+      .send({ identifier: 'tenant-b@example.com', password: 'any-password' })
+      .expect(401);
+    expect(emptyPasswordResponse.body).toMatchObject({
+      message: 'Invalid credentials',
+      code: 'INVALID_CREDENTIALS'
     });
   });
 
-  it('still rejects password-backed users when no password is submitted', async () => {
-    await request(app)
+  it.each([
+    ['missing password', { identifier: 'manager@example.com' }],
+    ['empty password', { identifier: 'manager@example.com', password: '' }]
+  ])('rejects a login request with %s', async (_case, payload) => {
+    const response = await request(app)
       .post('/api/auth/login')
-      .send({ identifier: 'manager@example.com' })
+      .send(payload)
       .expect(401);
+    expect(response.body).toMatchObject({
+      message: 'Invalid credentials',
+      code: 'INVALID_CREDENTIALS'
+    });
+  });
+
+  it('does not reveal whether the account exists or is available for login', async () => {
+    const pendingUser = fakeDb.users.find((user) => user.id === ids.tenantAUser)!;
+    pendingUser.account_status = 'PENDING_ACTIVATION';
+    pendingUser.is_active = false;
+
+    const attempts = [
+      { identifier: 'missing@example.com', password: 'wrong-password' },
+      { identifier: 'tenant@example.com', password: 'password' },
+      { identifier: 'manager@example.com', password: 'wrong-password' }
+    ];
+
+    for (const payload of attempts) {
+      const response = await request(app)
+        .post('/api/auth/login')
+        .send(payload)
+        .expect(401);
+      expect(response.body).toMatchObject({
+        message: 'Invalid credentials',
+        code: 'INVALID_CREDENTIALS'
+      });
+    }
   });
 
   it.each([
@@ -246,6 +278,10 @@ describe('backend API smoke tests', () => {
       full_name: 'Charlie Tenant',
       identity_number: 'ID-C'
     });
+    expect(fakeDb.users.find((user) => user.id === created.body.userId)).toMatchObject({
+      is_active: true,
+      account_status: 'ACTIVE'
+    });
 
     const updated = await request(app)
       .patch(`/api/tenants/${tenantId}`)
@@ -269,7 +305,8 @@ describe('backend API smoke tests', () => {
       user_id: null
     });
     expect(fakeDb.users.find((user) => user.id === created.body.userId)).toMatchObject({
-      is_active: false
+      is_active: false,
+      account_status: 'DISABLED'
     });
   });
 

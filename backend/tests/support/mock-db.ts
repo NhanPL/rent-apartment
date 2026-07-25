@@ -71,10 +71,10 @@ class FakeDb {
     this.sequence = 9000;
 
     this.users = [
-      { id: ids.managerAUser, role: 'MANAGER', email: 'manager@example.com', username: 'manager', password_hash: passwordHash, is_active: true, last_login_at: null },
-      { id: ids.managerBUser, role: 'MANAGER', email: 'manager-b@example.com', username: 'manager-b', password_hash: passwordHash, is_active: true, last_login_at: null },
-      { id: ids.tenantAUser, role: 'TENANT', email: 'tenant@example.com', username: 'tenant', password_hash: passwordHash, is_active: true, last_login_at: null },
-      { id: ids.tenantBUser, role: 'TENANT', email: 'tenant-b@example.com', username: 'tenant-b', password_hash: passwordHash, is_active: true, last_login_at: null }
+      { id: ids.managerAUser, role: 'MANAGER', email: 'manager@example.com', username: 'manager', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', last_login_at: null },
+      { id: ids.managerBUser, role: 'MANAGER', email: 'manager-b@example.com', username: 'manager-b', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', last_login_at: null },
+      { id: ids.tenantAUser, role: 'TENANT', email: 'tenant@example.com', username: 'tenant', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', last_login_at: null },
+      { id: ids.tenantBUser, role: 'TENANT', email: 'tenant-b@example.com', username: 'tenant-b', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', last_login_at: null }
     ];
     this.managerProfiles = [
       { user_id: ids.managerAUser, full_name: 'Manager A' },
@@ -173,7 +173,10 @@ class FakeDb {
 
     if (sql.startsWith('update app_user set is_active=false')) {
       const user = this.users.find((item) => item.id === params[0]);
-      if (user) user.is_active = false;
+      if (user) {
+        user.is_active = false;
+        user.account_status = 'DISABLED';
+      }
       return result<T>([]);
     }
 
@@ -210,7 +213,7 @@ class FakeDb {
       return result<T>([{ id: row.id, full_name: row.full_name, email: row.email } as T]);
     }
 
-    if (sql.startsWith('insert into app_user(role,email,username,password_hash,is_active)')) {
+    if (sql.startsWith('insert into app_user(role,email,username,password_hash,is_active,account_status)')) {
       const row = {
         id: this.newId(),
         role: 'TENANT' as Role,
@@ -218,6 +221,7 @@ class FakeDb {
         username: params[1],
         password_hash: params[2],
         is_active: true,
+        account_status: 'ACTIVE',
         last_login_at: null
       };
       this.users.push(row);

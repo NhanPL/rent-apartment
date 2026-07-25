@@ -7,9 +7,9 @@ const ALL = `${UPPER}${LOWER}${DIGITS}`;
 
 const pick = (charset: string): string => charset[crypto.randomInt(0, charset.length)];
 
-export const generateRandomPassword = (length = 8): string => {
-  if (length < 3) {
-    throw new Error('Password length must be at least 3');
+export const generateRandomPassword = (length = 16): string => {
+  if (length < 12) {
+    throw new Error('Password length must be at least 12');
   }
 
   const chars = [pick(UPPER), pick(LOWER), pick(DIGITS)];

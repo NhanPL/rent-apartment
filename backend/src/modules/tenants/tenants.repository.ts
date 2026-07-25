@@ -72,8 +72,8 @@ export const createTenantUserAccount = async (
   payload: { email: string; username: string; passwordHash: string; tenantId: string }
 ): Promise<{ id: string; username: string; email: string }> => {
   const userRs = await client.query<{ id: string; username: string; email: string }>(
-    `INSERT INTO app_user(role,email,username,password_hash,is_active)
-     VALUES('TENANT',$1,$2,$3,true)
+    `INSERT INTO app_user(role,email,username,password_hash,is_active,account_status)
+     VALUES('TENANT',$1,$2,$3,true,'ACTIVE')
      RETURNING id, username, email`,
     [payload.email, payload.username, payload.passwordHash]
   );

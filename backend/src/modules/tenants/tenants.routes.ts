@@ -448,7 +448,12 @@ router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
     );
 
     if (tenant.user_id) {
-      await client.query('UPDATE app_user SET is_active=false WHERE id=$1', [tenant.user_id]);
+      await client.query(
+        `UPDATE app_user
+         SET is_active=false, account_status='DISABLED'
+         WHERE id=$1`,
+        [tenant.user_id]
+      );
     }
   });
 

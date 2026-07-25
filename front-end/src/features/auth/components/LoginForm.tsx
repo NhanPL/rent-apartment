@@ -27,7 +27,7 @@ export function LoginForm() {
     try {
       const user = await login({
         identifier: values.identifier.trim(),
-        password: values.password ?? '',
+        password: values.password,
       })
 
       const targetPath = getHomePathByRole(user.role)
@@ -75,8 +75,9 @@ export function LoginForm() {
         <Form.Item
           label="Password"
           name="password"
+          rules={[{ required: true, message: 'Please enter your password.' }]}
         >
-          <Input.Password autoComplete="current-password" placeholder="Enter password if your account has one" />
+          <Input.Password autoComplete="current-password" placeholder="Enter your password" />
         </Form.Item>
 
         <Form.Item name="rememberMe" valuePropName="checked">
