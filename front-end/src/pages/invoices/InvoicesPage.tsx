@@ -55,6 +55,8 @@ import {
   voidInvoice,
 } from '../../services/invoicesService'
 import { getUserErrorMessage } from '../../services/errorMessage'
+import { Localized } from '../../shared/components/Localized'
+import { vndCurrency } from '../../i18n'
 import { getUtilityReading } from '../../services/utilitiesService'
 import {
   approvePaymentProof,
@@ -109,7 +111,7 @@ const paymentRequestStatusColor: Record<PaymentRequestStatus, string> = {
   EXPIRED: 'orange',
 }
 
-const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
+const currency = vndCurrency
 
 interface PaymentRequestFormValues {
   amount: number
@@ -131,6 +133,7 @@ interface IssueInvoiceFormValues {
 
 function VietQrBankFields() {
   return (
+    <Localized>
     <>
       <Form.Item
         name="bank_code"
@@ -170,6 +173,7 @@ function VietQrBankFields() {
         <Input maxLength={25} showCount />
       </Form.Item>
     </>
+    </Localized>
   )
 }
 
@@ -776,6 +780,7 @@ export function InvoicesPage() {
   ]
 
   return (
+    <Localized>
     <Space direction="vertical" size={16} className="invoices-page">
       <div className="invoices-toolbar">
         <div>
@@ -1138,5 +1143,6 @@ export function InvoicesPage() {
         </Form>
       </Modal>
     </Space>
+    </Localized>
   )
 }

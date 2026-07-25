@@ -9,6 +9,8 @@ import {
 import '../../invoices/components/invoiceFormShared.css'
 import type { Contract, InvoiceStatus, Room } from '../../invoices/types'
 import type { MonthlyBill, MonthlyBillUpsertPayload } from '../../buildings/components/roomTypes'
+import { Localized } from '../../../shared/components/Localized'
+import { vndCurrency } from '../../../i18n'
 
 interface BillUpsertDrawerProps {
   open: boolean
@@ -31,7 +33,7 @@ const statusOptions: { label: string; value: InvoiceStatus }[] = [
   { label: 'Void', value: 'VOID' },
 ]
 
-const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
+const currency = vndCurrency
 
 export function BillUpsertDrawer({
   open,
@@ -118,6 +120,7 @@ export function BillUpsertDrawer({
   }
 
   return (
+    <Localized>
     <Drawer
       open={open}
       title={mode === 'create' ? 'Add Bill' : 'Edit Bill'}
@@ -145,5 +148,6 @@ export function BillUpsertDrawer({
         </Space>
       </Form>
     </Drawer>
+    </Localized>
   )
 }

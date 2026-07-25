@@ -23,6 +23,8 @@ import dayjs, { type Dayjs } from 'dayjs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { exportReportsCsv, getReportsData, listReportBuildings } from '../../services/reportsService'
 import { getUserErrorMessage } from '../../services/errorMessage'
+import { Localized } from '../../shared/components/Localized'
+import { vndCurrency } from '../../i18n'
 import type {
   DebtReportRow,
   OccupancyReportRow,
@@ -44,11 +46,7 @@ const invoiceStatusOptions: { label: string; value: ReportInvoiceStatus; color: 
   { label: 'Void', value: 'VOID', color: 'default' },
 ]
 
-const currency = new Intl.NumberFormat('vi-VN', {
-  style: 'currency',
-  currency: 'VND',
-  maximumFractionDigits: 0,
-})
+const currency = vndCurrency
 
 const formatCurrency = (value: number) => currency.format(value)
 const formatMonth = (value: string) => dayjs(`${value.slice(0, 7)}-01`).format('MM/YYYY')
@@ -243,6 +241,7 @@ export function ReportsPage() {
   ]
 
   return (
+    <Localized>
     <Space direction="vertical" size={16} className="reports-page">
       <div className="reports-header">
         <div>
@@ -317,5 +316,6 @@ export function ReportsPage() {
         />
       )}
     </Space>
+    </Localized>
   )
 }

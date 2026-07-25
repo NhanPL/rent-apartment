@@ -26,6 +26,8 @@ import type { PaymentRequest, PaymentRequestStatus } from '../../services/paymen
 import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
 import { uploadFileToCloudinary, type UploadedCloudinaryFile } from '../../services/uploadService'
 import { getUserErrorMessage } from '../../services/errorMessage'
+import { Localized } from '../../shared/components/Localized'
+import { vndCurrency } from '../../i18n'
 import {
   calculateReadingUsage,
   isTenantUtilityReadingLocked,
@@ -47,7 +49,7 @@ interface TenantDocumentFormValues {
   note?: string
 }
 
-const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
+const currency = vndCurrency
 
 const invoiceStatusColor: Record<InvoiceSummary['status'], string> = {
   DRAFT: 'default',
@@ -105,21 +107,25 @@ function VietQrImage({ url, alt, maxWidth }: { url: string; alt: string; maxWidt
 
   if (loadFailed) {
     return (
+      <Localized>
       <Alert
         showIcon
         type="error"
         message="The VietQR image could not be loaded. Please ask the manager to verify the bank code."
       />
+      </Localized>
     )
   }
 
   return (
+    <Localized>
     <img
       src={url}
       alt={alt}
       onError={() => setLoadFailed(true)}
       style={{ display: 'block', maxWidth, width: '100%', margin: '0 auto' }}
     />
+    </Localized>
   )
 }
 
@@ -441,6 +447,7 @@ export function TenantRoomPage() {
   }
 
   return (
+    <Localized>
     <Space direction="vertical" size={16} style={{ width: '100%' }}>
       <Card>
         <Typography.Title level={isMobile ? 4 : 3} style={{ margin: 0 }}>
@@ -1049,5 +1056,6 @@ export function TenantRoomPage() {
         )}
       </Drawer>
     </Space>
+    </Localized>
   )
 }

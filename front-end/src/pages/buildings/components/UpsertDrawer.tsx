@@ -2,6 +2,7 @@ import { ExclamationCircleOutlined } from '@ant-design/icons'
 import { Button, Drawer, Form, Grid, Input, Modal, Space } from 'antd'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { BuildingEntity, BuildingFormValues } from './types'
+import { Localized } from '../../../shared/components/Localized'
 
 interface UpsertDrawerProps {
   open: boolean
@@ -78,6 +79,7 @@ export function UpsertDrawer({ open, mode, item, loading, existingCodes, onClose
   }
 
   return (
+    <Localized>
     <>
       <Drawer
         open={open}
@@ -164,5 +166,6 @@ export function UpsertDrawer({ open, mode, item, loading, existingCodes, onClose
         </Space>
       </Modal>
     </>
+    </Localized>
   )
 }

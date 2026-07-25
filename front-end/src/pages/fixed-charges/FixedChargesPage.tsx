@@ -54,6 +54,8 @@ import {
   updateRoomMonthExtra,
 } from '../../services/fixedChargesService'
 import { getUserErrorMessage } from '../../services/errorMessage'
+import { Localized } from '../../shared/components/Localized'
+import { vndCurrency } from '../../i18n'
 import type {
   BuildingCharge,
   BuildingChargePayload,
@@ -123,7 +125,7 @@ const sourceColor: Record<ResolvedFixedCharge['source'], string> = {
   CONTRACT_OVERRIDE: 'green',
 }
 
-const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
+const currency = vndCurrency
 
 const formatDate = (value: string | null | undefined) => (value ? dayjs(value).format('DD/MM/YYYY') : '-')
 const formatMonth = (value: string | null | undefined) => (value ? dayjs(value).format('MM/YYYY') : '-')
@@ -739,6 +741,7 @@ export function FixedChargesPage() {
           : 'New Monthly Extras'
 
   return (
+    <Localized>
     <div className="fixed-charges-page">
       <Card>
         <div className="fixed-charges-toolbar">
@@ -1001,5 +1004,6 @@ export function FixedChargesPage() {
         </div>
       </Drawer>
     </div>
+    </Localized>
   )
 }

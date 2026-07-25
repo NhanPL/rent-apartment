@@ -2,6 +2,7 @@ import { Alert, Button, Card, Col, Empty, Row, Skeleton, Space, Table, Tag, Typo
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import type { DashboardRecentActivityItem, DashboardUnpaidInvoiceItem } from '../types'
+import { Localized } from '../../../shared/components/Localized'
 
 interface DashboardRecentActivityProps {
   loading: boolean
@@ -64,6 +65,7 @@ export function DashboardRecentActivity({
   ]
 
   return (
+    <Localized>
     <Space direction="vertical" size={16} className="dashboard-recent-wrap">
       <Card bordered={false} className="dashboard-card">
         <Row justify="space-between" align="middle" gutter={[12, 12]}>
@@ -130,5 +132,6 @@ export function DashboardRecentActivity({
         </Col>
       </Row>
     </Space>
+    </Localized>
   )
 }

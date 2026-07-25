@@ -1,4 +1,5 @@
 import { ApiError } from './apiClient'
+import { translate } from '../i18n'
 
 const errorMessages: Record<string, string> = {
   VALIDATION_ERROR: 'Some fields are invalid. Please review them and try again.',
@@ -78,13 +79,13 @@ const statusMessages: Record<number, string> = {
 
 export function getUserErrorMessage(error: unknown, fallback = 'Unable to complete this action. Please try again.'): string {
   if (error instanceof ApiError) {
-    return errorMessages[error.code] ?? (error.status ? statusMessages[error.status] : undefined) ?? error.message ?? fallback
+    return translate(errorMessages[error.code] ?? (error.status ? statusMessages[error.status] : undefined) ?? error.message ?? fallback)
   }
 
   if (error instanceof TypeError && /fetch|network|load failed/i.test(error.message)) {
-    return 'Unable to connect to the system. Check your network connection or the backend service.'
+    return translate('Unable to connect to the system. Check your network connection or the backend service.')
   }
 
-  if (error instanceof Error && error.message.trim()) return error.message
-  return fallback
+  if (error instanceof Error && error.message.trim()) return translate(error.message)
+  return translate(fallback)
 }

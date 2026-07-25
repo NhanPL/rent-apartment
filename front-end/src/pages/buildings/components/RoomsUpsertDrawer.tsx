@@ -2,6 +2,7 @@ import { ExclamationCircleOutlined } from '@ant-design/icons'
 import { Button, Drawer, Form, Grid, Input, InputNumber, Modal, Select, Space } from 'antd'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Room, RoomStatus, RoomUpsertPayload } from './roomTypes'
+import { Localized } from '../../../shared/components/Localized'
 
 interface RoomsUpsertDrawerProps {
   open: boolean
@@ -86,6 +87,7 @@ export function RoomsUpsertDrawer({ open, mode, room, building_id, loading, exis
   }
 
   return (
+    <Localized>
     <>
       <Drawer
         open={open}
@@ -187,5 +189,6 @@ export function RoomsUpsertDrawer({ open, mode, room, building_id, loading, exis
         </Space>
       </Modal>
     </>
+    </Localized>
   )
 }

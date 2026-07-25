@@ -63,7 +63,7 @@ describe('PaymentsPage filters', () => {
     expect(screen.getByRole('combobox', { name: 'Latest proof filter' })).toBeInTheDocument()
 
     await user.click(screen.getByRole('combobox', { name: 'Request status filter' }))
-    const statusOption = (await screen.findAllByText('WAITING_TRANSFER'))
+    const statusOption = (await screen.findAllByText('Waiting for transfer'))
       .find((element) => element.classList.contains('ant-select-item-option-content'))
     expect(statusOption).toBeDefined()
     await user.click(statusOption!)

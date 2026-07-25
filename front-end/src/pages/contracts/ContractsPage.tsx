@@ -62,6 +62,8 @@ import type {
 import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
 import type { UploadedCloudinaryFile } from '../../services/uploadService'
 import { getUserErrorMessage } from '../../services/errorMessage'
+import { Localized } from '../../shared/components/Localized'
+import { vndCurrency } from '../../i18n'
 import './ContractsPage.css'
 
 interface ContractFormValues {
@@ -117,7 +119,7 @@ const businessStageOptions: { label: string; value: ContractBusinessStage; color
 ]
 
 const closedStatuses = new Set<ContractStatus>(['ENDED', 'CANCELLED'])
-const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
+const currency = vndCurrency
 const documentAccept = 'image/jpeg,image/png,image/webp,application/pdf'
 
 const contractDocumentTypeLabel: Record<ContractDocumentType, string> = {
@@ -804,6 +806,7 @@ export function ContractsPage() {
   )
 
   return (
+    <Localized>
     <div className="contracts-page">
       <Card>
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
@@ -1235,5 +1238,6 @@ export function ContractsPage() {
         </Form>
       </Modal>
     </div>
+    </Localized>
   )
 }

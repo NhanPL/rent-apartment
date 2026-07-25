@@ -2,6 +2,8 @@ import { DeleteOutlined, EditOutlined, EyeOutlined } from '@ant-design/icons'
 import { Button, Grid, List, Space, Table, Tag, Tooltip, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import type { Room, RoomInvoiceStatus, RoomUtilityReadingStatus } from './roomTypes'
+import { Localized } from '../../../shared/components/Localized'
+import { vndCurrency } from '../../../i18n'
 
 interface RoomsTableProps {
   loading: boolean
@@ -33,37 +35,42 @@ const readingStatusColors: Record<RoomUtilityReadingStatus, string> = {
   INVOICED: 'purple',
 }
 
-const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
+const currency = vndCurrency
 const formatMonth = (value?: string | null) => (value ? value.slice(0, 7) : '-')
 
 function InvoiceTag({ room }: { room: Room }) {
   if (!room.latest_invoice_status) {
-    return <Tag>NO_INVOICE</Tag>
+    return <Localized><Tag>NO_INVOICE</Tag></Localized>
   }
 
   return (
+    <Localized>
     <Space size={4} wrap>
       <Tag color={invoiceStatusColors[room.latest_invoice_status]}>{room.latest_invoice_status}</Tag>
       <Typography.Text type="secondary">{formatMonth(room.latest_invoice_month)}</Typography.Text>
     </Space>
+    </Localized>
   )
 }
 
 function ReadingTag({ room }: { room: Room }) {
   if (!room.latest_reading_status) {
-    return <Tag>NO_READING</Tag>
+    return <Localized><Tag>NO_READING</Tag></Localized>
   }
 
   return (
+    <Localized>
     <Space size={4} wrap>
       <Tag color={readingStatusColors[room.latest_reading_status]}>{room.latest_reading_status}</Tag>
       <Typography.Text type="secondary">{formatMonth(room.latest_reading_month)}</Typography.Text>
     </Space>
+    </Localized>
   )
 }
 
 function RoomActions({ room, onView, onEdit, onDelete }: Pick<RoomsTableProps, 'onView' | 'onEdit' | 'onDelete'> & { room: Room }) {
   return (
+    <Localized>
     <Space wrap size={4}>
       <Tooltip title="View room">
         <Button aria-label={`View room ${room.code}`} icon={<EyeOutlined />} onClick={() => onView(room)} />
@@ -75,6 +82,7 @@ function RoomActions({ room, onView, onEdit, onDelete }: Pick<RoomsTableProps, '
         <Button aria-label={`Delete room ${room.code}`} icon={<DeleteOutlined />} danger onClick={() => onDelete(room)} />
       </Tooltip>
     </Space>
+    </Localized>
   )
 }
 
@@ -128,6 +136,7 @@ export function RoomsTable({ loading, data, onView, onEdit, onDelete }: RoomsTab
 
   if (isMobile) {
     return (
+      <Localized>
       <List
         loading={loading}
         dataSource={data}
@@ -158,8 +167,9 @@ export function RoomsTable({ loading, data, onView, onEdit, onDelete }: RoomsTab
           </List.Item>
         )}
       />
+      </Localized>
     )
   }
 
-  return <Table rowKey="id" loading={loading} dataSource={data} columns={columns} scroll={{ x: 1120 }} pagination={{ pageSize: 6 }} />
+  return <Localized><Table rowKey="id" loading={loading} dataSource={data} columns={columns} scroll={{ x: 1120 }} pagination={{ pageSize: 6 }} /></Localized>
 }

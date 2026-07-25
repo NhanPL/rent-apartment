@@ -14,6 +14,8 @@ import {
 import { RoomsUpsertDrawer } from '../buildings/components/RoomsUpsertDrawer'
 import type { MonthlyBill, Room, TenantSummary } from '../buildings/components/roomTypes'
 import { getUserErrorMessage } from '../../services/errorMessage'
+import { Localized } from '../../shared/components/Localized'
+import { vndCurrency } from '../../i18n'
 
 interface RoomDetailPageProps {
   roomId: string
@@ -33,7 +35,7 @@ const billStatusColor: Record<MonthlyBill['invoice_status'], string> = {
   OVERDUE: 'orange',
 }
 
-const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 })
+const currency = vndCurrency
 
 export function RoomDetailPage({ roomId }: RoomDetailPageProps) {
   const screens = Grid.useBreakpoint()
@@ -133,6 +135,7 @@ export function RoomDetailPage({ roomId }: RoomDetailPageProps) {
   }
 
   return (
+    <Localized>
     <>
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         <Button
@@ -294,5 +297,6 @@ export function RoomDetailPage({ roomId }: RoomDetailPageProps) {
       </Modal>
 
     </>
+    </Localized>
   )
 }

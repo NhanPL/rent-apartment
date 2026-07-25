@@ -11,6 +11,7 @@ import type {
   DashboardSummary,
   DashboardUnpaidInvoiceItem,
 } from '../pages/dashboard/types'
+import { formatShortMonth, vndCurrency } from '../i18n'
 
 type NumericSummaryField = keyof DashboardSummary
 type DashboardApiSummary = Omit<DashboardSummary, NumericSummaryField> &
@@ -44,14 +45,6 @@ interface DashboardApiData {
   recentUnpaidInvoices: DashboardApiUnpaidInvoiceItem[]
 }
 
-const currencyFormatter = new Intl.NumberFormat('vi-VN', {
-  style: 'currency',
-  currency: 'VND',
-  maximumFractionDigits: 0,
-})
-
-const monthFormatter = new Intl.DateTimeFormat('en-US', { month: 'short' })
-
 const toNumber = (value: unknown): number => {
   const numericValue = Number(value ?? 0)
   return Number.isFinite(numericValue) ? numericValue : 0
@@ -64,7 +57,7 @@ const formatChartMonth = (value: string): string => {
     return monthKey
   }
 
-  return `${monthFormatter.format(date)} ${monthKey.slice(2, 4)}`
+  return `${formatShortMonth(date)} ${monthKey.slice(2, 4)}`
 }
 
 const toDashboardData = (data: DashboardApiData): DashboardData => ({
@@ -119,5 +112,5 @@ export async function listDashboardBuildings(): Promise<DashboardBuildingOption[
 }
 
 export const dashboardFormatters = {
-  currency: (value: number) => currencyFormatter.format(value),
+  currency: (value: number) => vndCurrency.format(value),
 }

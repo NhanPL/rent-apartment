@@ -4,6 +4,8 @@ import type { UploadProps } from 'antd'
 import { useState, type ReactNode } from 'react'
 import { uploadFileToCloudinary, type UploadedCloudinaryFile, type UploadContext } from '../../services/uploadService'
 import { getUserErrorMessage } from '../../services/errorMessage'
+import { translate } from '../../i18n'
+import { Localized } from './Localized'
 
 interface CloudinaryUploadButtonBaseProps {
   context: UploadContext
@@ -29,16 +31,17 @@ export function CloudinaryUploadButton(props: CloudinaryUploadButtonProps) {
       const uploaded = await uploadFileToCloudinary(file as File, context)
       props.onUploaded(uploaded)
       onSuccess?.(uploaded)
-      message.success('File uploaded successfully')
+      message.success(translate('File uploaded successfully'))
     } catch (error) {
       onError?.(error as Error)
-      message.error(getUserErrorMessage(error, 'Unable to upload the file.'))
+      message.error(getUserErrorMessage(error, translate('Unable to upload the file.')))
     } finally {
       setUploading(false)
     }
   }
 
   return (
+    <Localized>
     <Upload
       accept={accept}
       beforeUpload={props.deferred ? (file) => {
@@ -55,5 +58,6 @@ export function CloudinaryUploadButton(props: CloudinaryUploadButtonProps) {
         {children ?? 'Upload file'}
       </Button>
     </Upload>
+    </Localized>
   )
 }

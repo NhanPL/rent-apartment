@@ -7,6 +7,7 @@ import { RoomsUpsertDrawer } from './RoomsUpsertDrawer'
 import type { Room } from './roomTypes'
 import type { BuildingEntity } from './types'
 import { getUserErrorMessage } from '../../../services/errorMessage'
+import { Localized } from '../../../shared/components/Localized'
 
 interface DetailPanelProps {
   loading: boolean
@@ -81,6 +82,7 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
   const activeRooms = roomsLoading ? item.activeUnits : roomsData.filter((room) => room.status === 'ACTIVE').length
 
   return (
+    <Localized>
     <>
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
@@ -269,5 +271,6 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
         This action cannot be undone.
       </Modal>
     </>
+    </Localized>
   )
 }
