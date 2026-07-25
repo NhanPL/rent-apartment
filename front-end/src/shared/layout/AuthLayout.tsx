@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import loginBackground from '../../assets/login-background-house.jpg'
+import loginBackground from '../../assets/login-background-luxury.jpg'
 import './AuthLayout.css'
 
 interface AuthLayoutProps {
@@ -10,7 +10,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
   return (
     <main
       className="auth-layout"
-      style={{ backgroundImage: `linear-gradient(rgba(244, 249, 247, 0.26), rgba(231, 242, 240, 0.42)), url(${loginBackground})` }}
+      style={{ backgroundImage: `linear-gradient(rgba(248, 248, 244, 0.24), rgba(232, 239, 234, 0.4)), url(${loginBackground})` }}
     >
       {children}
     </main>

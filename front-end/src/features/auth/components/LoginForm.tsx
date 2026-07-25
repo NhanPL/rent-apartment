@@ -43,11 +43,13 @@ export function LoginForm() {
   return (
     <Localized>
     <Card className="login-card" bordered={false}>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-        <LanguageSwitcher />
+      <div className="login-topbar">
+        <Text className="login-eyebrow">Rent Apartment Management</Text>
+        <div className="login-language-switcher">
+          <LanguageSwitcher />
+        </div>
       </div>
       <div className="login-header">
-        <Text className="login-eyebrow">Rent Apartment Management</Text>
         <Title level={2}>Welcome back</Title>
         <Text type="secondary">Sign in to manage buildings, tenants, and invoices.</Text>
       </div>
@@ -59,7 +61,7 @@ export function LoginForm() {
         requiredMark={false}
         onFinish={onFinish}
         onFinishFailed={(formError) => setError(getFormErrorMessage(formError))}
-        initialValues={{ identifier: '', password: '', rememberMe: true }}
+        initialValues={{ identifier: 'manager', password: '', rememberMe: true }}
         size="large"
       >
         <Form.Item
