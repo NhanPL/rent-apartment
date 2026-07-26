@@ -1,0 +1,55 @@
+.activation-card {
+  width: min(460px, 100%);
+  border-radius: 16px;
+  box-shadow: 0 14px 40px rgba(12, 23, 48, 0.14);
+}
+
+.activation-topbar {
+  min-height: 32px;
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.activation-brand {
+  text-transform: uppercase;
+  letter-spacing: 0;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  font-weight: 600;
+  color: #486581;
+}
+
+.activation-header {
+  margin-bottom: 20px;
+}
+
+.activation-header .ant-typography {
+  margin-bottom: 6px;
+}
+
+.activation-error {
+  margin-bottom: 16px;
+}
+
+.activation-loading {
+  min-height: 280px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.activation-card .ant-result {
+  padding-inline: 0;
+}
+
+@media (max-width: 768px) {
+  .activation-card {
+    width: 100%;
+    border-radius: 12px;
+  }
+}

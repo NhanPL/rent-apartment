@@ -66,6 +66,10 @@ vi.mock('../features/auth/pages/LoginPage', () => ({
   LoginPage: () => <div>Login Page</div>,
 }))
 
+vi.mock('../features/auth/pages/ActivateAccountPage', () => ({
+  ActivateAccountPage: () => <div>Activate Account Page</div>,
+}))
+
 vi.mock('../pages/dashboard/DashboardPage', () => ({
   DashboardPage: () => <div>Dashboard Page</div>,
 }))
@@ -152,6 +156,16 @@ describe('AppRoutes', () => {
 
     expect(await screen.findByText('Login Page')).not.toBeNull()
     expect(window.location.pathname).toBe('/login')
+  })
+
+  it('allows unauthenticated users to open an account activation link', async () => {
+    window.history.replaceState(null, '', '/activate-account?token=invitation-token')
+
+    render(<AppRoutes />)
+
+    expect(await screen.findByText('Activate Account Page')).not.toBeNull()
+    expect(window.location.pathname).toBe('/activate-account')
+    expect(window.location.search).toBe('?token=invitation-token')
   })
 
   it('renders the requested manager route with manager sidebar items', async () => {

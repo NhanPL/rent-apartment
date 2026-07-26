@@ -60,6 +60,39 @@ const auth = [
   entry('The username or password is incorrect. Please try again.', 'Tên đăng nhập hoặc mật khẩu không đúng. Vui lòng nhập lại.'),
 ]
 
+const accountActivation = [
+  entry('Checking your activation link...', 'Đang kiểm tra liên kết kích hoạt...'),
+  entry('Account activated', 'Tài khoản đã được kích hoạt'),
+  entry('Your password has been set. Sign in to continue.', 'Mật khẩu đã được thiết lập. Hãy đăng nhập để tiếp tục.'),
+  entry('Unable to activate account', 'Không thể kích hoạt tài khoản'),
+  entry('Back to sign in', 'Quay lại đăng nhập'),
+  entry('Set your password', 'Thiết lập mật khẩu'),
+  entry('Activate the account for', 'Kích hoạt tài khoản cho'),
+  entry('Enter your new password', 'Nhập mật khẩu mới'),
+  entry('Confirm your new password', 'Nhập lại mật khẩu mới'),
+  entry('Activate account', 'Kích hoạt tài khoản'),
+  entry('Unable to activate your account.', 'Không thể kích hoạt tài khoản của bạn.'),
+  entry('This activation link is invalid, expired, or has already been used.', 'Liên kết kích hoạt không hợp lệ, đã hết hạn hoặc đã được sử dụng.'),
+  entry('Account status', 'Trạng thái tài khoản'),
+  entry('Pending activation', 'Chờ kích hoạt', 'PENDING_ACTIVATION'),
+  entry('Disabled', 'Đã vô hiệu hóa', 'DISABLED'),
+  entry('Resend activation invitation', 'Gửi lại lời mời kích hoạt'),
+  entry('Tenant created and activation invitation sent.', 'Đã tạo người thuê và gửi lời mời kích hoạt.'),
+  entry('Tenant created, but the activation email was not sent. You can resend the invitation later.', 'Đã tạo người thuê nhưng chưa gửi được email kích hoạt. Bạn có thể gửi lại lời mời sau.'),
+  entry('Activation invitation sent successfully.', 'Đã gửi lời mời kích hoạt.'),
+  entry('Invitation renewed, but email delivery is not configured.', 'Đã tạo lại lời mời nhưng hệ thống chưa cấu hình gửi email.'),
+  entry('Unable to resend the activation invitation.', 'Không thể gửi lại lời mời kích hoạt.'),
+]
+
+const tenantFormErrors = [
+  entry('Email is required while the tenant has a login account.', 'Email là bắt buộc khi người thuê có tài khoản đăng nhập.'),
+  entry('This email address is already used by another account.', 'Địa chỉ email này đã được tài khoản khác sử dụng.'),
+  entry('This phone number is already used by another account.', 'Số điện thoại này đã được tài khoản khác sử dụng.'),
+  entry('This citizen ID number is already used by another tenant.', 'Số CCCD này đã được người thuê khác sử dụng.'),
+  entry('Unable to update tenant information. Please try again.', 'Không thể cập nhật thông tin người thuê. Vui lòng thử lại.'),
+  entry('The submitted information is already used by another record.', 'Thông tin đã nhập đang được một bản ghi khác sử dụng.'),
+]
+
 const common = [
   entry('Actions', 'Thao tác'),
   entry('Action', 'Thao tác'),
@@ -931,6 +964,8 @@ const coverage = [
 export const translationCatalog: TranslationEntry[] = [
   ...navigation,
   ...auth,
+  ...accountActivation,
+  ...tenantFormErrors,
   ...common,
   ...buildingsAndDashboard,
   ...tenantsAndContracts,

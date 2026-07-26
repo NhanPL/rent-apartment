@@ -1,10 +1,11 @@
-import bcrypt from 'bcrypt';
 import { PoolClient } from 'pg';
 import { withTransaction } from '../../db';
-import { env } from '../../config/env';
 import { AppError } from '../../shared/errors/app-error';
-import { sendTenantWelcomeEmail } from '../../shared/services/email.service';
-import { generateRandomPassword } from '../../shared/utils/password';
+import { writeAuditLog } from '../../shared/services/audit-log.service';
+import {
+  createActivationInvitation,
+  deliverActivationInvitation
+} from '../auth/account-activation.service';
 import { assertRoomCanHostActiveContract, CURRENT_CONTRACT_STATUS, getContractRoomForManager } from '../contracts/contracts.rules';
 import { createTenantRecord, createTenantUserAccount, findTenantByIdentityNumber, TenantInsertPayload } from './tenants.repository';
 
@@ -173,10 +174,7 @@ export const createTenant = async (raw: Record<string, unknown>, managerId: stri
   const tenantPayload = validateCreateInput((raw.tenant as Record<string, unknown> | undefined) ?? raw);
   const contractPayload = (raw.contract as Record<string, unknown> | null | undefined) ?? null;
 
-  const generatedPassword = generateRandomPassword();
-  const passwordHash = await bcrypt.hash(generatedPassword, 10);
-
-  const { tenantId, userId, loginEmail, username, tenantName } = await withTransaction(async (client) => {
+  const { tenantId, userId, loginEmail, username, tenantName, invitation } = await withTransaction(async (client) => {
     const existing = await findTenantByIdentityNumber(client, tenantPayload.identity_number);
     if (existing) {
       throw new AppError(400, 'Tenant already exists', 'TENANT_ALREADY_EXISTS');
@@ -191,28 +189,51 @@ export const createTenant = async (raw: Record<string, unknown>, managerId: stri
     const user = await createTenantUserAccount(client, {
       email: tenantEmail,
       username,
-      passwordHash,
       tenantId: tenant.id
     });
+    await writeAuditLog(client, {
+      actorUserId: managerId,
+      action: 'TENANT_ACCOUNT_CREATED',
+      entityType: 'APP_USER',
+      entityId: user.id,
+      metadata: {
+        tenantId: tenant.id,
+        accountStatus: 'PENDING_ACTIVATION'
+      }
+    });
+    const invitation = await createActivationInvitation(
+      client,
+      user.id,
+      managerId,
+      'TENANT_CREATED'
+    );
     if (contractPayload) {
       await createTenantContract(client, tenant.id, contractPayload, managerId);
     }
 
-    return { tenantId: tenant.id, userId: user.id, loginEmail: user.email, username: user.username, tenantName: tenant.full_name };
+    return {
+      tenantId: tenant.id,
+      userId: user.id,
+      loginEmail: user.email,
+      username: user.username,
+      tenantName: tenant.full_name,
+      invitation
+    };
   });
 
   let emailSent = false;
   try {
-    await sendTenantWelcomeEmail({
-      to: loginEmail,
+    emailSent = await deliverActivationInvitation({
+      userId,
+      actorUserId: managerId,
       tenantName,
-      loginUrl: `${env.FRONTEND_URL}/login`,
+      email: loginEmail,
       username,
-      password: generatedPassword
+      invitation,
+      source: 'TENANT_CREATED'
     });
-    emailSent = true;
   } catch (error) {
-    console.error('Failed to send tenant welcome email', {
+    console.error('Failed to send tenant activation email', {
       tenantId,
       userId,
       email: loginEmail,

@@ -7,6 +7,7 @@ const tenantMocks = vi.hoisted(() => ({
   deleteTenant: vi.fn(),
   getTenant: vi.fn(),
   listTenants: vi.fn(),
+  resendTenantActivation: vi.fn(),
   updateTenant: vi.fn(),
   updateTenantIdentityDocuments: vi.fn(),
 }))
@@ -16,6 +17,7 @@ vi.mock('../../services/tenantsService', () => tenantMocks)
 vi.mock('../../services/uploadService', () => ({ uploadFileToCloudinary: uploadMocks.uploadFileToCloudinary }))
 
 import { TenantsPage } from './TenantsPage'
+import { ApiError } from '../../services/apiClient'
 
 const tenant = {
   id: 'tenant-1',
@@ -30,6 +32,7 @@ const tenant = {
   phone: '0900000000',
   permanent_address: null,
   status: 'ACTIVE',
+  account_status: 'ACTIVE',
   note: null,
   created_at: '2026-07-01T00:00:00.000Z',
   updated_at: '2026-07-01T00:00:00.000Z',
@@ -49,6 +52,7 @@ const existingFront = {
 
 describe('TenantsPage profile form', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     tenantMocks.listTenants.mockResolvedValue({ items: [tenant], page: 1, pageSize: 8, total: 1 })
     tenantMocks.createTenant.mockResolvedValue({
       message: 'Tenant created successfully',
@@ -63,6 +67,12 @@ describe('TenantsPage profile form', () => {
       identity_documents: { front: existingFront, back: null },
     })
     tenantMocks.updateTenant.mockResolvedValue(tenant)
+    tenantMocks.deleteTenant.mockResolvedValue(undefined)
+    tenantMocks.resendTenantActivation.mockResolvedValue({
+      message: 'Activation invitation sent successfully',
+      emailSent: true,
+      expiresAt: '2026-07-28T00:00:00.000Z',
+    })
     uploadMocks.uploadFileToCloudinary.mockResolvedValue({
       file_name: 'front.jpg',
       file_url: 'https://res.cloudinary.com/demo/image/upload/tenant-documents/front.jpg',
@@ -124,5 +134,76 @@ describe('TenantsPage profile form', () => {
       expect(tenantMocks.updateTenantIdentityDocuments).toHaveBeenCalledWith('tenant-1', { front: null })
     })
     expect(uploadMocks.uploadFileToCloudinary).not.toHaveBeenCalled()
+  })
+
+  it('lets the manager resend activation for a pending tenant account', async () => {
+    const user = userEvent.setup()
+    tenantMocks.listTenants.mockResolvedValue({
+      items: [{ ...tenant, account_status: 'PENDING_ACTIVATION' }],
+      page: 1,
+      pageSize: 8,
+      total: 1,
+    })
+
+    render(<TenantsPage />)
+
+    await user.click(await screen.findByRole('button', {
+      name: 'Resend activation invitation to Tenant One',
+    }))
+
+    await waitFor(() => {
+      expect(tenantMocks.resendTenantActivation).toHaveBeenCalledWith('tenant-1')
+    })
+  })
+
+  it('keeps a meaningful update error visible in the tenant drawer', async () => {
+    const user = userEvent.setup()
+    tenantMocks.updateTenant.mockRejectedValueOnce(
+      new ApiError('Internal server error', 'TENANT_UPDATE_FAILED', 500),
+    )
+
+    render(<TenantsPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'Edit Tenant One' }))
+    await screen.findByDisplayValue('tenant@example.com')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    const updateAlerts = await screen.findAllByRole('alert')
+    expect(updateAlerts.some((alert) => (
+      alert.textContent?.includes('Unable to update tenant information. Please try again.')
+    ))).toBe(true)
+    expect(screen.getByRole('dialog', { name: 'Edit Tenant' })).toBeInTheDocument()
+  })
+
+  it('shows form validation errors without calling the tenant API', async () => {
+    const user = userEvent.setup()
+    render(<TenantsPage />)
+
+    await user.click(await screen.findByRole('button', { name: /Add Tenant/ }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    const validationAlerts = await screen.findAllByRole('alert')
+    expect(validationAlerts.some((alert) => (
+      alert.textContent?.includes('Please enter the tenant name.')
+    ))).toBe(true)
+    expect(tenantMocks.createTenant).not.toHaveBeenCalled()
+  })
+
+  it('keeps a Cloudinary deletion error visible in the confirmation dialog', async () => {
+    const user = userEvent.setup()
+    tenantMocks.deleteTenant.mockRejectedValueOnce(
+      new ApiError('Unable to delete file from Cloudinary', 'CLOUDINARY_DELETE_FAILED', 502),
+    )
+
+    render(<TenantsPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'Delete Tenant One' }))
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+    const deleteAlerts = await screen.findAllByRole('alert')
+    expect(deleteAlerts.some((alert) => (
+      alert.textContent?.includes('The file could not be removed from Cloudinary. No data was deleted.')
+    ))).toBe(true)
+    expect(screen.getByText('This tenant profile will be removed. This action cannot be undone.')).toBeInTheDocument()
   })
 })

@@ -6,6 +6,7 @@ import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
 import { parseBody } from '../../shared/utils/validation';
 import { CURRENT_CONTRACT_STATUS } from '../contracts/contracts.rules';
+import { resendTenantActivation } from '../auth/account-activation.service';
 import {
   createTenant as createTenantService,
   createTenantContract,
@@ -13,7 +14,7 @@ import {
   validateTenantContractRoom
 } from './tenants.service';
 import { assertTenantBelongsToManager } from './tenants.repository';
-import { validateStoredUpload } from '../uploads/uploads.service';
+import { deleteCloudinaryUpload, validateStoredUpload } from '../uploads/uploads.service';
 import {
   mapTenantIdentityDocuments,
   updateTenantIdentityDocuments,
@@ -47,6 +48,7 @@ interface TenantListRow {
   contract_id: string | null;
   start_date: string | null;
   contract_status: string | null;
+  account_status: 'PENDING_ACTIVATION' | 'ACTIVE' | 'DISABLED' | null;
 }
 
 interface CountRow {
@@ -56,6 +58,17 @@ interface CountRow {
 interface TenantDeleteRow {
   id: string;
   user_id: string | null;
+}
+
+interface TenantUpdateScopeRow {
+  id: string;
+  user_id: string | null;
+  account_email: string | null;
+  account_status: 'PENDING_ACTIVATION' | 'ACTIVE' | 'DISABLED' | null;
+}
+
+interface TenantDocumentDeleteRow {
+  file_url: string;
 }
 
 const nullableString = z.string().trim().nullable().optional();
@@ -115,8 +128,13 @@ const tenantCreateSchema = z.union([
 ]);
 
 const tenantPatchSchema = z.union([
-  tenantUpdatePayloadSchema.extend({ contract: tenantContractSchema.nullable().optional() }),
-  z.object({ tenant: tenantUpdatePayloadSchema, contract: tenantContractSchema.nullable().optional() })
+  z.object({
+    tenant: tenantUpdatePayloadSchema,
+    contract: tenantContractSchema.nullable().optional()
+  }).strict(),
+  tenantUpdatePayloadSchema.extend({
+    contract: tenantContractSchema.nullable().optional()
+  }).strict()
 ]);
 
 const upsertTenantContract = async (client: Parameters<Parameters<typeof withTransaction>[0]>[0], tenantId: string, contractInput: Record<string, unknown> | null, managerId: string) => {
@@ -173,6 +191,15 @@ const parseIntParam = (value: unknown, fallback: number): number => {
   const parsed = Number.parseInt(String(value ?? ''), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
+
+const isUniqueConstraintError = (error: unknown): boolean => (
+  Boolean(
+    error
+    && typeof error === 'object'
+    && 'code' in error
+    && (error as { code?: string }).code === '23505'
+  )
+);
 
 router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const page = parseIntParam(req.query.page, 1);
@@ -236,8 +263,9 @@ router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 
   const dataRs = await query<TenantListRow>(
     `SELECT t.*, v.room_id, v.room_code, v.building_id, v.building_name, v.contract_id, v.start_date,
-            v.contract_status
+            v.contract_status, au.account_status
      FROM tenant t
+     LEFT JOIN app_user au ON au.id=t.user_id
      ${currentRentalJoin}
      ${whereClause}
      ORDER BY t.updated_at DESC
@@ -266,8 +294,9 @@ router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 
 router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const tenantRs = await query(
-    `SELECT t.*
+    `SELECT t.*, au.account_status
      FROM tenant t
+     LEFT JOIN app_user au ON au.id=t.user_id
      WHERE t.id=$1
        AND t.manager_user_id=$2
        AND t.status <> $3`,
@@ -329,6 +358,17 @@ router.post('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   });
 }));
 
+router.post('/:id/resend-activation', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  const result = await resendTenantActivation(req.params.id, req.auth!.userId);
+  res.json({
+    message: result.emailSent
+      ? 'Activation invitation sent successfully'
+      : 'Activation invitation renewed, but email delivery is not configured',
+    emailSent: result.emailSent,
+    expiresAt: result.expiresAt
+  });
+}));
+
 router.patch('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const b = parseBody(tenantPatchSchema, req.body) as Record<string, unknown>;
   const tenantPayload = (b.tenant ?? b) as Record<string, unknown>;
@@ -351,37 +391,100 @@ router.patch('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
     AND status <> 'DELETED'
   `;
 
-  const result = await withTransaction(async (client) => {
-    await assertTenantBelongsToManager(client, req.params.id, req.auth!.userId);
-
-    if (tenantPayload.status === 'MOVED_OUT') {
-      const activeContract = await client.query<{ id: string }>(
-        `SELECT c.id
-         FROM contract_tenant ct
-         JOIN contract c ON c.id=ct.contract_id
-         WHERE ct.tenant_id=$1
-           AND ct.left_at IS NULL
-           AND c.status='ACTIVE'
-         LIMIT 1`,
-        [req.params.id]
+  let result: Record<string, unknown>;
+  try {
+    result = await withTransaction<Record<string, unknown>>(async (client) => {
+      const currentTenantRs = await client.query<TenantUpdateScopeRow>(
+        `SELECT tenant.id, tenant.user_id, app_user.email::text AS account_email,
+                app_user.account_status
+         FROM tenant
+         LEFT JOIN app_user ON app_user.id=tenant.user_id
+         WHERE tenant.id=$1
+           AND tenant.manager_user_id=$2
+           AND tenant.status <> 'DELETED'
+         FOR UPDATE OF tenant`,
+        [req.params.id, req.auth!.userId]
       );
-      if (activeContract.rows[0]) {
-        throw new AppError(409, 'End active contract before marking tenant as moved out', 'TENANT_HAS_ACTIVE_CONTRACT');
-      }
-    }
+      const currentTenant = currentTenantRs.rows[0];
+      if (!currentTenant) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
 
-    const updated =
-      entries.length > 0
-        ? await client.query(`UPDATE tenant SET ${sets.join(',')} WHERE ${scopedTenantWhere} RETURNING *`, params)
-        : await client.query(
-          `SELECT * FROM tenant
-           WHERE ${scopedTenantWhere}`,
-          params
+      if (tenantPayload.status === 'MOVED_OUT') {
+        const activeContract = await client.query<{ id: string }>(
+          `SELECT c.id
+           FROM contract_tenant ct
+           JOIN contract c ON c.id=ct.contract_id
+           WHERE ct.tenant_id=$1
+             AND ct.left_at IS NULL
+             AND c.status='ACTIVE'
+           LIMIT 1`,
+          [req.params.id]
         );
-    if (!updated.rows[0]) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
-    await upsertTenantContract(client, req.params.id, contractPayload, req.auth!.userId);
-    return updated.rows[0];
-  });
+        if (activeContract.rows[0]) {
+          throw new AppError(409, 'End active contract before marking tenant as moved out', 'TENANT_HAS_ACTIVE_CONTRACT');
+        }
+      }
+
+      if (Object.prototype.hasOwnProperty.call(tenantPayload, 'email') && currentTenant.user_id) {
+        const nextEmail = String(tenantPayload.email ?? '').trim();
+        if (!nextEmail) {
+          throw new AppError(
+            400,
+            'Email is required while the tenant has a login account.',
+            'TENANT_EMAIL_REQUIRED'
+          );
+        }
+
+        const emailChanged = nextEmail.toLocaleLowerCase() !== currentTenant.account_email?.toLocaleLowerCase();
+        if (emailChanged) {
+          await client.query(
+            `UPDATE app_user
+             SET email=$1,
+                 username=CASE WHEN username=email THEN $1 ELSE username END
+             WHERE id=$2`,
+            [nextEmail, currentTenant.user_id]
+          );
+
+          if (currentTenant.account_status === 'PENDING_ACTIVATION') {
+            await client.query(
+              `UPDATE account_activation_token
+               SET revoked_at=now()
+               WHERE user_id=$1
+                 AND used_at IS NULL
+                 AND revoked_at IS NULL`,
+              [currentTenant.user_id]
+            );
+          }
+        }
+      }
+
+      const updated =
+        entries.length > 0
+          ? await client.query<Record<string, unknown>>(
+            `UPDATE tenant SET ${sets.join(',')} WHERE ${scopedTenantWhere} RETURNING *`,
+            params
+          )
+          : await client.query<Record<string, unknown>>(
+            `SELECT * FROM tenant
+             WHERE ${scopedTenantWhere}`,
+            params
+          );
+      if (!updated.rows[0]) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
+      await upsertTenantContract(client, req.params.id, contractPayload, req.auth!.userId);
+      return updated.rows[0];
+    });
+  } catch (error) {
+    if (error instanceof AppError || isUniqueConstraintError(error)) throw error;
+    console.error('Failed to update tenant', {
+      tenantId: req.params.id,
+      managerId: req.auth!.userId,
+      error: error instanceof Error ? error.message : 'Unknown database error'
+    });
+    throw new AppError(
+      500,
+      'Unable to update tenant information. Please try again.',
+      'TENANT_UPDATE_FAILED'
+    );
+  }
   res.json(result);
 }));
 
@@ -440,6 +543,19 @@ router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
       throw new AppError(400, 'Không thể xóa người thuê còn hóa đơn chưa thanh toán', 'TENANT_HAS_UNPAID_INVOICE');
     }
 
+    const documentRs = await client.query<TenantDocumentDeleteRow>(
+      `SELECT file_url
+       FROM tenant_document
+       WHERE tenant_id=$1
+       FOR UPDATE`,
+      [tenant.id]
+    );
+    const documentUrls = [...new Set(documentRs.rows.map((document) => document.file_url))];
+    await Promise.all(
+      documentUrls.map((fileUrl) => deleteCloudinaryUpload({ file_url: fileUrl }))
+    );
+    await client.query('DELETE FROM tenant_document WHERE tenant_id=$1', [tenant.id]);
+
     await client.query(
       `UPDATE tenant
        SET status='DELETED', user_id=NULL
@@ -448,12 +564,7 @@ router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
     );
 
     if (tenant.user_id) {
-      await client.query(
-        `UPDATE app_user
-         SET is_active=false, account_status='DISABLED'
-         WHERE id=$1`,
-        [tenant.user_id]
-      );
+      await client.query('DELETE FROM app_user WHERE id=$1', [tenant.user_id]);
     }
   });
 

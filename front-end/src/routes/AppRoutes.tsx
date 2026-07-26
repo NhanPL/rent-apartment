@@ -8,6 +8,7 @@ import { useI18n } from '../i18n'
 import { Localized } from '../shared/components/Localized'
 
 const LoginPage = lazy(() => import('../features/auth/pages/LoginPage').then((module) => ({ default: module.LoginPage })))
+const ActivateAccountPage = lazy(() => import('../features/auth/pages/ActivateAccountPage').then((module) => ({ default: module.ActivateAccountPage })))
 const BuildingsPage = lazy(() => import('../pages/buildings/BuildingsPage').then((module) => ({ default: module.BuildingsPage })))
 const ContractsPage = lazy(() => import('../pages/contracts/ContractsPage').then((module) => ({ default: module.ContractsPage })))
 const RentalRegistrationPage = lazy(() => import('../pages/rental-registration/RentalRegistrationPage').then((module) => ({ default: module.RentalRegistrationPage })))
@@ -94,12 +95,13 @@ export function AppRoutes() {
   }
 
   if (!isAuthenticated || !user) {
-    if (pathname !== '/login') {
+    const isActivationPage = pathname === '/activate-account'
+    if (pathname !== '/login' && !isActivationPage) {
       window.history.replaceState(null, '', '/login')
     }
     return (
       <Suspense fallback={<RouteFallback />}>
-        <LoginPage />
+        {isActivationPage ? <ActivateAccountPage /> : <LoginPage />}
       </Suspense>
     )
   }

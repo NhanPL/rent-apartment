@@ -2,9 +2,15 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../src/db', async () => import('./support/mock-db'));
+
+const emailServiceMocks = vi.hoisted(() => ({
+  sendEmail: vi.fn().mockResolvedValue(true),
+  sendTenantActivationEmail: vi.fn().mockResolvedValue(true)
+}));
+
 vi.mock('../src/shared/services/email.service', () => ({
-  sendEmail: vi.fn().mockResolvedValue(undefined),
-  sendTenantWelcomeEmail: vi.fn().mockResolvedValue(undefined)
+  sendEmail: emailServiceMocks.sendEmail,
+  sendTenantActivationEmail: emailServiceMocks.sendTenantActivationEmail
 }));
 vi.mock('../src/modules/fixed-charges/fixed-charges.service', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/modules/fixed-charges/fixed-charges.service')>();
@@ -29,6 +35,7 @@ vi.mock('../src/modules/uploads/uploads.service', async (importOriginal) => {
 });
 
 import { app } from '../src/app';
+import { AppError } from '../src/shared/errors/app-error';
 import { fakeDb, ids } from './support/mock-db';
 
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
@@ -55,6 +62,13 @@ const login = async (identifier: string) => {
 describe('backend API smoke tests', () => {
   beforeEach(() => {
     fakeDb.reset();
+    emailServiceMocks.sendEmail.mockClear();
+    emailServiceMocks.sendTenantActivationEmail.mockClear();
+    emailServiceMocks.sendTenantActivationEmail.mockResolvedValue(true);
+    uploadServiceMocks.deleteCloudinaryUpload.mockClear();
+    uploadServiceMocks.deleteCloudinaryUpload.mockResolvedValue(undefined);
+    uploadServiceMocks.validateStoredUpload.mockClear();
+    uploadServiceMocks.validateStoredUpload.mockReturnValue('image');
   });
 
   it('authenticates, refreshes tokens, and returns the current user profile', async () => {
@@ -258,7 +272,7 @@ describe('backend API smoke tests', () => {
       .expect(404);
   });
 
-  it('creates, updates, and soft-deletes a tenant', async () => {
+  it('updates a nested tenant form and deletes its account and Cloudinary documents', async () => {
     const managerSession = await login('manager@example.com');
 
     const created = await request(app)
@@ -279,21 +293,47 @@ describe('backend API smoke tests', () => {
       identity_number: 'ID-C'
     });
     expect(fakeDb.users.find((user) => user.id === created.body.userId)).toMatchObject({
-      is_active: true,
-      account_status: 'ACTIVE'
+      password_hash: null,
+      is_active: false,
+      account_status: 'PENDING_ACTIVATION'
     });
 
     const updated = await request(app)
       .patch(`/api/tenants/${tenantId}`)
       .set(auth(managerSession.accessToken))
-      .send({ phone: '0944444444', note: 'Updated by test' })
+      .send({
+        tenant: {
+          full_name: 'Charlie Tenant Updated',
+          identity_number: 'ID-C',
+          email: 'charlie.updated@example.com',
+          phone: '0944444444',
+          status: 'ACTIVE',
+          note: 'Updated by test'
+        }
+      })
       .expect(200);
 
     expect(updated.body).toMatchObject({
       id: tenantId,
+      full_name: 'Charlie Tenant Updated',
+      email: 'charlie.updated@example.com',
       phone: '0944444444',
       note: 'Updated by test'
     });
+    expect(fakeDb.users.find((user) => user.id === created.body.userId)).toMatchObject({
+      email: 'charlie.updated@example.com',
+      username: 'charlie.updated@example.com'
+    });
+    expect(fakeDb.activationTokens.find((token) => token.user_id === created.body.userId)).toMatchObject({
+      revoked_at: expect.any(String)
+    });
+
+    const frontUrl = 'https://res.cloudinary.com/demo/image/upload/tenant-documents/charlie-front.jpg';
+    const backUrl = 'https://res.cloudinary.com/demo/image/upload/tenant-documents/charlie-back.jpg';
+    fakeDb.tenantDocuments.push(
+      { id: 'document-front', tenant_id: tenantId, file_url: frontUrl },
+      { id: 'document-back', tenant_id: tenantId, file_url: backUrl }
+    );
 
     await request(app)
       .delete(`/api/tenants/${tenantId}`)
@@ -304,10 +344,224 @@ describe('backend API smoke tests', () => {
       status: 'DELETED',
       user_id: null
     });
-    expect(fakeDb.users.find((user) => user.id === created.body.userId)).toMatchObject({
-      is_active: false,
-      account_status: 'DISABLED'
+    expect(fakeDb.users.find((user) => user.id === created.body.userId)).toBeUndefined();
+    expect(fakeDb.tenantDocuments.filter((document) => document.tenant_id === tenantId)).toEqual([]);
+    expect(uploadServiceMocks.deleteCloudinaryUpload).toHaveBeenCalledTimes(2);
+    expect(uploadServiceMocks.deleteCloudinaryUpload).toHaveBeenCalledWith({ file_url: frontUrl });
+    expect(uploadServiceMocks.deleteCloudinaryUpload).toHaveBeenCalledWith({ file_url: backUrl });
+
+    await request(app)
+      .post('/api/tenants')
+      .set(auth(managerSession.accessToken))
+      .send({
+        full_name: 'Replacement Tenant',
+        identity_number: 'ID-C-REPLACEMENT',
+        email: 'charlie.updated@example.com',
+        phone: '0955555555',
+        status: 'ACTIVE'
+      })
+      .expect(201);
+  });
+
+  it('keeps tenant data when a Cloudinary document cannot be deleted', async () => {
+    const managerSession = await login('manager@example.com');
+    const fileUrl = 'https://res.cloudinary.com/demo/image/upload/tenant-documents/free-front.jpg';
+    fakeDb.tenantDocuments.push({
+      id: 'document-free-front',
+      tenant_id: ids.tenantFree,
+      file_url: fileUrl
     });
+    uploadServiceMocks.deleteCloudinaryUpload.mockRejectedValueOnce(
+      new AppError(502, 'Unable to delete file from Cloudinary', 'CLOUDINARY_DELETE_FAILED')
+    );
+
+    const response = await request(app)
+      .delete(`/api/tenants/${ids.tenantFree}`)
+      .set(auth(managerSession.accessToken))
+      .expect(502);
+
+    expect(response.body).toMatchObject({
+      code: 'CLOUDINARY_DELETE_FAILED',
+      message: 'Unable to delete file from Cloudinary'
+    });
+    expect(fakeDb.tenants.find((tenant) => tenant.id === ids.tenantFree)).toMatchObject({
+      status: 'ACTIVE'
+    });
+    expect(fakeDb.tenantDocuments).toEqual([
+      expect.objectContaining({ tenant_id: ids.tenantFree, file_url: fileUrl })
+    ]);
+  });
+
+  it('returns a meaningful error when a tenant email is already in use', async () => {
+    const managerSession = await login('manager@example.com');
+
+    const response = await request(app)
+      .patch(`/api/tenants/${ids.tenantA}`)
+      .set(auth(managerSession.accessToken))
+      .send({
+        tenant: {
+          full_name: 'Alice Tenant',
+          identity_number: 'ID-A',
+          email: 'manager@example.com',
+          phone: '0900000001',
+          status: 'ACTIVE'
+        }
+      })
+      .expect(409);
+
+    expect(response.body).toEqual({
+      code: 'TENANT_EMAIL_EXISTS',
+      message: 'This email address is already used by another account.'
+    });
+  });
+
+  it('returns a safe, meaningful error when the tenant update query fails', async () => {
+    const managerSession = await login('manager@example.com');
+    fakeDb.tenantUpdateFailure = new Error('database implementation detail');
+
+    const response = await request(app)
+      .patch(`/api/tenants/${ids.tenantA}`)
+      .set(auth(managerSession.accessToken))
+      .send({
+        tenant: {
+          full_name: 'Alice Tenant',
+          identity_number: 'ID-A',
+          email: 'tenant@example.com',
+          phone: '0900000001',
+          status: 'ACTIVE'
+        }
+      })
+      .expect(500);
+
+    expect(response.body).toMatchObject({
+      code: 'TENANT_UPDATE_FAILED',
+      message: 'Unable to update tenant information. Please try again.'
+    });
+    expect(response.body.message).not.toContain('database implementation detail');
+  });
+
+  it('activates a pending tenant account with a one-time hashed token', async () => {
+    const managerSession = await login('manager@example.com');
+    const created = await request(app)
+      .post('/api/tenants')
+      .set(auth(managerSession.accessToken))
+      .send({
+        full_name: 'Activation Tenant',
+        identity_number: 'ID-ACTIVATION',
+        email: 'activation@example.com',
+        phone: '0933333344',
+        status: 'ACTIVE'
+      })
+      .expect(201);
+
+    expect(created.body.emailSent).toBe(true);
+    const emailPayload = emailServiceMocks.sendTenantActivationEmail.mock.calls[0]?.[0] as {
+      activationUrl: string;
+    };
+    const token = new URL(emailPayload.activationUrl).searchParams.get('token');
+    expect(token).toEqual(expect.any(String));
+
+    const storedToken = fakeDb.activationTokens[0];
+    expect(storedToken).toMatchObject({
+      user_id: created.body.userId,
+      token_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      used_at: null,
+      revoked_at: null
+    });
+    expect(storedToken).not.toHaveProperty('token');
+    expect(storedToken.token_hash).not.toBe(token);
+
+    await request(app)
+      .post('/api/auth/login')
+      .send({ identifier: 'activation@example.com', password: 'new-password-123' })
+      .expect(401);
+
+    const validation = await request(app)
+      .get('/api/auth/activation')
+      .query({ token })
+      .expect(200);
+    expect(validation.body).toMatchObject({
+      valid: true,
+      emailHint: 'ac********@example.com'
+    });
+
+    await request(app)
+      .post('/api/auth/activate')
+      .send({
+        token,
+        newPassword: 'new-password-123',
+        confirmPassword: 'new-password-123'
+      })
+      .expect(200);
+
+    expect(fakeDb.users.find((user) => user.id === created.body.userId)).toMatchObject({
+      is_active: true,
+      account_status: 'ACTIVE'
+    });
+    expect(fakeDb.activationTokens[0].used_at).toEqual(expect.any(String));
+
+    await request(app)
+      .post('/api/auth/login')
+      .send({ identifier: 'activation@example.com', password: 'new-password-123' })
+      .expect(200);
+    await request(app)
+      .get('/api/auth/activation')
+      .query({ token })
+      .expect(400);
+
+    expect(fakeDb.auditLogs.map((entry) => entry.action)).toEqual(expect.arrayContaining([
+      'TENANT_ACCOUNT_CREATED',
+      'TENANT_ACTIVATION_INVITATION_CREATED',
+      'TENANT_ACTIVATION_INVITATION_DELIVERY',
+      'TENANT_ACCOUNT_ACTIVATED'
+    ]));
+  });
+
+  it('revokes the previous activation token when a manager resends an invitation', async () => {
+    const managerSession = await login('manager@example.com');
+    const created = await request(app)
+      .post('/api/tenants')
+      .set(auth(managerSession.accessToken))
+      .send({
+        full_name: 'Resend Tenant',
+        identity_number: 'ID-RESEND',
+        email: 'resend@example.com',
+        phone: '0933333355',
+        status: 'ACTIVE'
+      })
+      .expect(201);
+
+    const firstUrl = (emailServiceMocks.sendTenantActivationEmail.mock.calls[0]?.[0] as {
+      activationUrl: string;
+    }).activationUrl;
+    const firstToken = new URL(firstUrl).searchParams.get('token');
+
+    await request(app)
+      .post(`/api/tenants/${created.body.tenantId}/resend-activation`)
+      .set(auth(managerSession.accessToken))
+      .expect(200);
+
+    const secondUrl = (emailServiceMocks.sendTenantActivationEmail.mock.calls[1]?.[0] as {
+      activationUrl: string;
+    }).activationUrl;
+    const secondToken = new URL(secondUrl).searchParams.get('token');
+    expect(secondToken).not.toBe(firstToken);
+    expect(fakeDb.activationTokens[0].revoked_at).toEqual(expect.any(String));
+
+    await request(app)
+      .get('/api/auth/activation')
+      .query({ token: firstToken })
+      .expect(400);
+    await request(app)
+      .get('/api/auth/activation')
+      .query({ token: secondToken })
+      .expect(200);
+
+    fakeDb.activationTokens[1].expires_at = '2000-01-01T00:00:00.000Z';
+    await request(app)
+      .get('/api/auth/activation')
+      .query({ token: secondToken })
+      .expect(400);
   });
 
   it('creates, updates, ends contracts, and rejects over-capacity activation', async () => {

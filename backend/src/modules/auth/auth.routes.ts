@@ -10,6 +10,10 @@ import {
   INVALID_CREDENTIALS_MESSAGE,
   refreshAccessToken
 } from './auth.service';
+import {
+  activateTenantAccount,
+  validateActivationToken
+} from './account-activation.service';
 
 const router = Router();
 
@@ -44,6 +48,22 @@ const changePasswordSchema = z.object({
   }
 });
 
+const activationTokenSchema = z.string().trim().min(32).max(256);
+
+const activateAccountSchema = z.object({
+  token: activationTokenSchema,
+  newPassword: z.string().min(8).max(72),
+  confirmPassword: z.string().min(8).max(72)
+}).superRefine((data, ctx) => {
+  if (data.newPassword !== data.confirmPassword) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['confirmPassword'],
+      message: 'Password confirmation does not match'
+    });
+  }
+});
+
 router.post('/login', asyncHandler(async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -68,6 +88,29 @@ router.post('/logout', (_req, res) => {
   // Stateless JWT logout. Frontend clears stored tokens.
   res.status(200).json({ success: true });
 });
+
+router.get('/activation', asyncHandler(async (req, res) => {
+  const parsed = activationTokenSchema.safeParse(req.query.token);
+  if (!parsed.success) {
+    throw new AppError(
+      400,
+      'This activation link is invalid, expired, or has already been used.',
+      'ACTIVATION_TOKEN_INVALID'
+    );
+  }
+
+  res.json(await validateActivationToken(parsed.data));
+}));
+
+router.post('/activate', asyncHandler(async (req, res) => {
+  const parsed = activateAccountSchema.safeParse(req.body);
+  if (!parsed.success) {
+    throw new AppError(400, 'Please enter and confirm a valid password.', 'VALIDATION_ERROR');
+  }
+
+  await activateTenantAccount(parsed.data.token, parsed.data.newPassword);
+  res.json({ success: true });
+}));
 
 router.get('/me', requireAuth, asyncHandler(async (req, res) => {
   const user = await getCurrentUser(req.auth!.userId);

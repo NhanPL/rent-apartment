@@ -1,5 +1,6 @@
-import { DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons'
+import { DeleteOutlined, EditOutlined, EyeOutlined, MailOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons'
 import {
+  Alert,
   Button,
   Card,
   Descriptions,
@@ -20,6 +21,7 @@ import {
   message,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import type { FormProps } from 'antd'
 import dayjs from 'dayjs'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -27,6 +29,7 @@ import {
   deleteTenant,
   getTenant,
   listTenants,
+  resendTenantActivation,
   updateTenant,
   updateTenantIdentityDocuments,
 } from '../../services/tenantsService'
@@ -35,6 +38,7 @@ import { Localized } from '../../shared/components/Localized'
 import { uploadFileToCloudinary } from '../../services/uploadService'
 import type {
   TenantDetail,
+  AccountStatus,
   TenantIdentityDocument,
   TenantIdentityDocumentFilePayload,
   TenantIdentityDocumentUpdatePayload,
@@ -113,6 +117,9 @@ export function TenantsPage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<TenantListItem | null>(null)
   const [deletingTenantId, setDeletingTenantId] = useState<string | null>(null)
+  const [resendingTenantId, setResendingTenantId] = useState<string | null>(null)
+  const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null)
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(searchInput), 300)
@@ -155,6 +162,7 @@ export function TenantsPage() {
   }, [drawerInitialValues, drawerOpen, form])
 
   const openCreate = useCallback(() => {
+    setSaveErrorMessage(null)
     setDrawerMode('create')
     setEditingTenantId(null)
     setDrawerInitialValues(defaultTenantFormValues)
@@ -163,6 +171,7 @@ export function TenantsPage() {
   }, [])
 
   const openEdit = useCallback(async (id: string) => {
+    setSaveErrorMessage(null)
     setDrawerMode('edit')
     setEditingTenantId(id)
     setDiscardModalOpen(false)
@@ -236,16 +245,19 @@ export function TenantsPage() {
     if (Object.keys(changes).length > 0) await updateTenantIdentityDocuments(tenantId, changes)
   }, [drawerInitialValues.identity_back, drawerInitialValues.identity_front, resolveIdentityDocumentChange])
 
-  const submitForm = useCallback(async () => {
+  const submitForm = useCallback(async (validatedValues?: TenantFormValues) => {
     setSaveLoading(true)
+    setSaveErrorMessage(null)
     let profileSaved = false
+    let activationEmailSent: boolean | null = null
     try {
-      const values = await form.validateFields()
+      const values = validatedValues ?? await form.validateFields()
       const payload = mapTenantFormValuesToPayload(values)
       let tenantId = editingTenantId
 
       if (drawerMode === 'create') {
         const created = await createTenant(payload)
+        activationEmailSent = created.emailSent
         tenantId = created.tenantId
         setDrawerMode('edit')
         setEditingTenantId(created.tenantId)
@@ -256,30 +268,52 @@ export function TenantsPage() {
 
       if (!tenantId) throw new Error('The tenant profile was saved without a tenant identifier.')
       await saveIdentityDocuments(tenantId, values)
-      message.success(drawerMode === 'create' ? 'Tenant created successfully.' : 'Tenant updated successfully.')
+      if (drawerMode === 'create' && activationEmailSent === false) {
+        message.warning('Tenant created, but the activation email was not sent. You can resend the invitation later.')
+      } else {
+        message.success(
+          drawerMode === 'create'
+            ? 'Tenant created and activation invitation sent.'
+            : 'Tenant updated successfully.',
+        )
+      }
       setDrawerOpen(false)
       await loadTenants()
     } catch (saveError: unknown) {
       const formError = saveError as { errorFields?: Array<{ name: (string | number)[] }> }
       const firstError = formError.errorFields?.[0]
+      let userMessage: string
       if (firstError?.name) {
         window.setTimeout(() => form.scrollToField(firstError.name, { block: 'center' }), 0)
-        message.error(getFormErrorMessage(saveError))
+        userMessage = getFormErrorMessage(saveError)
       } else if (profileSaved) {
-        message.error(getUserErrorMessage(saveError, 'Tenant information was saved, but the identity images could not be updated. Please retry.'))
+        userMessage = getUserErrorMessage(saveError, 'Tenant information was saved, but the identity images could not be updated. Please retry.')
         await loadTenants()
       } else {
-        message.error(getUserErrorMessage(saveError, 'Unable to save the tenant.'))
+        userMessage = getUserErrorMessage(saveError, 'Unable to save the tenant.')
       }
+      setSaveErrorMessage(userMessage)
+      message.error(userMessage)
     } finally {
       setSaveLoading(false)
     }
   }, [drawerMode, editingTenantId, form, loadTenants, saveIdentityDocuments])
 
+  const handleFormValidationFailed = useCallback<NonNullable<FormProps<TenantFormValues>['onFinishFailed']>>((formError) => {
+    const firstError = formError.errorFields[0]
+    if (firstError?.name) {
+      window.setTimeout(() => form.scrollToField(firstError.name, { block: 'center' }), 0)
+    }
+    const userMessage = getFormErrorMessage(formError)
+    setSaveErrorMessage(userMessage)
+    message.error(userMessage)
+  }, [form])
+
   const confirmDeleteTenant = useCallback(async () => {
     if (!deleteTarget || deletingTenantId) return
     const tenantId = deleteTarget.id
     setDeletingTenantId(tenantId)
+    setDeleteErrorMessage(null)
     try {
       await deleteTenant(tenantId)
       setItems((currentItems) => currentItems.filter((item) => item.id !== tenantId))
@@ -291,7 +325,9 @@ export function TenantsPage() {
       message.success('Tenant deleted successfully.')
       await loadTenants()
     } catch (deleteError) {
-      message.error(getUserErrorMessage(deleteError, 'Unable to delete the tenant.'))
+      const userMessage = getUserErrorMessage(deleteError, 'Unable to delete the tenant.')
+      setDeleteErrorMessage(userMessage)
+      message.error(userMessage)
     } finally {
       setDeletingTenantId(null)
     }
@@ -308,6 +344,23 @@ export function TenantsPage() {
       setDetailLoading(false)
     }
   }, [])
+
+  const handleResendActivation = useCallback(async (tenant: TenantListItem) => {
+    if (resendingTenantId) return
+    setResendingTenantId(tenant.id)
+    try {
+      const result = await resendTenantActivation(tenant.id)
+      if (result.emailSent) {
+        message.success('Activation invitation sent successfully.')
+      } else {
+        message.warning('Invitation renewed, but email delivery is not configured.')
+      }
+    } catch (resendError) {
+      message.error(getUserErrorMessage(resendError, 'Unable to resend the activation invitation.'))
+    } finally {
+      setResendingTenantId(null)
+    }
+  }, [resendingTenantId])
 
   const columns: ColumnsType<TenantListItem> = useMemo(() => [
     { title: 'Tenant name', dataIndex: 'full_name', key: 'full_name', width: 190 },
@@ -334,6 +387,21 @@ export function TenantsPage() {
       },
     },
     {
+      title: 'Account status',
+      dataIndex: 'account_status',
+      key: 'account_status',
+      width: 170,
+      render: (value: AccountStatus | null) => {
+        if (!value) return '-'
+        const settings: Record<AccountStatus, { label: string; color: string }> = {
+          PENDING_ACTIVATION: { label: 'Pending activation', color: 'gold' },
+          ACTIVE: { label: 'Active', color: 'green' },
+          DISABLED: { label: 'Disabled', color: 'default' },
+        }
+        return <Tag color={settings[value].color}>{settings[value].label}</Tag>
+      },
+    },
+    {
       title: 'Updated at',
       dataIndex: 'updated_at',
       key: 'updated_at',
@@ -344,11 +412,22 @@ export function TenantsPage() {
       title: 'Actions',
       key: 'actions',
       fixed: 'right',
-      width: 136,
+      width: 176,
       render: (_, item) => (
         <Space size={2}>
           <Button type="text" icon={<EyeOutlined />} aria-label={`View ${item.full_name}`} onClick={() => void handleView(item.id)} />
           <Button type="text" icon={<EditOutlined />} aria-label={`Edit ${item.full_name}`} onClick={() => void openEdit(item.id)} />
+          {item.account_status === 'PENDING_ACTIVATION' ? (
+            <Button
+              type="text"
+              icon={<MailOutlined />}
+              aria-label={`Resend activation invitation to ${item.full_name}`}
+              title="Resend activation invitation"
+              loading={resendingTenantId === item.id}
+              disabled={Boolean(resendingTenantId)}
+              onClick={() => void handleResendActivation(item)}
+            />
+          ) : null}
           <Button
             type="text"
             danger
@@ -356,12 +435,15 @@ export function TenantsPage() {
             aria-label={`Delete ${item.full_name}`}
             loading={deletingTenantId === item.id}
             disabled={Boolean(deletingTenantId)}
-            onClick={() => setDeleteTarget(item)}
+            onClick={() => {
+              setDeleteErrorMessage(null)
+              setDeleteTarget(item)
+            }}
           />
         </Space>
       ),
     },
-  ], [deletingTenantId, handleView, openEdit])
+  ], [deletingTenantId, handleResendActivation, handleView, openEdit, resendingTenantId])
 
   const renderIdentityDocument = (label: string, document: TenantIdentityDocument | null) => (
     <div className="tenant-identity-detail-item">
@@ -440,7 +522,22 @@ export function TenantsPage() {
         {drawerLoading ? (
           <Skeleton active paragraph={{ rows: 8 }} />
         ) : (
-          <Form form={form} layout="vertical">
+          <Form
+            form={form}
+            layout="vertical"
+            onFinish={(values) => void submitForm(values)}
+            onFinishFailed={handleFormValidationFailed}
+          >
+            {saveErrorMessage ? (
+              <Alert
+                type="error"
+                message={saveErrorMessage}
+                showIcon
+                closable
+                onClose={() => setSaveErrorMessage(null)}
+                style={{ marginBottom: 16 }}
+              />
+            ) : null}
             <div className={`tenant-tab-grid ${isDesktop ? 'desktop-two-cols' : ''}`}>
               <Form.Item name="full_name" label="Full name" rules={[{ required: true, whitespace: true, message: 'Please enter the tenant name.' }]}>
                 <Input placeholder="Tenant full name" />
@@ -496,9 +593,9 @@ export function TenantsPage() {
                 <Button
                   size={isMobile ? 'large' : 'middle'}
                   type="primary"
+                  htmlType="submit"
                   loading={saveLoading}
                   disabled={saveLoading}
-                  onClick={() => void submitForm()}
                 >
                   Save
                 </Button>
@@ -529,6 +626,9 @@ export function TenantsPage() {
               <Descriptions.Item label="Issue date">{selectedTenant.identity_issued_date ? dayjs(selectedTenant.identity_issued_date).format('DD/MM/YYYY') : '-'}</Descriptions.Item>
               <Descriptions.Item label="Place of issue">{selectedTenant.identity_issued_place ?? '-'}</Descriptions.Item>
               <Descriptions.Item label="Status">{selectedTenant.status}</Descriptions.Item>
+              <Descriptions.Item label="Account status">
+                {selectedTenant.account_status ?? '-'}
+              </Descriptions.Item>
               <Descriptions.Item label="Permanent address">{selectedTenant.permanent_address ?? '-'}</Descriptions.Item>
               <Descriptions.Item label="Note">{selectedTenant.note ?? '-'}</Descriptions.Item>
             </Descriptions>
@@ -546,7 +646,10 @@ export function TenantsPage() {
       <Modal
         open={Boolean(deleteTarget)}
         title="Delete tenant?"
-        onCancel={() => setDeleteTarget(null)}
+        onCancel={() => {
+          setDeleteErrorMessage(null)
+          setDeleteTarget(null)
+        }}
         onOk={() => void confirmDeleteTenant()}
         okText="Delete"
         okButtonProps={{ danger: true, loading: Boolean(deletingTenantId) }}
@@ -557,6 +660,14 @@ export function TenantsPage() {
         zIndex={1200}
         getContainer={() => document.body}
       >
+        {deleteErrorMessage ? (
+          <Alert
+            type="error"
+            message={deleteErrorMessage}
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+        ) : null}
         This tenant profile will be removed. This action cannot be undone.
       </Modal>
 

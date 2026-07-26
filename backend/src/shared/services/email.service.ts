@@ -7,12 +7,12 @@ interface SendEmailPayload {
   html: string;
 }
 
-interface TenantWelcomePayload {
+interface TenantActivationPayload {
   to: string;
   tenantName: string;
-  loginUrl: string;
+  activationUrl: string;
   username: string;
-  password: string;
+  expiresAt: string;
 }
 
 let transporter: ReturnType<typeof nodemailer.createTransport> | null = null;
@@ -40,14 +40,21 @@ const getTransporter = (): ReturnType<typeof nodemailer.createTransport> | null 
   return transporter;
 };
 
-export const sendEmail = async (payload: SendEmailPayload): Promise<void> => {
+const escapeHtml = (value: string): string => value
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
+export const sendEmail = async (payload: SendEmailPayload): Promise<boolean> => {
   const mailer = getTransporter();
   if (!mailer) {
     console.warn('SMTP is not configured; skipping email send.', {
       to: payload.to,
       subject: payload.subject
     });
-    return;
+    return false;
   }
 
   await mailer.sendMail({
@@ -56,18 +63,23 @@ export const sendEmail = async (payload: SendEmailPayload): Promise<void> => {
     subject: payload.subject,
     html: payload.html
   });
+  return true;
 };
 
-export const sendTenantWelcomeEmail = async (payload: TenantWelcomePayload): Promise<void> => {
-  const subject = 'Your Rental Account';
+export const sendTenantActivationEmail = async (payload: TenantActivationPayload): Promise<boolean> => {
+  const subject = 'Activate your rental account';
+  const tenantName = escapeHtml(payload.tenantName);
+  const activationUrl = escapeHtml(payload.activationUrl);
+  const username = escapeHtml(payload.username);
+  const expiresAt = escapeHtml(new Date(payload.expiresAt).toLocaleString('en-US', { timeZone: 'UTC' }));
   const html = `
-    <p>Hello ${payload.tenantName},</p>
-    <p>Your account has been created.</p>
-    <p>Login URL: <a href="${payload.loginUrl}">${payload.loginUrl}</a></p>
-    <p>Username: ${payload.username}</p>
-    <p>Password: ${payload.password}</p>
-    <p>Please change your password after first login.</p>
+    <p>Hello ${tenantName},</p>
+    <p>Your rental account has been created. Set your password to activate it.</p>
+    <p>Username: ${username}</p>
+    <p><a href="${activationUrl}">Activate account</a></p>
+    <p>This link expires at ${expiresAt} UTC and can only be used once.</p>
+    <p>If you did not expect this invitation, you can ignore this email.</p>
   `;
 
-  await sendEmail({ to: payload.to, subject, html });
+  return sendEmail({ to: payload.to, subject, html });
 };

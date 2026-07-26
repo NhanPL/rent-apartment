@@ -1,6 +1,13 @@
 import { apiRequest } from '../../services/apiClient'
 import { API_ROUTES } from '../../services/apiRoutes'
-import type { AuthUser, ChangePasswordPayload, LoginPayload, LoginResponse } from './types/auth'
+import type {
+  ActivateAccountPayload,
+  ActivationTokenDetails,
+  AuthUser,
+  ChangePasswordPayload,
+  LoginPayload,
+  LoginResponse,
+} from './types/auth'
 
 export function login(payload: LoginPayload) {
   return apiRequest<LoginResponse>(API_ROUTES.auth.login, {
@@ -34,5 +41,20 @@ export function changePassword(payload: ChangePasswordPayload) {
   return apiRequest<{ success: boolean }>(API_ROUTES.auth.password, {
     method: 'PUT',
     body: payload,
+  })
+}
+
+export function validateAccountActivation(token: string) {
+  const query = new URLSearchParams({ token })
+  return apiRequest<ActivationTokenDetails>(`${API_ROUTES.auth.activation}?${query.toString()}`, {
+    skipAuth: true,
+  })
+}
+
+export function activateAccount(payload: ActivateAccountPayload) {
+  return apiRequest<{ success: boolean }>(API_ROUTES.auth.activate, {
+    method: 'POST',
+    body: payload,
+    skipAuth: true,
   })
 }

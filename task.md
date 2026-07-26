@@ -72,26 +72,26 @@ Backend đang chấp nhận đăng nhập khi `password_hash` là `NULL` hoặc 
 
 **Công việc**
 
-- [ ] Khi manager tạo tenant, tạo tài khoản ở trạng thái chờ kích hoạt.
-- [ ] Sinh activation token ngẫu nhiên bằng nguồn random an toàn.
-- [ ] Chỉ lưu hash của activation token trong database.
-- [ ] Đặt thời hạn token, đề xuất 24-48 giờ.
-- [ ] Gửi liên kết kích hoạt qua email nếu SMTP được cấu hình.
-- [ ] Cho phép manager gửi lại lời mời.
-- [ ] Khi gửi lại, vô hiệu hóa activation token cũ.
-- [ ] Tạo trang tenant thiết lập mật khẩu lần đầu.
-- [ ] Yêu cầu nhập mật khẩu mới và xác nhận mật khẩu.
-- [ ] Kích hoạt tài khoản chỉ sau khi đặt mật khẩu thành công.
-- [ ] Không cho phép sử dụng activation token quá hạn hoặc đã dùng.
-- [ ] Ghi audit log cho tạo tài khoản, gửi lời mời và kích hoạt.
+- [x] Khi manager tạo tenant, tạo tài khoản ở trạng thái chờ kích hoạt.
+- [x] Sinh activation token ngẫu nhiên bằng nguồn random an toàn.
+- [x] Chỉ lưu hash của activation token trong database.
+- [x] Đặt thời hạn token, đề xuất 24-48 giờ.
+- [x] Gửi liên kết kích hoạt qua email nếu SMTP được cấu hình.
+- [x] Cho phép manager gửi lại lời mời.
+- [x] Khi gửi lại, vô hiệu hóa activation token cũ.
+- [x] Tạo trang tenant thiết lập mật khẩu lần đầu.
+- [x] Yêu cầu nhập mật khẩu mới và xác nhận mật khẩu.
+- [x] Kích hoạt tài khoản chỉ sau khi đặt mật khẩu thành công.
+- [x] Không cho phép sử dụng activation token quá hạn hoặc đã dùng.
+- [x] Ghi audit log cho tạo tài khoản, gửi lời mời và kích hoạt.
 
 **Tiêu chí nghiệm thu**
 
-- [ ] Tenant chưa kích hoạt không đăng nhập được.
-- [ ] Token chỉ dùng được một lần.
-- [ ] Token hết hạn bị từ chối.
-- [ ] Sau khi kích hoạt, tenant đăng nhập được bằng mật khẩu vừa đặt.
-- [ ] Manager nhìn thấy trạng thái kích hoạt của tenant.
+- [x] Tenant chưa kích hoạt không đăng nhập được.
+- [x] Token chỉ dùng được một lần.
+- [x] Token hết hạn bị từ chối.
+- [x] Sau khi kích hoạt, tenant đăng nhập được bằng mật khẩu vừa đặt.
+- [x] Manager nhìn thấy trạng thái kích hoạt của tenant.
 
 ## AUTH-003 - Quên mật khẩu và đặt lại mật khẩu
 
@@ -895,7 +895,7 @@ Backend đang chấp nhận đăng nhập khi `password_hash` là `NULL` hoặc 
 ## Sprint 1 - Security Foundation
 
 - [ ] AUTH-001: Chặn passwordless login.
-- [ ] AUTH-002: Invitation và activation.
+- [x] AUTH-002: Invitation và activation.
 - [ ] AUTH-004: Refresh token rotation và cookie.
 - [ ] AUTH-005: Password policy/session revoke.
 - [ ] SEC-001: CORS.
