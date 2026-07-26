@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import type { Request } from 'express';
 import { z } from 'zod';
+import { env } from '../../config/env';
 import { requireAuth } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
@@ -7,8 +9,7 @@ import {
   authenticateLogin,
   changePassword,
   getCurrentUser,
-  INVALID_CREDENTIALS_MESSAGE,
-  refreshAccessToken
+  INVALID_CREDENTIALS_MESSAGE
 } from './auth.service';
 import {
   activateTenantAccount,
@@ -19,16 +20,32 @@ import {
   PASSWORD_RESET_REQUEST_MESSAGE,
   requestPasswordReset
 } from './password-reset.service';
+import {
+  revokeAllUserSessions,
+  revokeSessionByRefreshToken,
+  rotateRefreshToken
+} from './session.service';
+import {
+  clearRefreshTokenCookie,
+  getRefreshTokenCookie,
+  setRefreshTokenCookie
+} from './refresh-cookie';
 
 const router = Router();
+const trustedOrigins = new Set(
+  env.CLIENT_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean)
+);
+
+const assertTrustedOrigin = (req: Request): void => {
+  const origin = req.header('origin');
+  if (origin && !trustedOrigins.has(origin)) {
+    throw new AppError(403, 'Request origin is not allowed', 'UNTRUSTED_ORIGIN');
+  }
+};
 
 const loginSchema = z.object({
   identifier: z.string().trim().min(1),
   password: z.string().min(1).max(72)
-});
-
-const refreshSchema = z.object({
-  refreshToken: z.string().min(1)
 });
 
 const changePasswordSchema = z.object({
@@ -88,29 +105,51 @@ const confirmPasswordResetSchema = z.object({
 });
 
 router.post('/login', asyncHandler(async (req, res) => {
+  assertTrustedOrigin(req);
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
     throw new AppError(401, INVALID_CREDENTIALS_MESSAGE, 'INVALID_CREDENTIALS');
   }
 
-  const result = await authenticateLogin(parsed.data.identifier, parsed.data.password);
-  res.json(result);
+  const result = await authenticateLogin(
+    parsed.data.identifier,
+    parsed.data.password,
+    {
+      clientIp: req.ip || req.socket.remoteAddress || 'unknown',
+      userAgent: req.header('user-agent') ?? null
+    }
+  );
+  setRefreshTokenCookie(res, result.refreshToken, result.refreshTokenExpiresAt);
+  res.json({ accessToken: result.accessToken, user: result.user });
 }));
 
 router.post('/refresh', asyncHandler(async (req, res) => {
-  const parsed = refreshSchema.safeParse(req.body);
-  if (!parsed.success) {
-    throw new AppError(400, 'Invalid refresh payload');
+  assertTrustedOrigin(req);
+  const refreshToken = getRefreshTokenCookie(req);
+  if (!refreshToken) {
+    clearRefreshTokenCookie(res);
+    throw new AppError(401, 'Invalid or expired refresh token', 'INVALID_REFRESH_TOKEN');
   }
-
-  const result = await refreshAccessToken(parsed.data.refreshToken);
-  res.json(result);
+  try {
+    const result = await rotateRefreshToken(refreshToken, {
+      clientIp: req.ip || req.socket.remoteAddress || 'unknown',
+      userAgent: req.header('user-agent') ?? null
+    });
+    setRefreshTokenCookie(res, result.refreshToken, result.refreshTokenExpiresAt);
+    res.json({ accessToken: result.accessToken });
+  } catch (error) {
+    clearRefreshTokenCookie(res);
+    throw error;
+  }
 }));
 
-router.post('/logout', (_req, res) => {
-  // Stateless JWT logout. Frontend clears stored tokens.
+router.post('/logout', asyncHandler(async (req, res) => {
+  assertTrustedOrigin(req);
+  const refreshToken = getRefreshTokenCookie(req);
+  if (refreshToken) await revokeSessionByRefreshToken(refreshToken);
+  clearRefreshTokenCookie(res);
   res.status(200).json({ success: true });
-});
+}));
 
 router.get('/activation', asyncHandler(async (req, res) => {
   const parsed = activationTokenSchema.safeParse(req.query.token);
@@ -152,6 +191,7 @@ router.post('/password-reset/confirm', asyncHandler(async (req, res) => {
   }
 
   await confirmPasswordReset(parsed.data.token, parsed.data.newPassword);
+  clearRefreshTokenCookie(res);
   res.json({ success: true });
 }));
 
@@ -167,6 +207,13 @@ router.put('/password', requireAuth, asyncHandler(async (req, res) => {
   }
 
   await changePassword(req.auth!.userId, parsed.data.currentPassword, parsed.data.newPassword);
+  clearRefreshTokenCookie(res);
+  res.json({ success: true });
+}));
+
+router.post('/sessions/revoke-all', requireAuth, asyncHandler(async (req, res) => {
+  await revokeAllUserSessions(req.auth!.userId);
+  clearRefreshTokenCookie(res);
   res.json({ success: true });
 }));
 

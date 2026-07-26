@@ -9,6 +9,7 @@ import {
   sendPasswordChangedEmail,
   sendPasswordResetEmail
 } from '../../shared/services/email.service';
+import { revokeUserSessions } from './session.service';
 
 type PasswordResetClient = Pick<PoolClient, 'query'>;
 
@@ -212,6 +213,7 @@ export const confirmPasswordReset = async (token: string, newPassword: string): 
        WHERE id=$2`,
       [passwordHash, resetToken.user_id]
     );
+    await revokeUserSessions(client, resetToken.user_id, 'PASSWORD_RESET');
 
     await client.query(
       `UPDATE password_reset_token

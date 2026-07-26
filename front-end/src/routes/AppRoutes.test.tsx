@@ -12,6 +12,7 @@ const authMock = vi.hoisted(() => ({
 
 const authApiMock = vi.hoisted(() => ({
   changePassword: vi.fn(),
+  revokeAllSessions: vi.fn(),
 }))
 
 vi.mock('../features/auth/useAuth', () => ({
@@ -20,6 +21,7 @@ vi.mock('../features/auth/useAuth', () => ({
 
 vi.mock('../features/auth/authApi', () => ({
   changePassword: authApiMock.changePassword,
+  revokeAllSessions: authApiMock.revokeAllSessions,
 }))
 
 interface MockRouteItem {

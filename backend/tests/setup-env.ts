@@ -1,11 +1,10 @@
 process.env.NODE_ENV = 'test';
+process.env.APP_ENV = 'test';
 process.env.PORT = process.env.PORT ?? '4000';
 process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://test:test@localhost:5432/rentmate_test';
 process.env.DB_SSL = process.env.DB_SSL ?? 'false';
 process.env.JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET ?? 'test-access-secret';
-process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET ?? 'test-refresh-secret';
-process.env.JWT_ACCESS_EXPIRES_IN = process.env.JWT_ACCESS_EXPIRES_IN ?? '1h';
-process.env.JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN ?? '7d';
+process.env.JWT_ACCESS_EXPIRES_IN = '15m';
 process.env.CLIENT_ORIGIN = process.env.CLIENT_ORIGIN ?? 'http://localhost:5173';
 process.env.FRONTEND_URL = process.env.FRONTEND_URL ?? 'http://localhost:5173';
 process.env.DEFAULT_BANK_CODE = '';

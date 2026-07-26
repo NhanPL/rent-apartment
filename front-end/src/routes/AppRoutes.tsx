@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { AppLayout } from '../layout/AppLayout'
 import { routeItems, sidebarRouteItems } from './routeConfig'
 import { useAuth } from '../features/auth/useAuth'
-import { changePassword } from '../features/auth/authApi'
+import { changePassword, revokeAllSessions } from '../features/auth/authApi'
 import type { AppRole } from '../features/auth/types/auth'
 import { useI18n } from '../i18n'
 import { Localized } from '../shared/components/Localized'
@@ -80,7 +80,7 @@ function resolveProtectedPath(pathname: string, role: AppRole) {
 }
 
 export function AppRoutes() {
-  const { user, isAuthenticated, logout } = useAuth()
+  const { user, isAuthenticated, isInitializing, logout } = useAuth()
   const { t } = useI18n()
   const [pathname, setPathname] = useState(window.location.pathname)
 
@@ -104,6 +104,10 @@ export function AppRoutes() {
         {pathname === '/reset-password' ? <ResetPasswordPage /> : null}
       </Suspense>
     )
+  }
+
+  if (isInitializing) {
+    return <RouteFallback />
   }
 
   if (!isAuthenticated || !user) {
@@ -167,6 +171,10 @@ export function AppRoutes() {
       onLogout={handleLogout}
       onChangePassword={async (payload) => {
         await changePassword(payload)
+        await handleLogout()
+      }}
+      onRevokeAllSessions={async () => {
+        await revokeAllSessions()
         await handleLogout()
       }}
     />

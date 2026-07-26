@@ -60,6 +60,8 @@ class FakeDb {
   activationTokens: Row[] = [];
   passwordResetRequests: Row[] = [];
   passwordResetTokens: Row[] = [];
+  authSessions: Row[] = [];
+  authRefreshTokens: Row[] = [];
   auditLogs: Row[] = [];
   tenantUpdateFailure: Error | null = null;
 
@@ -146,6 +148,8 @@ class FakeDb {
     this.activationTokens = [];
     this.passwordResetRequests = [];
     this.passwordResetTokens = [];
+    this.authSessions = [];
+    this.authRefreshTokens = [];
     this.auditLogs = [];
     this.tenantUpdateFailure = null;
   }
@@ -163,6 +167,161 @@ class FakeDb {
 
     if (sql.startsWith('select pg_advisory_xact_lock(')) {
       return result<T>([]);
+    }
+
+    if (sql.startsWith('insert into auth_session(')) {
+      const session = {
+        id: this.newId(),
+        user_id: params[0],
+        session_version: params[1],
+        expires_at: params[2],
+        ip_hash: params[3],
+        user_agent: params[4],
+        revoked_at: null,
+        revocation_reason: null,
+        last_used_at: new Date().toISOString(),
+        created_at: new Date().toISOString()
+      };
+      this.authSessions.push(session);
+      return result<T>([{ id: session.id } as T]);
+    }
+
+    if (sql.startsWith('insert into auth_refresh_token(')) {
+      const token = {
+        id: this.newId(),
+        session_id: params[0],
+        token_hash: params[1],
+        expires_at: params[2],
+        revoked_at: null,
+        revocation_reason: null,
+        replaced_by_token_id: null,
+        last_used_at: null,
+        created_at: new Date().toISOString()
+      };
+      this.authRefreshTokens.push(token);
+      return result<T>([{ id: token.id } as T]);
+    }
+
+    if (sql.startsWith('select refresh_token.id, refresh_token.session_id')) {
+      const token = this.authRefreshTokens.find((item) => item.token_hash === params[0]);
+      const session = token
+        ? this.authSessions.find((item) => item.id === token.session_id)
+        : null;
+      const user = session
+        ? this.users.find((item) => item.id === session.user_id)
+        : null;
+      return result<T>(token && session && user ? [{
+        id: token.id,
+        session_id: token.session_id,
+        token_expires_at: token.expires_at,
+        token_revoked_at: token.revoked_at,
+        token_revocation_reason: token.revocation_reason,
+        session_expires_at: session.expires_at,
+        session_revoked_at: session.revoked_at,
+        session_version: session.session_version,
+        user_id: user.id,
+        role: user.role,
+        user_session_version: user.session_version,
+        is_active: user.is_active,
+        account_status: user.account_status
+      } as T] : []);
+    }
+
+    if (sql.startsWith("update auth_refresh_token set revoked_at=now(), revocation_reason='rotated'")) {
+      const token = this.authRefreshTokens.find((item) => item.id === params[0]);
+      if (token) {
+        token.revoked_at = new Date().toISOString();
+        token.revocation_reason = 'ROTATED';
+        token.last_used_at = new Date().toISOString();
+      }
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('update auth_refresh_token set replaced_by_token_id=$1')) {
+      const token = this.authRefreshTokens.find((item) => item.id === params[1]);
+      if (token) token.replaced_by_token_id = params[0];
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('update auth_session set last_used_at=now()')) {
+      const session = this.authSessions.find((item) => item.id === params[0]);
+      if (session) {
+        session.last_used_at = new Date().toISOString();
+        session.ip_hash = params[1];
+        session.user_agent = params[2];
+      }
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('select refresh_token.session_id, session.user_id')) {
+      const token = this.authRefreshTokens.find((item) => item.token_hash === params[0]);
+      const session = token
+        ? this.authSessions.find((item) => item.id === token.session_id)
+        : null;
+      return result<T>(token && session ? [{
+        session_id: session.id,
+        user_id: session.user_id
+      } as T] : []);
+    }
+
+    if (sql.startsWith('update auth_session set revoked_at=coalesce(revoked_at,now())')) {
+      const byUser = sql.includes('where user_id=$1');
+      this.authSessions
+        .filter((session) => byUser ? session.user_id === params[0] : session.id === params[0])
+        .forEach((session) => {
+          session.revoked_at ??= new Date().toISOString();
+          session.revocation_reason ??= params[1];
+        });
+      return result<T>([]);
+    }
+
+    if (
+      sql.startsWith('update auth_refresh_token set revoked_at=coalesce(revoked_at,now())')
+      && sql.includes('where session_id=$1')
+    ) {
+      this.authRefreshTokens
+        .filter((token) => token.session_id === params[0])
+        .forEach((token) => {
+          token.revoked_at ??= new Date().toISOString();
+          token.revocation_reason ??= params[1];
+        });
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('update auth_refresh_token refresh_token set revoked_at=coalesce(')) {
+      const sessionIds = this.authSessions
+        .filter((session) => session.user_id === params[0])
+        .map((session) => session.id);
+      this.authRefreshTokens
+        .filter((token) => sessionIds.includes(token.session_id))
+        .forEach((token) => {
+          token.revoked_at ??= new Date().toISOString();
+          token.revocation_reason ??= params[1];
+        });
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('select user_id, session_version, expires_at, revoked_at from auth_session')) {
+      const session = this.authSessions.find((item) => item.id === params[0]);
+      return result<T>(session ? [session as T] : []);
+    }
+
+    if (sql.startsWith('update app_user set session_version=session_version + 1 where id=$1')) {
+      const user = this.users.find((item) => item.id === params[0]);
+      if (user) user.session_version += 1;
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('delete from auth_session')) {
+      const threshold = Date.now() - Number(params[0]) * 24 * 60 * 60 * 1000;
+      const removed = this.authSessions.filter((session) => (
+        new Date(session.expires_at).getTime() <= Date.now()
+        || (session.revoked_at && new Date(session.revoked_at).getTime() < threshold)
+      ));
+      const removedIds = removed.map((session) => session.id);
+      this.authSessions = this.authSessions.filter((session) => !removedIds.includes(session.id));
+      this.authRefreshTokens = this.authRefreshTokens.filter((token) => !removedIds.includes(token.session_id));
+      return result<T>(removed.map((session) => ({ id: session.id }) as T));
     }
 
     if (sql.includes('from app_user') && sql.includes('where email = $1 or username = $1')) {
@@ -206,7 +365,10 @@ class FakeDb {
       const user = this.users.find((item) => item.id === params[1]);
       if (user) {
         user.password_hash = params[0] as string;
-        if (sql.includes('session_version=session_version + 1')) {
+        if (
+          sql.includes('session_version=session_version + 1')
+          || sql.includes('session_version = session_version + 1')
+        ) {
           user.session_version += 1;
         }
         if (sql.includes("account_status='active'")) {

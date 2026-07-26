@@ -1,8 +1,12 @@
 import bcrypt from 'bcrypt';
-import { query } from '../../db';
+import { query, withTransaction } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
 import { AppRole } from '../../shared/middleware/auth';
-import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../../shared/utils/jwt';
+import {
+  createAuthSession,
+  revokeUserSessions,
+  type SessionRequestContext
+} from './session.service';
 
 interface UserRow {
   id: string;
@@ -29,6 +33,7 @@ interface UserProfile {
 export interface LoginResult {
   accessToken: string;
   refreshToken: string;
+  refreshTokenExpiresAt: Date;
   user: UserProfile;
 }
 
@@ -91,7 +96,11 @@ const canAuthenticate = (user: UserRow | undefined): user is UserRow & { passwor
   return user.account_status === 'ACTIVE' && user.is_active && hasPassword(user);
 };
 
-export const authenticateLogin = async (identifier: string, password: string): Promise<LoginResult> => {
+export const authenticateLogin = async (
+  identifier: string,
+  password: string,
+  context: SessionRequestContext
+): Promise<LoginResult> => {
   const { rows } = await query<UserRow>(
     `SELECT id, role, email, username, password_hash, is_active, account_status, session_version
      FROM app_user
@@ -113,55 +122,16 @@ export const authenticateLogin = async (identifier: string, password: string): P
   const userProfile = await toUserProfile(user);
 
   await query('UPDATE app_user SET last_login_at = now() WHERE id = $1', [user.id]);
+  const session = await createAuthSession({
+    id: user.id,
+    role: user.role,
+    sessionVersion: user.session_version
+  }, context);
 
   return {
-    accessToken: signAccessToken({ userId: user.id, role: user.role, sessionVersion: user.session_version }),
-    refreshToken: signRefreshToken({ userId: user.id, role: user.role, sessionVersion: user.session_version }),
+    ...session,
     user: userProfile
   };
-};
-
-export const refreshAccessToken = async (refreshToken: string): Promise<{ accessToken: string; refreshToken?: string }> => {
-  try {
-    const payload = verifyRefreshToken(refreshToken);
-    if (payload.tokenType !== 'refresh') {
-      throw new AppError(401, 'Invalid refresh token');
-    }
-
-    const { rows } = await query<{
-      id: string;
-      role: AppRole;
-      is_active: boolean;
-      account_status: AccountStatus;
-      session_version: number;
-    }>(
-      'SELECT id, role, is_active, account_status, session_version FROM app_user WHERE id = $1 LIMIT 1',
-      [payload.userId]
-    );
-
-    const user = rows[0];
-    if (
-      !user
-      || !user.is_active
-      || user.account_status !== 'ACTIVE'
-      || user.session_version !== (payload.sessionVersion ?? 0)
-    ) {
-      throw new AppError(401, 'Invalid refresh token');
-    }
-
-    return {
-      accessToken: signAccessToken({
-        userId: user.id,
-        role: user.role,
-        sessionVersion: user.session_version
-      })
-    };
-  } catch (error) {
-    if (error instanceof AppError) {
-      throw error;
-    }
-    throw new AppError(401, 'Invalid refresh token');
-  }
 };
 
 export const getCurrentUser = async (userId: string): Promise<UserProfile> => {
@@ -198,8 +168,11 @@ export const changePassword = async (userId: string, currentPassword: string, ne
   }
 
   const passwordHash = await bcrypt.hash(newPassword, 10);
-  await query(
-    'UPDATE app_user SET password_hash = $1, session_version = session_version + 1 WHERE id = $2',
-    [passwordHash, userId]
-  );
+  await withTransaction(async (client) => {
+    await client.query(
+      'UPDATE app_user SET password_hash = $1, session_version = session_version + 1 WHERE id = $2',
+      [passwordHash, userId]
+    );
+    await revokeUserSessions(client, userId, 'PASSWORD_CHANGED');
+  });
 };

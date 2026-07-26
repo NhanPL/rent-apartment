@@ -47,7 +47,31 @@ export const requireAuth = (req: Request, _res: Response, next: NextFunction): v
       || !user.is_active
       || user.account_status !== 'ACTIVE'
       || user.role !== payload.role
-      || user.session_version !== (payload.sessionVersion ?? 0)
+      || user.session_version !== payload.sessionVersion
+    ) {
+      throw new AppError(401, 'Invalid or expired token');
+    }
+
+    if (!payload.sessionId) throw new AppError(401, 'Invalid or expired token');
+    const sessionResult = await query<{
+      user_id: string;
+      session_version: number;
+      expires_at: string;
+      revoked_at: string | null;
+    }>(
+      `SELECT user_id, session_version, expires_at, revoked_at
+       FROM auth_session
+       WHERE id=$1
+       LIMIT 1`,
+      [payload.sessionId]
+    );
+    const session = sessionResult.rows[0];
+    if (
+      !session
+      || session.user_id !== payload.userId
+      || session.session_version !== user.session_version
+      || session.revoked_at
+      || new Date(session.expires_at).getTime() <= Date.now()
     ) {
       throw new AppError(401, 'Invalid or expired token');
     }

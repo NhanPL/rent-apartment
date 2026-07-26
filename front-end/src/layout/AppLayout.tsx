@@ -1,4 +1,4 @@
-import { LockOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, UserOutlined } from '@ant-design/icons'
+import { DisconnectOutlined, LockOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, UserOutlined } from '@ant-design/icons'
 import { Alert, Button, Drawer, Dropdown, Form, Grid, Input, Layout, Menu, Modal, Typography, message } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -22,9 +22,20 @@ interface AppLayoutProps {
   currentUserName: string
   onLogout: () => Promise<void>
   onChangePassword: (payload: ChangePasswordPayload) => Promise<void>
+  onRevokeAllSessions: () => Promise<void>
 }
 
-export function AppLayout({ pathname, onNavigate, items, pageTitle, content, currentUserName, onLogout, onChangePassword }: AppLayoutProps) {
+export function AppLayout({
+  pathname,
+  onNavigate,
+  items,
+  pageTitle,
+  content,
+  currentUserName,
+  onLogout,
+  onChangePassword,
+  onRevokeAllSessions,
+}: AppLayoutProps) {
   const { t } = useI18n()
   const screens = Grid.useBreakpoint()
   const isDesktop = Boolean(screens.lg)
@@ -121,6 +132,32 @@ export function AppLayout({ pathname, onNavigate, items, pageTitle, content, cur
                   onClick: () => {
                     setChangePasswordError(null)
                     setChangePasswordOpen(true)
+                  },
+                },
+                {
+                  key: 'revoke-all-sessions',
+                  label: 'Sign out all devices',
+                  icon: <DisconnectOutlined />,
+                  onClick: () => {
+                    Modal.confirm({
+                      title: t('Sign out all devices?'),
+                      content: t('Every device signed in to this account will need to sign in again.'),
+                      okText: t('Sign out all devices'),
+                      okButtonProps: { danger: true },
+                      cancelText: t('Cancel'),
+                      onOk: async () => {
+                        try {
+                          await onRevokeAllSessions()
+                          message.success(t('All devices have been signed out.'))
+                        } catch (error) {
+                          message.error(getUserErrorMessage(
+                            error,
+                            t('Unable to sign out all devices.'),
+                          ))
+                          throw error
+                        }
+                      },
+                    })
                   },
                 },
                 {

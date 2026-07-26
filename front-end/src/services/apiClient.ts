@@ -1,4 +1,4 @@
-import { clearAuthStorage, getAccessToken, getRefreshToken, setTokens } from '../features/auth/authStorage'
+import { clearAuthStorage, getAccessToken, setAccessToken } from '../features/auth/authStorage'
 import { API_ROUTES } from './apiRoutes'
 
 const apiBaseUrlFromEnv = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim()
@@ -35,25 +35,31 @@ async function parseError(response: Response): Promise<ApiError> {
   return new ApiError(payload?.message ?? 'Request failed', payload?.code ?? 'REQUEST_FAILED', response.status)
 }
 
-async function tryRefreshToken() {
-  const refreshToken = getRefreshToken()
-  if (!refreshToken) {
-    return false
-  }
+let refreshPromise: Promise<boolean> | null = null
 
+async function performRefresh() {
   const response = await fetch(`${API_BASE_URL}${API_ROUTES.auth.refresh}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refreshToken }),
+    credentials: 'include',
   })
 
   if (!response.ok) {
     return false
   }
 
-  const data = (await response.json()) as { accessToken: string; refreshToken?: string }
-  setTokens(data.accessToken, data.refreshToken ?? refreshToken)
+  const data = (await response.json()) as { accessToken: string }
+  setAccessToken(data.accessToken)
   return true
+}
+
+async function tryRefreshToken() {
+  if (!refreshPromise) {
+    refreshPromise = performRefresh().finally(() => {
+      refreshPromise = null
+    })
+  }
+  return refreshPromise
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -72,6 +78,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     method,
     headers: requestHeaders,
     body: body ? JSON.stringify(body) : undefined,
+    credentials: 'include',
   })
 
   if (response.status === 401 && !skipAuth && retry) {
@@ -115,6 +122,7 @@ export async function apiRequestText(path: string, options: RequestOptions = {})
     method,
     headers: requestHeaders,
     body: body ? JSON.stringify(body) : undefined,
+    credentials: 'include',
   })
 
   if (response.status === 401 && !skipAuth && retry) {
