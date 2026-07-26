@@ -6,15 +6,12 @@ import { AppRole } from '../middleware/auth';
 export interface JwtUserPayload {
   userId: string;
   role: AppRole;
-  sessionVersion?: number;
+  sessionVersion: number;
+  sessionId: string;
 }
 
 interface BasePayload extends JwtUserPayload {
   exp: number;
-}
-
-interface RefreshPayload extends BasePayload {
-  tokenType: 'refresh';
 }
 
 const base64UrlEncode = (input: string): string => Buffer.from(input).toString('base64url');
@@ -69,11 +66,5 @@ const verifyToken = <T>(token: string, secret: string): T => {
 export const signAccessToken = (payload: JwtUserPayload): string =>
   signToken(payload, env.JWT_ACCESS_SECRET, env.JWT_ACCESS_EXPIRES_IN);
 
-export const signRefreshToken = (payload: JwtUserPayload): string =>
-  signToken({ ...payload, tokenType: 'refresh' }, env.JWT_REFRESH_SECRET, env.JWT_REFRESH_EXPIRES_IN);
-
 export const verifyAccessToken = (token: string): JwtUserPayload =>
   verifyToken<JwtUserPayload>(token, env.JWT_ACCESS_SECRET);
-
-export const verifyRefreshToken = (token: string): RefreshPayload =>
-  verifyToken<RefreshPayload>(token, env.JWT_REFRESH_SECRET);

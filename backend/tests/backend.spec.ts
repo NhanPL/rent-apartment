@@ -40,6 +40,7 @@ vi.mock('../src/modules/uploads/uploads.service', async (importOriginal) => {
 
 import { app } from '../src/app';
 import { AppError } from '../src/shared/errors/app-error';
+import { cleanupExpiredSessions } from '../src/modules/auth/session.service';
 import { fakeDb, ids } from './support/mock-db';
 
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
@@ -53,14 +54,21 @@ const issueBankPayload = {
 const login = async (identifier: string) => {
   const response = await request(app)
     .post('/api/auth/login')
+    .set('User-Agent', 'RentMate API Test')
     .send({ identifier, password: 'password' })
     .expect(200);
+  const setCookie = response.headers['set-cookie'] as unknown as string[] | undefined;
+  const refreshCookie = setCookie?.[0]?.split(';')[0];
+  if (!refreshCookie) throw new Error('Login did not set a refresh-token cookie');
 
-  return response.body as {
+  return {
+    ...response.body,
+    refreshCookie,
+    setCookie
+  } as {
     accessToken: string;
-    refreshToken: string;
     user: { id: string; role: 'MANAGER' | 'TENANT'; tenantId: string | null; fullName: string | null };
-  };
+  } & { refreshCookie: string; setCookie: string[] };
 };
 
 describe('backend API smoke tests', () => {
@@ -89,14 +97,47 @@ describe('backend API smoke tests', () => {
       tenantId: null
     });
     expect(session.accessToken).toEqual(expect.any(String));
-    expect(session.refreshToken).toEqual(expect.any(String));
+    expect(session).not.toHaveProperty('refreshToken');
+    const loginResponse = await request(app)
+      .post('/api/auth/login')
+      .set('User-Agent', 'RentMate API Test')
+      .send({ identifier: 'manager@example.com', password: 'password' })
+      .expect(200);
+    const loginCookies = loginResponse.headers['set-cookie'] as unknown as string[];
+    const refreshCookie = loginCookies[0].split(';')[0];
+    expect(loginCookies[0]).toContain('HttpOnly');
+    expect(loginCookies[0]).toContain('SameSite=Lax');
+    expect(loginCookies[0]).toContain('Path=/api/auth');
+    expect(loginResponse.body).not.toHaveProperty('refreshToken');
+    expect(fakeDb.authSessions.at(-1)).toMatchObject({
+      ip_hash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      user_agent: expect.any(String)
+    });
+
+    const accessPayload = JSON.parse(
+      Buffer.from(loginResponse.body.accessToken.split('.')[1], 'base64url').toString('utf8')
+    ) as { exp: number; sessionId: string };
+    expect(accessPayload.sessionId).toEqual(expect.any(String));
+    expect(accessPayload.exp - Math.floor(Date.now() / 1000)).toBeLessThanOrEqual(15 * 60);
+    expect(accessPayload.exp - Math.floor(Date.now() / 1000)).toBeGreaterThan(14 * 60);
 
     const refresh = await request(app)
       .post('/api/auth/refresh')
-      .send({ refreshToken: session.refreshToken })
+      .set('Cookie', refreshCookie)
       .expect(200);
 
     expect(refresh.body.accessToken).toEqual(expect.any(String));
+    expect(refresh.body).not.toHaveProperty('refreshToken');
+    const rotatedCookies = refresh.headers['set-cookie'] as unknown as string[];
+    expect(rotatedCookies[0].split(';')[0]).not.toBe(refreshCookie);
+    const rotatedToken = fakeDb.authRefreshTokens.find((token) => token.revocation_reason === 'ROTATED');
+    expect(rotatedToken).toMatchObject({
+      revoked_at: expect.any(String),
+      revocation_reason: 'ROTATED',
+      replaced_by_token_id: expect.any(String)
+    });
+    expect(rotatedToken?.token_hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(refreshCookie).not.toContain(rotatedToken?.token_hash);
 
     const me = await request(app)
       .get('/api/auth/me')
@@ -108,6 +149,106 @@ describe('backend API smoke tests', () => {
       role: 'MANAGER',
       fullName: 'Manager A'
     });
+
+    const reusedRefresh = await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', refreshCookie)
+      .expect(401);
+    expect((reusedRefresh.headers['set-cookie'] as unknown as string[])[0]).toContain(
+      'Expires=Thu, 01 Jan 1970'
+    );
+    await request(app)
+      .get('/api/auth/me')
+      .set(auth(refresh.body.accessToken))
+      .expect(401);
+    expect(fakeDb.authSessions.at(-1)).toMatchObject({
+      revoked_at: expect.any(String),
+      revocation_reason: 'TOKEN_REUSE_DETECTED'
+    });
+    expect(fakeDb.auditLogs).toContainEqual(expect.objectContaining({
+      action: 'REFRESH_TOKEN_REUSE_DETECTED'
+    }));
+  });
+
+  it('revokes the current session on logout', async () => {
+    const session = await login('tenant@example.com');
+
+    const response = await request(app)
+      .post('/api/auth/logout')
+      .set('Cookie', session.refreshCookie)
+      .expect(200, { success: true });
+
+    const clearedCookies = response.headers['set-cookie'] as unknown as string[];
+    expect(clearedCookies[0]).toContain('Expires=Thu, 01 Jan 1970');
+    await request(app)
+      .get('/api/auth/me')
+      .set(auth(session.accessToken))
+      .expect(401);
+    await request(app)
+      .post('/api/auth/refresh')
+      .set('Cookie', session.refreshCookie)
+      .expect(401);
+  });
+
+  it('rejects cookie-auth requests from an untrusted browser origin', async () => {
+    const response = await request(app)
+      .post('/api/auth/login')
+      .set('Origin', 'https://malicious.example')
+      .send({ identifier: 'manager@example.com', password: 'password' })
+      .expect(403);
+
+    expect(response.body).toMatchObject({ code: 'UNTRUSTED_ORIGIN' });
+    expect(fakeDb.authSessions).toHaveLength(0);
+  });
+
+  it('revokes every device session for the authenticated user', async () => {
+    const firstDevice = await login('manager@example.com');
+    const secondDevice = await login('manager@example.com');
+
+    await request(app)
+      .post('/api/auth/sessions/revoke-all')
+      .set(auth(firstDevice.accessToken))
+      .set('Cookie', firstDevice.refreshCookie)
+      .expect(200, { success: true });
+
+    await request(app).get('/api/auth/me').set(auth(firstDevice.accessToken)).expect(401);
+    await request(app).get('/api/auth/me').set(auth(secondDevice.accessToken)).expect(401);
+    expect(fakeDb.authSessions).toHaveLength(2);
+    expect(fakeDb.authSessions.every((item) => item.revoked_at)).toBe(true);
+    expect(fakeDb.auditLogs).toContainEqual(expect.objectContaining({
+      action: 'ALL_AUTH_SESSIONS_REVOKED'
+    }));
+  });
+
+  it('cleans up expired sessions while retaining active sessions', async () => {
+    await login('manager@example.com');
+    fakeDb.authSessions.push({
+      id: '00000000-0000-4000-8000-000000008888',
+      user_id: ids.managerAUser,
+      session_version: 0,
+      expires_at: '2000-01-01T00:00:00.000Z',
+      revoked_at: null,
+      revocation_reason: null,
+      ip_hash: 'a'.repeat(64),
+      user_agent: 'Expired test device',
+      last_used_at: '2000-01-01T00:00:00.000Z',
+      created_at: '2000-01-01T00:00:00.000Z'
+    });
+    fakeDb.authRefreshTokens.push({
+      id: '00000000-0000-4000-8000-000000008889',
+      session_id: '00000000-0000-4000-8000-000000008888',
+      token_hash: 'b'.repeat(64),
+      expires_at: '2000-01-01T00:00:00.000Z',
+      revoked_at: null,
+      revocation_reason: null,
+      replaced_by_token_id: null,
+      last_used_at: null,
+      created_at: '2000-01-01T00:00:00.000Z'
+    });
+
+    await expect(cleanupExpiredSessions()).resolves.toBe(1);
+    expect(fakeDb.authSessions).toHaveLength(1);
+    expect(fakeDb.authRefreshTokens).toHaveLength(1);
   });
 
   it('rejects users without a stored password using the generic credentials error', async () => {
@@ -204,6 +345,11 @@ describe('backend API smoke tests', () => {
         confirmPassword: newPassword
       })
       .expect(200, { success: true });
+    expect(fakeDb.authSessions.every((item) => item.revoked_at)).toBe(true);
+    await request(app)
+      .get('/api/auth/me')
+      .set(auth(session.accessToken))
+      .expect(401);
 
     await request(app)
       .post('/api/auth/login')
@@ -312,6 +458,7 @@ describe('backend API smoke tests', () => {
         confirmPassword: 'reset-password-123'
       })
       .expect(200, { success: true });
+    expect(fakeDb.authSessions.every((item) => item.revoked_at)).toBe(true);
 
     await request(app)
       .get('/api/auth/me')
@@ -319,7 +466,7 @@ describe('backend API smoke tests', () => {
       .expect(401);
     await request(app)
       .post('/api/auth/refresh')
-      .send({ refreshToken: oldSession.refreshToken })
+      .set('Cookie', oldSession.refreshCookie)
       .expect(401);
     await request(app)
       .post('/api/auth/login')

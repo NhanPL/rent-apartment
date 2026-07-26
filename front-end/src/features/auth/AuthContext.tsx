@@ -1,24 +1,21 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { login as loginRequest, logoutApi, me } from './authApi'
-import { clearAuthStorage, getCurrentUser, getRefreshToken, setCurrentUser, setTokens } from './authStorage'
+import { login as loginRequest, logoutApi, me, refresh } from './authApi'
+import { clearAuthStorage, setAccessToken } from './authStorage'
 import type { AuthUser, LoginPayload } from './types/auth'
 import { AuthContext, type AuthContextValue } from './auth-context-value'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(() => getCurrentUser())
-  const [isInitializing, setIsInitializing] = useState(false)
+  const [user, setUser] = useState<AuthUser | null>(null)
+  const [isInitializing, setIsInitializing] = useState(true)
 
   const refreshCurrentUser = useCallback(async () => {
-    if (!getRefreshToken()) {
-      return
-    }
-
     try {
       setIsInitializing(true)
+      const session = await refresh()
+      setAccessToken(session.accessToken)
       const profile = await me()
       setUser(profile)
-      setCurrentUser(profile)
     } catch {
       clearAuthStorage()
       setUser(null)
@@ -27,18 +24,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  useEffect(() => {
+    void refreshCurrentUser()
+  }, [refreshCurrentUser])
+
   const login = useCallback(async (payload: LoginPayload) => {
     const data = await loginRequest(payload)
-    setTokens(data.accessToken, data.refreshToken)
-    setCurrentUser(data.user)
+    setAccessToken(data.accessToken)
     setUser(data.user)
     return data.user
   }, [])
 
   const logout = useCallback(async () => {
-    const refreshToken = getRefreshToken()
     try {
-      await logoutApi(refreshToken)
+      await logoutApi()
     } catch {
       // noop
     }

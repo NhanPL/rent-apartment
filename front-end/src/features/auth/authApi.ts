@@ -19,10 +19,9 @@ export function login(payload: LoginPayload) {
   })
 }
 
-export function refresh(refreshToken: string) {
-  return apiRequest<{ accessToken: string; refreshToken?: string }>(API_ROUTES.auth.refresh, {
+export function refresh() {
+  return apiRequest<{ accessToken: string }>(API_ROUTES.auth.refresh, {
     method: 'POST',
-    body: { refreshToken },
     skipAuth: true,
   })
 }
@@ -31,11 +30,16 @@ export function me() {
   return apiRequest<AuthUser>(API_ROUTES.auth.me)
 }
 
-export function logoutApi(refreshToken: string | null) {
+export function logoutApi() {
   return apiRequest<{ success: boolean }>(API_ROUTES.auth.logout, {
     method: 'POST',
-    body: refreshToken ? { refreshToken } : {},
     skipAuth: true,
+  })
+}
+
+export function revokeAllSessions() {
+  return apiRequest<{ success: boolean }>(API_ROUTES.auth.revokeAllSessions, {
+    method: 'POST',
   })
 }
 

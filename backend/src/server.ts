@@ -1,6 +1,7 @@
 import { app } from './app';
 import { env } from './config/env';
 import { assertDatabaseConnection } from './db/connection';
+import { startSessionCleanupScheduler } from './modules/auth/session.service';
 
 process.on('unhandledRejection', (reason) => {
   // eslint-disable-next-line no-console
@@ -17,6 +18,7 @@ async function bootstrap() {
     await assertDatabaseConnection();
     // eslint-disable-next-line no-console
     console.log('Database connected successfully.');
+    startSessionCleanupScheduler();
 
     app.listen(env.PORT, () => {
       // eslint-disable-next-line no-console

@@ -52,10 +52,29 @@ Set strong values for:
 
 ```env
 JWT_ACCESS_SECRET=change-me
-JWT_REFRESH_SECRET=change-me
+JWT_ACCESS_EXPIRES_IN=15m
+REFRESH_TOKEN_EXPIRES_DAYS=7
 ```
 
-SMTP is optional in local development. If these values are blank, tenant activation emails are skipped and the API keeps running. Managers can resend the invitation after SMTP is configured:
+Refresh tokens are opaque values stored only in an `HttpOnly` cookie. Configure
+the cookie and reverse-proxy behavior for each environment:
+
+```env
+APP_ENV=development
+REFRESH_COOKIE_NAME=rent_refresh_token
+REFRESH_COOKIE_DOMAIN=
+REFRESH_COOKIE_SAME_SITE=
+TRUST_PROXY_HOPS=1
+SESSION_CLEANUP_INTERVAL_HOURS=6
+SESSION_RETENTION_DAYS=30
+```
+
+When `APP_ENV` is `staging` or `production`, the refresh cookie automatically
+uses `Secure`. If the frontend and API are deployed on different sites, leave
+`REFRESH_COOKIE_SAME_SITE` blank to use the production default `None`; local
+development defaults to `Lax`.
+
+SMTP is optional in local development. If these values are blank, account activation and password reset emails are skipped and the API keeps running. Managers can resend the invitation after SMTP is configured:
 
 ```env
 SMTP_HOST=

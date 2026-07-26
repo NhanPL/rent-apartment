@@ -60,6 +60,14 @@ const auth = [
   entry('The username or password is incorrect. Please try again.', 'Tên đăng nhập hoặc mật khẩu không đúng. Vui lòng nhập lại.'),
 ]
 
+const sessionSecurity = [
+  entry('Sign out all devices', 'Đăng xuất tất cả thiết bị'),
+  entry('Sign out all devices?', 'Đăng xuất tất cả thiết bị?'),
+  entry('Every device signed in to this account will need to sign in again.', 'Mọi thiết bị đang đăng nhập tài khoản này sẽ phải đăng nhập lại.'),
+  entry('All devices have been signed out.', 'Đã đăng xuất tất cả thiết bị.'),
+  entry('Unable to sign out all devices.', 'Không thể đăng xuất tất cả thiết bị.'),
+]
+
 const accountActivation = [
   entry('Checking your activation link...', 'Đang kiểm tra liên kết kích hoạt...'),
   entry('Account activated', 'Tài khoản đã được kích hoạt'),
@@ -985,6 +993,7 @@ const coverage = [
 export const translationCatalog: TranslationEntry[] = [
   ...navigation,
   ...auth,
+  ...sessionSecurity,
   ...accountActivation,
   ...passwordReset,
   ...tenantFormErrors,

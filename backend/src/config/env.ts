@@ -5,8 +5,14 @@ dotenv.config();
 
 const optionalString = z.string().optional().default('');
 const optionalEmail = z.union([z.string().email(), z.literal('')]).optional().default('');
+const defaultAppEnv = process.env.NODE_ENV === 'production' ? 'production' : 'development';
+const optionalSameSite = z.preprocess(
+  (value) => value === '' ? undefined : value,
+  z.enum(['strict', 'lax', 'none']).optional()
+);
 
 const envSchema = z.object({
+  APP_ENV: z.enum(['development', 'test', 'staging', 'production']).default(defaultAppEnv),
   PORT: z.coerce.number().int().positive().default(4000),
   DATABASE_URL: z.string().min(1),
   DB_SSL: z.enum(['true', 'false']).default('true'),
@@ -15,9 +21,13 @@ const envSchema = z.object({
   DB_IDLE_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   DB_POOL_MAX: z.coerce.number().int().positive().default(10),
   JWT_ACCESS_SECRET: z.string().min(1),
-  JWT_REFRESH_SECRET: z.string().min(1),
-  JWT_ACCESS_EXPIRES_IN: z.string().default('1d'),
-  JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
+  JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
+  REFRESH_TOKEN_EXPIRES_DAYS: z.coerce.number().int().min(1).max(90).default(7),
+  REFRESH_COOKIE_NAME: z.string().trim().min(1).default('rent_refresh_token'),
+  REFRESH_COOKIE_DOMAIN: optionalString,
+  REFRESH_COOKIE_SAME_SITE: optionalSameSite,
+  SESSION_CLEANUP_INTERVAL_HOURS: z.coerce.number().int().min(1).max(168).default(6),
+  SESSION_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   ACCOUNT_ACTIVATION_EXPIRES_HOURS: z.coerce.number().int().min(1).max(168).default(48),
   PASSWORD_RESET_EXPIRES_MINUTES: z.coerce.number().int().min(5).max(120).default(30),
   PASSWORD_RESET_RATE_WINDOW_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
