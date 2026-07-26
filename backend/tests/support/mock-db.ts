@@ -550,7 +550,8 @@ class FakeDb {
       return result<T>(resetToken && user ? [{
         id: resetToken.id,
         user_id: resetToken.user_id,
-        email: user.email
+        email: user.email,
+        password_hash: user.password_hash
       } as T] : []);
     }
 

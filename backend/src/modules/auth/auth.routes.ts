@@ -6,6 +6,10 @@ import { requireAuth } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
 import {
+  assertPasswordPolicy,
+  PASSWORD_MAX_LENGTH
+} from '../../shared/utils/password';
+import {
   authenticateLogin,
   changePassword,
   getCurrentUser,
@@ -45,45 +49,21 @@ const assertTrustedOrigin = (req: Request): void => {
 
 const loginSchema = z.object({
   identifier: z.string().trim().min(1),
-  password: z.string().min(1).max(72)
+  password: z.string().min(1).max(PASSWORD_MAX_LENGTH)
 });
 
 const changePasswordSchema = z.object({
-  currentPassword: z.string().min(1).max(72),
-  newPassword: z.string().min(8).max(72),
-  confirmPassword: z.string().min(1).max(72)
-}).superRefine((data, ctx) => {
-  if (data.newPassword !== data.confirmPassword) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['confirmPassword'],
-      message: 'Password confirmation does not match'
-    });
-  }
-
-  if (data.currentPassword === data.newPassword) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['newPassword'],
-      message: 'New password must be different from the current password'
-    });
-  }
+  currentPassword: z.string().min(1).max(PASSWORD_MAX_LENGTH),
+  newPassword: z.string().min(1),
+  confirmPassword: z.string().min(1)
 });
 
 const activationTokenSchema = z.string().trim().min(32).max(256);
 
 const activateAccountSchema = z.object({
   token: activationTokenSchema,
-  newPassword: z.string().min(8).max(72),
-  confirmPassword: z.string().min(8).max(72)
-}).superRefine((data, ctx) => {
-  if (data.newPassword !== data.confirmPassword) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['confirmPassword'],
-      message: 'Password confirmation does not match'
-    });
-  }
+  newPassword: z.string().min(1),
+  confirmPassword: z.string().min(1)
 });
 
 const requestPasswordResetSchema = z.object({
@@ -92,17 +72,31 @@ const requestPasswordResetSchema = z.object({
 
 const confirmPasswordResetSchema = z.object({
   token: z.string().trim().min(1).max(256),
-  newPassword: z.string().min(8).max(72),
-  confirmPassword: z.string().min(8).max(72)
-}).superRefine((data, ctx) => {
-  if (data.newPassword !== data.confirmPassword) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['confirmPassword'],
-      message: 'Password confirmation does not match'
-    });
-  }
+  newPassword: z.string().min(1),
+  confirmPassword: z.string().min(1)
 });
+
+const validateNewPassword = (
+  newPassword: string,
+  confirmPassword: string,
+  currentPassword?: string
+): void => {
+  assertPasswordPolicy(newPassword);
+  if (newPassword !== confirmPassword) {
+    throw new AppError(
+      400,
+      'Password confirmation does not match',
+      'PASSWORD_CONFIRMATION_MISMATCH'
+    );
+  }
+  if (currentPassword !== undefined && currentPassword === newPassword) {
+    throw new AppError(
+      400,
+      'New password must be different from the current password',
+      'PASSWORD_REUSE_NOT_ALLOWED'
+    );
+  }
+};
 
 router.post('/login', asyncHandler(async (req, res) => {
   assertTrustedOrigin(req);
@@ -170,6 +164,7 @@ router.post('/activate', asyncHandler(async (req, res) => {
     throw new AppError(400, 'Please enter and confirm a valid password.', 'VALIDATION_ERROR');
   }
 
+  validateNewPassword(parsed.data.newPassword, parsed.data.confirmPassword);
   await activateTenantAccount(parsed.data.token, parsed.data.newPassword);
   res.json({ success: true });
 }));
@@ -190,6 +185,7 @@ router.post('/password-reset/confirm', asyncHandler(async (req, res) => {
     throw new AppError(400, 'Please enter and confirm a valid password.', 'VALIDATION_ERROR');
   }
 
+  validateNewPassword(parsed.data.newPassword, parsed.data.confirmPassword);
   await confirmPasswordReset(parsed.data.token, parsed.data.newPassword);
   clearRefreshTokenCookie(res);
   res.json({ success: true });
@@ -206,6 +202,11 @@ router.put('/password', requireAuth, asyncHandler(async (req, res) => {
     throw new AppError(400, 'Invalid password change payload', 'VALIDATION_ERROR');
   }
 
+  validateNewPassword(
+    parsed.data.newPassword,
+    parsed.data.confirmPassword,
+    parsed.data.currentPassword
+  );
   await changePassword(req.auth!.userId, parsed.data.currentPassword, parsed.data.newPassword);
   clearRefreshTokenCookie(res);
   res.json({ success: true });

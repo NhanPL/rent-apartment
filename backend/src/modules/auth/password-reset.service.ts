@@ -1,10 +1,14 @@
-import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import type { PoolClient } from 'pg';
 import { env } from '../../config/env';
 import { withTransaction } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
 import { writeAuditLog } from '../../shared/services/audit-log.service';
+import {
+  assertPasswordPolicy,
+  hashPassword,
+  verifyPasswordHash
+} from '../../shared/utils/password';
 import {
   sendPasswordChangedEmail,
   sendPasswordResetEmail
@@ -22,6 +26,7 @@ interface ResetTokenRow {
   id: string;
   user_id: string;
   email: string;
+  password_hash: string;
 }
 
 interface RateLimitRow {
@@ -183,7 +188,8 @@ const findValidResetToken = async (
   if (!TOKEN_PATTERN.test(token)) throw invalidResetToken();
 
   const result = await client.query<ResetTokenRow>(
-    `SELECT reset_token.id, reset_token.user_id, app_user.email::text AS email
+    `SELECT reset_token.id, reset_token.user_id,
+            app_user.email::text AS email, app_user.password_hash
      FROM password_reset_token reset_token
      JOIN app_user ON app_user.id=reset_token.user_id
      WHERE reset_token.token_hash=$1
@@ -202,9 +208,29 @@ const findValidResetToken = async (
 };
 
 export const confirmPasswordReset = async (token: string, newPassword: string): Promise<void> => {
+  assertPasswordPolicy(newPassword);
   const completedReset = await withTransaction<{ email: string; userId: string }>(async (client) => {
     const resetToken = await findValidResetToken(client, token);
-    const passwordHash = await bcrypt.hash(newPassword, 10);
+    const applicationPasswordMatch = await verifyPasswordHash(
+      newPassword,
+      resetToken.password_hash
+    );
+    const passwordMatches = applicationPasswordMatch ?? Boolean(
+      (
+        await client.query<{ is_valid: boolean }>(
+          'SELECT crypt($1, $2) = $2 AS is_valid',
+          [newPassword, resetToken.password_hash]
+        )
+      ).rows[0]?.is_valid
+    );
+    if (passwordMatches) {
+      throw new AppError(
+        400,
+        'New password must be different from the current password',
+        'PASSWORD_REUSE_NOT_ALLOWED'
+      );
+    }
+    const passwordHash = await hashPassword(newPassword);
 
     await client.query(
       `UPDATE app_user

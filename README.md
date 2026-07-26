@@ -74,6 +74,14 @@ uses `Secure`. If the frontend and API are deployed on different sites, leave
 `REFRESH_COOKIE_SAME_SITE` blank to use the production default `None`; local
 development defaults to `Lax`.
 
+Account passwords use a consistent 12 to 128 character policy across the API
+and frontend. Long passphrases are supported by hashing the complete UTF-8
+password with SHA-256 before bcrypt; existing bcrypt and PostgreSQL `crypt`
+hashes are upgraded after a successful login. A local common-password denylist
+is used so password values are never sent to an external breach-checking
+service. Authentication request bodies and password values must not be written
+to application logs.
+
 SMTP is optional in local development. If these values are blank, account activation and password reset emails are skipped and the API keeps running. Managers can resend the invitation after SMTP is configured:
 
 ```env

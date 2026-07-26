@@ -55,4 +55,19 @@ describe('ActivateAccountPage', () => {
     expect(await screen.findByText('Unable to activate account')).toBeInTheDocument()
     expect(screen.getByText('This activation link is invalid, expired, or has already been used.')).toBeInTheDocument()
   })
+
+  it('blocks passwords shorter than the shared minimum length', async () => {
+    const user = userEvent.setup()
+    render(<ActivateAccountPage />)
+
+    expect(await screen.findByText('Set your password')).toBeInTheDocument()
+    await user.type(screen.getByLabelText('New password'), 'too-short')
+    await user.type(screen.getByLabelText('Confirm new password'), 'too-short')
+    await user.click(screen.getByRole('button', { name: 'Activate account' }))
+
+    expect(
+      await screen.findAllByText('The new password must contain at least 12 characters.'),
+    ).not.toHaveLength(0)
+    expect(activationMocks.activateAccount).not.toHaveBeenCalled()
+  })
 })

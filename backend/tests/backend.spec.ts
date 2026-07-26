@@ -41,6 +41,7 @@ vi.mock('../src/modules/uploads/uploads.service', async (importOriginal) => {
 import { app } from '../src/app';
 import { AppError } from '../src/shared/errors/app-error';
 import { cleanupExpiredSessions } from '../src/modules/auth/session.service';
+import { hashPassword } from '../src/shared/utils/password';
 import { fakeDb, ids } from './support/mock-db';
 
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
@@ -98,6 +99,9 @@ describe('backend API smoke tests', () => {
     });
     expect(session.accessToken).toEqual(expect.any(String));
     expect(session).not.toHaveProperty('refreshToken');
+    expect(
+      fakeDb.users.find((user) => user.id === ids.managerAUser)?.password_hash
+    ).toMatch(/^\$bcrypt-sha256\$/);
     const loginResponse = await request(app)
       .post('/api/auth/login')
       .set('User-Agent', 'RentMate API Test')
@@ -376,7 +380,54 @@ describe('backend API smoke tests', () => {
       })
       .expect(400);
 
-    expect(response.body).toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(response.body).toMatchObject({
+      code: 'PASSWORD_CONFIRMATION_MISMATCH',
+      message: 'Password confirmation does not match'
+    });
+  });
+
+  it('rejects a common new password without exposing sensitive values', async () => {
+    const session = await login('manager@example.com');
+
+    const response = await request(app)
+      .put('/api/auth/password')
+      .set(auth(session.accessToken))
+      .send({
+        currentPassword: 'password',
+        newPassword: 'password1234',
+        confirmPassword: 'password1234'
+      })
+      .expect(400);
+
+    expect(response.body).toMatchObject({
+      code: 'PASSWORD_TOO_COMMON',
+      message: 'This password is too common. Choose a less common password or a longer passphrase.'
+    });
+    expect(JSON.stringify(response.body)).not.toContain('"password1234"');
+    expect(fakeDb.authSessions.some((item) => !item.revoked_at)).toBe(true);
+  });
+
+  it('changes and authenticates with a passphrase longer than 72 bytes', async () => {
+    const session = await login('manager@example.com');
+    const passphrase = `${'correct-horse-battery-staple-'.repeat(4)}safe`;
+
+    expect(passphrase.length).toBeLessThanOrEqual(128);
+    expect(Buffer.byteLength(passphrase, 'utf8')).toBeGreaterThan(72);
+
+    await request(app)
+      .put('/api/auth/password')
+      .set(auth(session.accessToken))
+      .send({
+        currentPassword: 'password',
+        newPassword: passphrase,
+        confirmPassword: passphrase
+      })
+      .expect(200, { success: true });
+
+    await request(app)
+      .post('/api/auth/login')
+      .send({ identifier: 'manager@example.com', password: passphrase })
+      .expect(200);
   });
 
   it('requests password reset without revealing whether the account exists', async () => {
@@ -426,6 +477,37 @@ describe('backend API smoke tests', () => {
       action: 'PASSWORD_RESET_REQUESTED',
       metadata: { outcome: 'RATE_LIMITED' }
     });
+  });
+
+  it('does not allow a password reset to reuse the current password', async () => {
+    const currentPassword = 'existing-secure-password';
+    const manager = fakeDb.users.find((user) => user.id === ids.managerAUser)!;
+    manager.password_hash = await hashPassword(currentPassword);
+
+    await request(app)
+      .post('/api/auth/password-reset/request')
+      .send({ email: 'manager@example.com' })
+      .expect(202);
+    const emailPayload = emailServiceMocks.sendPasswordResetEmail.mock.calls[0][0] as {
+      resetUrl: string;
+    };
+    const token = new URL(emailPayload.resetUrl).searchParams.get('token');
+
+    const response = await request(app)
+      .post('/api/auth/password-reset/confirm')
+      .send({
+        token,
+        newPassword: currentPassword,
+        confirmPassword: currentPassword
+      })
+      .expect(400);
+
+    expect(response.body).toMatchObject({
+      code: 'PASSWORD_REUSE_NOT_ALLOWED',
+      message: 'New password must be different from the current password'
+    });
+    expect(fakeDb.passwordResetTokens[0].used_at).toBeNull();
+    expect(emailServiceMocks.sendPasswordChangedEmail).not.toHaveBeenCalled();
   });
 
   it('resets the password, revokes sessions, and cannot reuse the reset token', async () => {

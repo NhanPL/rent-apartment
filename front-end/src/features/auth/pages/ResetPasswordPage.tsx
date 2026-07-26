@@ -6,6 +6,7 @@ import { Localized } from '../../../shared/components/Localized'
 import { AuthLayout } from '../../../shared/layout/AuthLayout'
 import { confirmPasswordReset } from '../authApi'
 import { useAuth } from '../useAuth'
+import { passwordLengthRules } from '../passwordPolicy'
 import './PasswordResetPage.css'
 
 interface ResetPasswordFormValues {
@@ -90,8 +91,7 @@ export function ResetPasswordPage() {
                   name="newPassword"
                   rules={[
                     { required: true, message: 'Please enter a new password.' },
-                    { min: 8, message: 'The new password must contain at least 8 characters.' },
-                    { max: 72, message: 'The new password cannot exceed 72 characters.' },
+                    ...passwordLengthRules,
                   ]}
                 >
                   <Input.Password autoComplete="new-password" placeholder="Enter your new password" />

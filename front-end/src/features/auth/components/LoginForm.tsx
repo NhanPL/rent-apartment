@@ -6,6 +6,7 @@ import { getFormErrorMessage, getUserErrorMessage } from '../../../services/erro
 import { useI18n } from '../../../i18n'
 import { LanguageSwitcher } from '../../../shared/components/LanguageSwitcher'
 import { Localized } from '../../../shared/components/Localized'
+import { PASSWORD_MAX_LENGTH } from '../passwordPolicy'
 import './LoginForm.css'
 
 const { Title, Text } = Typography
@@ -80,7 +81,13 @@ export function LoginForm() {
         <Form.Item
           label="Password"
           name="password"
-          rules={[{ required: true, message: 'Please enter your password.' }]}
+          rules={[
+            { required: true, message: 'Please enter your password.' },
+            {
+              max: PASSWORD_MAX_LENGTH,
+              message: `The password cannot exceed ${PASSWORD_MAX_LENGTH} characters.`,
+            },
+          ]}
         >
           <Input.Password autoComplete="current-password" placeholder="Enter your password" />
         </Form.Item>

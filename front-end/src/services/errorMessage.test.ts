@@ -13,6 +13,19 @@ describe('getUserErrorMessage', () => {
       .toBe('The username or password is incorrect. Please try again.')
   })
 
+  it('maps password policy errors without echoing the submitted password', () => {
+    const message = getUserErrorMessage(new ApiError(
+      'technical message',
+      'PASSWORD_TOO_COMMON',
+      400,
+    ))
+
+    expect(message).toBe(
+      'This password is too common. Choose a less common password or a longer passphrase.',
+    )
+    expect(message).not.toContain('technical message')
+  })
+
   it('uses an HTTP fallback when the backend code is unknown', () => {
     expect(getUserErrorMessage(new ApiError('technical message', 'NEW_CODE', 403)))
       .toBe('You do not have permission to perform this action.')

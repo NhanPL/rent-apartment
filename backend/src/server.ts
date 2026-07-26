@@ -2,15 +2,16 @@ import { app } from './app';
 import { env } from './config/env';
 import { assertDatabaseConnection } from './db/connection';
 import { startSessionCleanupScheduler } from './modules/auth/session.service';
+import { toSafeErrorLog } from './shared/utils/safe-log';
 
 process.on('unhandledRejection', (reason) => {
   // eslint-disable-next-line no-console
-  console.error('Unhandled Rejection:', reason);
+  console.error('Unhandled rejection', toSafeErrorLog(reason));
 });
 
 process.on('uncaughtException', (error) => {
   // eslint-disable-next-line no-console
-  console.error('Uncaught Exception:', error);
+  console.error('Uncaught exception', toSafeErrorLog(error));
 });
 
 async function bootstrap() {
