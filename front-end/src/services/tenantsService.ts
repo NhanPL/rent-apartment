@@ -53,6 +53,14 @@ export function deleteTenant(id: string): Promise<void> {
   return apiRequest<void>(API_ROUTES.tenants.detail(id), { method: 'DELETE' })
 }
 
+export function resendTenantActivation(id: string): Promise<{
+  message: string
+  emailSent: boolean
+  expiresAt: string
+}> {
+  return apiRequest(API_ROUTES.tenants.resendActivation(id), { method: 'POST' })
+}
+
 export function listTenantContracts(id: string) {
   return apiRequest<Array<Record<string, unknown>>>(`${API_ROUTES.tenants.detail(id)}/contracts`)
 }

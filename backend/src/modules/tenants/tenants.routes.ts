@@ -6,6 +6,7 @@ import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
 import { parseBody } from '../../shared/utils/validation';
 import { CURRENT_CONTRACT_STATUS } from '../contracts/contracts.rules';
+import { resendTenantActivation } from '../auth/account-activation.service';
 import {
   createTenant as createTenantService,
   createTenantContract,
@@ -47,6 +48,7 @@ interface TenantListRow {
   contract_id: string | null;
   start_date: string | null;
   contract_status: string | null;
+  account_status: 'PENDING_ACTIVATION' | 'ACTIVE' | 'DISABLED' | null;
 }
 
 interface CountRow {
@@ -236,8 +238,9 @@ router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 
   const dataRs = await query<TenantListRow>(
     `SELECT t.*, v.room_id, v.room_code, v.building_id, v.building_name, v.contract_id, v.start_date,
-            v.contract_status
+            v.contract_status, au.account_status
      FROM tenant t
+     LEFT JOIN app_user au ON au.id=t.user_id
      ${currentRentalJoin}
      ${whereClause}
      ORDER BY t.updated_at DESC
@@ -266,8 +269,9 @@ router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 
 router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const tenantRs = await query(
-    `SELECT t.*
+    `SELECT t.*, au.account_status
      FROM tenant t
+     LEFT JOIN app_user au ON au.id=t.user_id
      WHERE t.id=$1
        AND t.manager_user_id=$2
        AND t.status <> $3`,
@@ -326,6 +330,17 @@ router.post('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
     tenantId: result.tenantId,
     userId: result.userId,
     emailSent: result.emailSent
+  });
+}));
+
+router.post('/:id/resend-activation', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  const result = await resendTenantActivation(req.params.id, req.auth!.userId);
+  res.json({
+    message: result.emailSent
+      ? 'Activation invitation sent successfully'
+      : 'Activation invitation renewed, but email delivery is not configured',
+    emailSent: result.emailSent,
+    expiresAt: result.expiresAt
   });
 }));
 

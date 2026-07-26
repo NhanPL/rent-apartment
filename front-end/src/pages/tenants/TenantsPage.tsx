@@ -1,4 +1,4 @@
-import { DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons'
+import { DeleteOutlined, EditOutlined, EyeOutlined, MailOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons'
 import {
   Button,
   Card,
@@ -27,6 +27,7 @@ import {
   deleteTenant,
   getTenant,
   listTenants,
+  resendTenantActivation,
   updateTenant,
   updateTenantIdentityDocuments,
 } from '../../services/tenantsService'
@@ -35,6 +36,7 @@ import { Localized } from '../../shared/components/Localized'
 import { uploadFileToCloudinary } from '../../services/uploadService'
 import type {
   TenantDetail,
+  AccountStatus,
   TenantIdentityDocument,
   TenantIdentityDocumentFilePayload,
   TenantIdentityDocumentUpdatePayload,
@@ -113,6 +115,7 @@ export function TenantsPage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<TenantListItem | null>(null)
   const [deletingTenantId, setDeletingTenantId] = useState<string | null>(null)
+  const [resendingTenantId, setResendingTenantId] = useState<string | null>(null)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(searchInput), 300)
@@ -239,6 +242,7 @@ export function TenantsPage() {
   const submitForm = useCallback(async () => {
     setSaveLoading(true)
     let profileSaved = false
+    let activationEmailSent: boolean | null = null
     try {
       const values = await form.validateFields()
       const payload = mapTenantFormValuesToPayload(values)
@@ -246,6 +250,7 @@ export function TenantsPage() {
 
       if (drawerMode === 'create') {
         const created = await createTenant(payload)
+        activationEmailSent = created.emailSent
         tenantId = created.tenantId
         setDrawerMode('edit')
         setEditingTenantId(created.tenantId)
@@ -256,7 +261,15 @@ export function TenantsPage() {
 
       if (!tenantId) throw new Error('The tenant profile was saved without a tenant identifier.')
       await saveIdentityDocuments(tenantId, values)
-      message.success(drawerMode === 'create' ? 'Tenant created successfully.' : 'Tenant updated successfully.')
+      if (drawerMode === 'create' && activationEmailSent === false) {
+        message.warning('Tenant created, but the activation email was not sent. You can resend the invitation later.')
+      } else {
+        message.success(
+          drawerMode === 'create'
+            ? 'Tenant created and activation invitation sent.'
+            : 'Tenant updated successfully.',
+        )
+      }
       setDrawerOpen(false)
       await loadTenants()
     } catch (saveError: unknown) {
@@ -309,6 +322,23 @@ export function TenantsPage() {
     }
   }, [])
 
+  const handleResendActivation = useCallback(async (tenant: TenantListItem) => {
+    if (resendingTenantId) return
+    setResendingTenantId(tenant.id)
+    try {
+      const result = await resendTenantActivation(tenant.id)
+      if (result.emailSent) {
+        message.success('Activation invitation sent successfully.')
+      } else {
+        message.warning('Invitation renewed, but email delivery is not configured.')
+      }
+    } catch (resendError) {
+      message.error(getUserErrorMessage(resendError, 'Unable to resend the activation invitation.'))
+    } finally {
+      setResendingTenantId(null)
+    }
+  }, [resendingTenantId])
+
   const columns: ColumnsType<TenantListItem> = useMemo(() => [
     { title: 'Tenant name', dataIndex: 'full_name', key: 'full_name', width: 190 },
     {
@@ -334,6 +364,21 @@ export function TenantsPage() {
       },
     },
     {
+      title: 'Account status',
+      dataIndex: 'account_status',
+      key: 'account_status',
+      width: 170,
+      render: (value: AccountStatus | null) => {
+        if (!value) return '-'
+        const settings: Record<AccountStatus, { label: string; color: string }> = {
+          PENDING_ACTIVATION: { label: 'Pending activation', color: 'gold' },
+          ACTIVE: { label: 'Active', color: 'green' },
+          DISABLED: { label: 'Disabled', color: 'default' },
+        }
+        return <Tag color={settings[value].color}>{settings[value].label}</Tag>
+      },
+    },
+    {
       title: 'Updated at',
       dataIndex: 'updated_at',
       key: 'updated_at',
@@ -344,11 +389,22 @@ export function TenantsPage() {
       title: 'Actions',
       key: 'actions',
       fixed: 'right',
-      width: 136,
+      width: 176,
       render: (_, item) => (
         <Space size={2}>
           <Button type="text" icon={<EyeOutlined />} aria-label={`View ${item.full_name}`} onClick={() => void handleView(item.id)} />
           <Button type="text" icon={<EditOutlined />} aria-label={`Edit ${item.full_name}`} onClick={() => void openEdit(item.id)} />
+          {item.account_status === 'PENDING_ACTIVATION' ? (
+            <Button
+              type="text"
+              icon={<MailOutlined />}
+              aria-label={`Resend activation invitation to ${item.full_name}`}
+              title="Resend activation invitation"
+              loading={resendingTenantId === item.id}
+              disabled={Boolean(resendingTenantId)}
+              onClick={() => void handleResendActivation(item)}
+            />
+          ) : null}
           <Button
             type="text"
             danger
@@ -361,7 +417,7 @@ export function TenantsPage() {
         </Space>
       ),
     },
-  ], [deletingTenantId, handleView, openEdit])
+  ], [deletingTenantId, handleResendActivation, handleView, openEdit, resendingTenantId])
 
   const renderIdentityDocument = (label: string, document: TenantIdentityDocument | null) => (
     <div className="tenant-identity-detail-item">
@@ -529,6 +585,9 @@ export function TenantsPage() {
               <Descriptions.Item label="Issue date">{selectedTenant.identity_issued_date ? dayjs(selectedTenant.identity_issued_date).format('DD/MM/YYYY') : '-'}</Descriptions.Item>
               <Descriptions.Item label="Place of issue">{selectedTenant.identity_issued_place ?? '-'}</Descriptions.Item>
               <Descriptions.Item label="Status">{selectedTenant.status}</Descriptions.Item>
+              <Descriptions.Item label="Account status">
+                {selectedTenant.account_status ?? '-'}
+              </Descriptions.Item>
               <Descriptions.Item label="Permanent address">{selectedTenant.permanent_address ?? '-'}</Descriptions.Item>
               <Descriptions.Item label="Note">{selectedTenant.note ?? '-'}</Descriptions.Item>
             </Descriptions>

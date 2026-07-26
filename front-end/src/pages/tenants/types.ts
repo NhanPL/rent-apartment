@@ -1,4 +1,5 @@
 export type TenantStatus = 'ACTIVE' | 'MOVED_OUT' | 'BLACKLIST' | 'DELETED'
+export type AccountStatus = 'PENDING_ACTIVATION' | 'ACTIVE' | 'DISABLED'
 
 export type ContractStatus = 'DRAFT' | 'ACTIVE' | 'ENDED' | 'CANCELLED'
 
@@ -15,6 +16,7 @@ export interface Tenant {
   phone: string
   permanent_address: string | null
   status: TenantStatus
+  account_status: AccountStatus | null
   note: string | null
   created_at: string
   updated_at: string

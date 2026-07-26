@@ -69,13 +69,13 @@ export const createTenantRecord = async (client: PoolClient, payload: TenantInse
 
 export const createTenantUserAccount = async (
   client: PoolClient,
-  payload: { email: string; username: string; passwordHash: string; tenantId: string }
+  payload: { email: string; username: string; tenantId: string }
 ): Promise<{ id: string; username: string; email: string }> => {
   const userRs = await client.query<{ id: string; username: string; email: string }>(
     `INSERT INTO app_user(role,email,username,password_hash,is_active,account_status)
-     VALUES('TENANT',$1,$2,$3,true,'ACTIVE')
+     VALUES('TENANT',$1,$2,NULL,false,'PENDING_ACTIVATION')
      RETURNING id, username, email`,
-    [payload.email, payload.username, payload.passwordHash]
+    [payload.email, payload.username]
   );
 
   await client.query('UPDATE tenant SET user_id=$1 WHERE id=$2', [userRs.rows[0].id, payload.tenantId]);

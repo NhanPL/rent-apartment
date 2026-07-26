@@ -31,3 +31,15 @@ export interface ChangePasswordPayload {
   newPassword: string
   confirmPassword: string
 }
+
+export interface ActivationTokenDetails {
+  valid: true
+  emailHint: string
+  expiresAt: string
+}
+
+export interface ActivateAccountPayload {
+  token: string
+  newPassword: string
+  confirmPassword: string
+}

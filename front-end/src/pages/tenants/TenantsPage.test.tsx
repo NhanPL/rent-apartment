@@ -7,6 +7,7 @@ const tenantMocks = vi.hoisted(() => ({
   deleteTenant: vi.fn(),
   getTenant: vi.fn(),
   listTenants: vi.fn(),
+  resendTenantActivation: vi.fn(),
   updateTenant: vi.fn(),
   updateTenantIdentityDocuments: vi.fn(),
 }))
@@ -30,6 +31,7 @@ const tenant = {
   phone: '0900000000',
   permanent_address: null,
   status: 'ACTIVE',
+  account_status: 'ACTIVE',
   note: null,
   created_at: '2026-07-01T00:00:00.000Z',
   updated_at: '2026-07-01T00:00:00.000Z',
@@ -63,6 +65,11 @@ describe('TenantsPage profile form', () => {
       identity_documents: { front: existingFront, back: null },
     })
     tenantMocks.updateTenant.mockResolvedValue(tenant)
+    tenantMocks.resendTenantActivation.mockResolvedValue({
+      message: 'Activation invitation sent successfully',
+      emailSent: true,
+      expiresAt: '2026-07-28T00:00:00.000Z',
+    })
     uploadMocks.uploadFileToCloudinary.mockResolvedValue({
       file_name: 'front.jpg',
       file_url: 'https://res.cloudinary.com/demo/image/upload/tenant-documents/front.jpg',
@@ -124,5 +131,25 @@ describe('TenantsPage profile form', () => {
       expect(tenantMocks.updateTenantIdentityDocuments).toHaveBeenCalledWith('tenant-1', { front: null })
     })
     expect(uploadMocks.uploadFileToCloudinary).not.toHaveBeenCalled()
+  })
+
+  it('lets the manager resend activation for a pending tenant account', async () => {
+    const user = userEvent.setup()
+    tenantMocks.listTenants.mockResolvedValue({
+      items: [{ ...tenant, account_status: 'PENDING_ACTIVATION' }],
+      page: 1,
+      pageSize: 8,
+      total: 1,
+    })
+
+    render(<TenantsPage />)
+
+    await user.click(await screen.findByRole('button', {
+      name: 'Resend activation invitation to Tenant One',
+    }))
+
+    await waitFor(() => {
+      expect(tenantMocks.resendTenantActivation).toHaveBeenCalledWith('tenant-1')
+    })
   })
 })

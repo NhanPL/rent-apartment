@@ -45,6 +45,7 @@ DB_SSL=false
 DB_SSL_REJECT_UNAUTHORIZED=false
 CLIENT_ORIGIN=http://localhost:5173
 FRONTEND_URL=http://localhost:5173
+ACCOUNT_ACTIVATION_EXPIRES_HOURS=48
 ```
 
 Set strong values for:
@@ -54,7 +55,7 @@ JWT_ACCESS_SECRET=change-me
 JWT_REFRESH_SECRET=change-me
 ```
 
-SMTP is optional in local development. If these values are blank, tenant welcome emails are skipped and the API keeps running:
+SMTP is optional in local development. If these values are blank, tenant activation emails are skipped and the API keeps running. Managers can resend the invitation after SMTP is configured:
 
 ```env
 SMTP_HOST=
@@ -66,7 +67,7 @@ SMTP_FROM_NAME=
 SMTP_FROM_EMAIL=
 ```
 
-For production or a shared staging environment, configure all SMTP variables so account invitation emails can be sent.
+For production or a shared staging environment, configure all SMTP variables so account invitation emails can be sent. Activation links are single-use and expire after `ACCOUNT_ACTIVATION_EXPIRES_HOURS` (48 hours by default).
 
 ## Frontend Environment
 

@@ -56,6 +56,8 @@ class FakeDb {
   paymentRequests: Row[] = [];
   paymentProofs: Row[] = [];
   payments: Row[] = [];
+  activationTokens: Row[] = [];
+  auditLogs: Row[] = [];
 
   private sequence = 9000;
 
@@ -136,6 +138,8 @@ class FakeDb {
     this.paymentRequests = [];
     this.paymentProofs = [];
     this.payments = [];
+    this.activationTokens = [];
+    this.auditLogs = [];
   }
 
   async query<T extends Row = Row>(text: string, params: unknown[] = []) {
@@ -167,7 +171,13 @@ class FakeDb {
 
     if (sql.startsWith('update app_user set password_hash')) {
       const user = this.users.find((item) => item.id === params[1]);
-      if (user) user.password_hash = params[0] as string;
+      if (user) {
+        user.password_hash = params[0] as string;
+        if (sql.includes("account_status='active'")) {
+          user.account_status = 'ACTIVE';
+          user.is_active = true;
+        }
+      }
       return result<T>([]);
     }
 
@@ -219,9 +229,9 @@ class FakeDb {
         role: 'TENANT' as Role,
         email: params[0],
         username: params[1],
-        password_hash: params[2],
-        is_active: true,
-        account_status: 'ACTIVE',
+        password_hash: null,
+        is_active: false,
+        account_status: 'PENDING_ACTIVATION',
         last_login_at: null
       };
       this.users.push(row);
@@ -232,6 +242,91 @@ class FakeDb {
       const tenant = this.tenants.find((item) => item.id === params[1]);
       if (tenant) tenant.user_id = params[0];
       return result<T>([]);
+    }
+
+    if (sql.startsWith('insert into audit_log(')) {
+      this.auditLogs.push({
+        id: this.newId(),
+        actor_user_id: params[0],
+        action: params[1],
+        entity_type: params[2],
+        entity_id: params[3],
+        metadata: JSON.parse(String(params[4] ?? '{}')),
+        created_at: new Date().toISOString()
+      });
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('update account_activation_token set revoked_at=now()')) {
+      const userId = params[0];
+      const excludedId = params[1];
+      this.activationTokens
+        .filter((token) => token.user_id === userId
+          && token.id !== excludedId
+          && !token.used_at
+          && !token.revoked_at)
+        .forEach((token) => {
+          token.revoked_at = new Date().toISOString();
+        });
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('insert into account_activation_token(')) {
+      this.activationTokens.push({
+        id: this.newId(),
+        user_id: params[0],
+        token_hash: params[1],
+        expires_at: params[2],
+        created_by_user_id: params[3],
+        used_at: null,
+        revoked_at: null,
+        created_at: new Date().toISOString()
+      });
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('select activation.id, activation.user_id')) {
+      const activation = this.activationTokens.find((token) => (
+        token.token_hash === params[0]
+        && !token.used_at
+        && !token.revoked_at
+        && new Date(token.expires_at).getTime() > Date.now()
+      ));
+      const user = activation
+        ? this.users.find((item) => item.id === activation.user_id
+          && item.account_status === 'PENDING_ACTIVATION'
+          && item.is_active === false)
+        : null;
+      return result<T>(activation && user ? [{
+        ...activation,
+        email: user.email,
+        account_status: user.account_status
+      } as T] : []);
+    }
+
+    if (sql.startsWith('update account_activation_token set used_at=now()')) {
+      const activation = this.activationTokens.find((token) => token.id === params[0]);
+      if (activation) activation.used_at = new Date().toISOString();
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('select tenant.id as tenant_id')) {
+      const tenant = this.tenants.find((item) => (
+        item.id === params[0]
+        && item.manager_user_id === params[1]
+        && item.status !== 'DELETED'
+      ));
+      const user = tenant?.user_id
+        ? this.users.find((item) => item.id === tenant.user_id)
+        : null;
+      return result<T>(tenant && user ? [{
+        tenant_id: tenant.id,
+        tenant_name: tenant.full_name,
+        user_id: user.id,
+        email: user.email,
+        username: user.username,
+        account_status: user.account_status
+      } as T] : []);
     }
 
     if (sql.startsWith('select count(*)::int as total from tenant t')) {
@@ -245,6 +340,12 @@ class FakeDb {
     if (sql.startsWith('select t.* from tenant t where t.id=$1')) {
       const tenant = this.tenants.find((item) => item.id === params[0] && item.manager_user_id === params[1] && item.status !== params[2]);
       return result<T>(tenant ? [tenant as T] : []);
+    }
+
+    if (sql.startsWith('select t.*, au.account_status from tenant t')) {
+      const tenant = this.tenants.find((item) => item.id === params[0] && item.manager_user_id === params[1] && item.status !== params[2]);
+      const user = tenant?.user_id ? this.users.find((item) => item.id === tenant.user_id) : null;
+      return result<T>(tenant ? [{ ...tenant, account_status: user?.account_status ?? null } as T] : []);
     }
 
     if (sql.startsWith('select t.id as tenant_id')) {
@@ -1082,8 +1183,10 @@ class FakeDb {
 
   private decorateTenantForManager(tenant: Row, managerId: string) {
     const rental = this.currentRentalForTenant(tenant.id, managerId);
+    const user = tenant.user_id ? this.users.find((item) => item.id === tenant.user_id) : null;
     return {
       ...tenant,
+      account_status: user?.account_status ?? null,
       room_id: rental?.room_id ?? null,
       room_code: rental?.room_code ?? null,
       building_id: rental?.building_id ?? null,

@@ -5,6 +5,8 @@ export const API_ROUTES = {
     logout: '/auth/logout',
     me: '/auth/me',
     password: '/auth/password',
+    activation: '/auth/activation',
+    activate: '/auth/activate',
   },
   buildings: {
     list: '/buildings',
@@ -26,6 +28,7 @@ export const API_ROUTES = {
     list: '/tenants',
     detail: (id: string) => `/tenants/${id}`,
     identityDocuments: (id: string) => `/tenants/${id}/identity-documents`,
+    resendActivation: (id: string) => `/tenants/${id}/resend-activation`,
   },
   contracts: {
     list: '/contracts',

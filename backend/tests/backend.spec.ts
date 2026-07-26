@@ -2,9 +2,15 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../src/db', async () => import('./support/mock-db'));
+
+const emailServiceMocks = vi.hoisted(() => ({
+  sendEmail: vi.fn().mockResolvedValue(true),
+  sendTenantActivationEmail: vi.fn().mockResolvedValue(true)
+}));
+
 vi.mock('../src/shared/services/email.service', () => ({
-  sendEmail: vi.fn().mockResolvedValue(undefined),
-  sendTenantWelcomeEmail: vi.fn().mockResolvedValue(undefined)
+  sendEmail: emailServiceMocks.sendEmail,
+  sendTenantActivationEmail: emailServiceMocks.sendTenantActivationEmail
 }));
 vi.mock('../src/modules/fixed-charges/fixed-charges.service', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/modules/fixed-charges/fixed-charges.service')>();
@@ -55,6 +61,9 @@ const login = async (identifier: string) => {
 describe('backend API smoke tests', () => {
   beforeEach(() => {
     fakeDb.reset();
+    emailServiceMocks.sendEmail.mockClear();
+    emailServiceMocks.sendTenantActivationEmail.mockClear();
+    emailServiceMocks.sendTenantActivationEmail.mockResolvedValue(true);
   });
 
   it('authenticates, refreshes tokens, and returns the current user profile', async () => {
@@ -279,8 +288,9 @@ describe('backend API smoke tests', () => {
       identity_number: 'ID-C'
     });
     expect(fakeDb.users.find((user) => user.id === created.body.userId)).toMatchObject({
-      is_active: true,
-      account_status: 'ACTIVE'
+      password_hash: null,
+      is_active: false,
+      account_status: 'PENDING_ACTIVATION'
     });
 
     const updated = await request(app)
@@ -308,6 +318,130 @@ describe('backend API smoke tests', () => {
       is_active: false,
       account_status: 'DISABLED'
     });
+  });
+
+  it('activates a pending tenant account with a one-time hashed token', async () => {
+    const managerSession = await login('manager@example.com');
+    const created = await request(app)
+      .post('/api/tenants')
+      .set(auth(managerSession.accessToken))
+      .send({
+        full_name: 'Activation Tenant',
+        identity_number: 'ID-ACTIVATION',
+        email: 'activation@example.com',
+        phone: '0933333344',
+        status: 'ACTIVE'
+      })
+      .expect(201);
+
+    expect(created.body.emailSent).toBe(true);
+    const emailPayload = emailServiceMocks.sendTenantActivationEmail.mock.calls[0]?.[0] as {
+      activationUrl: string;
+    };
+    const token = new URL(emailPayload.activationUrl).searchParams.get('token');
+    expect(token).toEqual(expect.any(String));
+
+    const storedToken = fakeDb.activationTokens[0];
+    expect(storedToken).toMatchObject({
+      user_id: created.body.userId,
+      token_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      used_at: null,
+      revoked_at: null
+    });
+    expect(storedToken).not.toHaveProperty('token');
+    expect(storedToken.token_hash).not.toBe(token);
+
+    await request(app)
+      .post('/api/auth/login')
+      .send({ identifier: 'activation@example.com', password: 'new-password-123' })
+      .expect(401);
+
+    const validation = await request(app)
+      .get('/api/auth/activation')
+      .query({ token })
+      .expect(200);
+    expect(validation.body).toMatchObject({
+      valid: true,
+      emailHint: 'ac********@example.com'
+    });
+
+    await request(app)
+      .post('/api/auth/activate')
+      .send({
+        token,
+        newPassword: 'new-password-123',
+        confirmPassword: 'new-password-123'
+      })
+      .expect(200);
+
+    expect(fakeDb.users.find((user) => user.id === created.body.userId)).toMatchObject({
+      is_active: true,
+      account_status: 'ACTIVE'
+    });
+    expect(fakeDb.activationTokens[0].used_at).toEqual(expect.any(String));
+
+    await request(app)
+      .post('/api/auth/login')
+      .send({ identifier: 'activation@example.com', password: 'new-password-123' })
+      .expect(200);
+    await request(app)
+      .get('/api/auth/activation')
+      .query({ token })
+      .expect(400);
+
+    expect(fakeDb.auditLogs.map((entry) => entry.action)).toEqual(expect.arrayContaining([
+      'TENANT_ACCOUNT_CREATED',
+      'TENANT_ACTIVATION_INVITATION_CREATED',
+      'TENANT_ACTIVATION_INVITATION_DELIVERY',
+      'TENANT_ACCOUNT_ACTIVATED'
+    ]));
+  });
+
+  it('revokes the previous activation token when a manager resends an invitation', async () => {
+    const managerSession = await login('manager@example.com');
+    const created = await request(app)
+      .post('/api/tenants')
+      .set(auth(managerSession.accessToken))
+      .send({
+        full_name: 'Resend Tenant',
+        identity_number: 'ID-RESEND',
+        email: 'resend@example.com',
+        phone: '0933333355',
+        status: 'ACTIVE'
+      })
+      .expect(201);
+
+    const firstUrl = (emailServiceMocks.sendTenantActivationEmail.mock.calls[0]?.[0] as {
+      activationUrl: string;
+    }).activationUrl;
+    const firstToken = new URL(firstUrl).searchParams.get('token');
+
+    await request(app)
+      .post(`/api/tenants/${created.body.tenantId}/resend-activation`)
+      .set(auth(managerSession.accessToken))
+      .expect(200);
+
+    const secondUrl = (emailServiceMocks.sendTenantActivationEmail.mock.calls[1]?.[0] as {
+      activationUrl: string;
+    }).activationUrl;
+    const secondToken = new URL(secondUrl).searchParams.get('token');
+    expect(secondToken).not.toBe(firstToken);
+    expect(fakeDb.activationTokens[0].revoked_at).toEqual(expect.any(String));
+
+    await request(app)
+      .get('/api/auth/activation')
+      .query({ token: firstToken })
+      .expect(400);
+    await request(app)
+      .get('/api/auth/activation')
+      .query({ token: secondToken })
+      .expect(200);
+
+    fakeDb.activationTokens[1].expires_at = '2000-01-01T00:00:00.000Z';
+    await request(app)
+      .get('/api/auth/activation')
+      .query({ token: secondToken })
+      .expect(400);
   });
 
   it('creates, updates, ends contracts, and rejects over-capacity activation', async () => {
