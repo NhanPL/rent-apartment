@@ -35,6 +35,7 @@ vi.mock('../src/modules/uploads/uploads.service', async (importOriginal) => {
 });
 
 import { app } from '../src/app';
+import { AppError } from '../src/shared/errors/app-error';
 import { fakeDb, ids } from './support/mock-db';
 
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
@@ -64,6 +65,10 @@ describe('backend API smoke tests', () => {
     emailServiceMocks.sendEmail.mockClear();
     emailServiceMocks.sendTenantActivationEmail.mockClear();
     emailServiceMocks.sendTenantActivationEmail.mockResolvedValue(true);
+    uploadServiceMocks.deleteCloudinaryUpload.mockClear();
+    uploadServiceMocks.deleteCloudinaryUpload.mockResolvedValue(undefined);
+    uploadServiceMocks.validateStoredUpload.mockClear();
+    uploadServiceMocks.validateStoredUpload.mockReturnValue('image');
   });
 
   it('authenticates, refreshes tokens, and returns the current user profile', async () => {
@@ -267,7 +272,7 @@ describe('backend API smoke tests', () => {
       .expect(404);
   });
 
-  it('creates, updates, and soft-deletes a tenant', async () => {
+  it('updates a nested tenant form and deletes its account and Cloudinary documents', async () => {
     const managerSession = await login('manager@example.com');
 
     const created = await request(app)
@@ -296,14 +301,39 @@ describe('backend API smoke tests', () => {
     const updated = await request(app)
       .patch(`/api/tenants/${tenantId}`)
       .set(auth(managerSession.accessToken))
-      .send({ phone: '0944444444', note: 'Updated by test' })
+      .send({
+        tenant: {
+          full_name: 'Charlie Tenant Updated',
+          identity_number: 'ID-C',
+          email: 'charlie.updated@example.com',
+          phone: '0944444444',
+          status: 'ACTIVE',
+          note: 'Updated by test'
+        }
+      })
       .expect(200);
 
     expect(updated.body).toMatchObject({
       id: tenantId,
+      full_name: 'Charlie Tenant Updated',
+      email: 'charlie.updated@example.com',
       phone: '0944444444',
       note: 'Updated by test'
     });
+    expect(fakeDb.users.find((user) => user.id === created.body.userId)).toMatchObject({
+      email: 'charlie.updated@example.com',
+      username: 'charlie.updated@example.com'
+    });
+    expect(fakeDb.activationTokens.find((token) => token.user_id === created.body.userId)).toMatchObject({
+      revoked_at: expect.any(String)
+    });
+
+    const frontUrl = 'https://res.cloudinary.com/demo/image/upload/tenant-documents/charlie-front.jpg';
+    const backUrl = 'https://res.cloudinary.com/demo/image/upload/tenant-documents/charlie-back.jpg';
+    fakeDb.tenantDocuments.push(
+      { id: 'document-front', tenant_id: tenantId, file_url: frontUrl },
+      { id: 'document-back', tenant_id: tenantId, file_url: backUrl }
+    );
 
     await request(app)
       .delete(`/api/tenants/${tenantId}`)
@@ -314,9 +344,74 @@ describe('backend API smoke tests', () => {
       status: 'DELETED',
       user_id: null
     });
-    expect(fakeDb.users.find((user) => user.id === created.body.userId)).toMatchObject({
-      is_active: false,
-      account_status: 'DISABLED'
+    expect(fakeDb.users.find((user) => user.id === created.body.userId)).toBeUndefined();
+    expect(fakeDb.tenantDocuments.filter((document) => document.tenant_id === tenantId)).toEqual([]);
+    expect(uploadServiceMocks.deleteCloudinaryUpload).toHaveBeenCalledTimes(2);
+    expect(uploadServiceMocks.deleteCloudinaryUpload).toHaveBeenCalledWith({ file_url: frontUrl });
+    expect(uploadServiceMocks.deleteCloudinaryUpload).toHaveBeenCalledWith({ file_url: backUrl });
+
+    await request(app)
+      .post('/api/tenants')
+      .set(auth(managerSession.accessToken))
+      .send({
+        full_name: 'Replacement Tenant',
+        identity_number: 'ID-C-REPLACEMENT',
+        email: 'charlie.updated@example.com',
+        phone: '0955555555',
+        status: 'ACTIVE'
+      })
+      .expect(201);
+  });
+
+  it('keeps tenant data when a Cloudinary document cannot be deleted', async () => {
+    const managerSession = await login('manager@example.com');
+    const fileUrl = 'https://res.cloudinary.com/demo/image/upload/tenant-documents/free-front.jpg';
+    fakeDb.tenantDocuments.push({
+      id: 'document-free-front',
+      tenant_id: ids.tenantFree,
+      file_url: fileUrl
+    });
+    uploadServiceMocks.deleteCloudinaryUpload.mockRejectedValueOnce(
+      new AppError(502, 'Unable to delete file from Cloudinary', 'CLOUDINARY_DELETE_FAILED')
+    );
+
+    const response = await request(app)
+      .delete(`/api/tenants/${ids.tenantFree}`)
+      .set(auth(managerSession.accessToken))
+      .expect(502);
+
+    expect(response.body).toMatchObject({
+      code: 'CLOUDINARY_DELETE_FAILED',
+      message: 'Unable to delete file from Cloudinary'
+    });
+    expect(fakeDb.tenants.find((tenant) => tenant.id === ids.tenantFree)).toMatchObject({
+      status: 'ACTIVE'
+    });
+    expect(fakeDb.tenantDocuments).toEqual([
+      expect.objectContaining({ tenant_id: ids.tenantFree, file_url: fileUrl })
+    ]);
+  });
+
+  it('returns a meaningful error when a tenant email is already in use', async () => {
+    const managerSession = await login('manager@example.com');
+
+    const response = await request(app)
+      .patch(`/api/tenants/${ids.tenantA}`)
+      .set(auth(managerSession.accessToken))
+      .send({
+        tenant: {
+          full_name: 'Alice Tenant',
+          identity_number: 'ID-A',
+          email: 'manager@example.com',
+          phone: '0900000001',
+          status: 'ACTIVE'
+        }
+      })
+      .expect(409);
+
+    expect(response.body).toEqual({
+      code: 'TENANT_EMAIL_EXISTS',
+      message: 'This email address is already used by another account.'
     });
   });
 

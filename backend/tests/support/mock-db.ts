@@ -46,6 +46,7 @@ class FakeDb {
   contracts: Row[] = [];
   contractTenants: Row[] = [];
   contractDocuments: Row[] = [];
+  tenantDocuments: Row[] = [];
   utilityReadings: Row[] = [];
   utilityRates: Row[] = [];
   utilityEvidence: Row[] = [];
@@ -105,6 +106,7 @@ class FakeDb {
       { contract_id: ids.contractB, tenant_id: ids.tenantB, is_primary: true, joined_at: '2026-01-01', left_at: null }
     ];
     this.contractDocuments = [];
+    this.tenantDocuments = [];
     this.utilityReadings = [
       this.readingRow(ids.readingSubmitted, ids.roomA, '2026-04-01', 80, 100, 40, 50, 'SUBMITTED'),
       this.readingRow(ids.readingToReject, ids.roomA, '2026-05-01', 100, 110, 50, 55, 'SUBMITTED'),
@@ -181,6 +183,24 @@ class FakeDb {
       return result<T>([]);
     }
 
+    if (sql.startsWith('update app_user set email=$1')) {
+      const user = this.users.find((item) => item.id === params[1]);
+      if (user) {
+        const duplicate = this.users.find((item) => (
+          item.id !== user.id && (item.email === params[0] || item.username === params[0])
+        ));
+        if (duplicate) {
+          throw {
+            code: '23505',
+            constraint: duplicate.email === params[0] ? 'app_user_email_key' : 'app_user_username_key'
+          };
+        }
+        if (user.username === user.email) user.username = params[0];
+        user.email = params[0];
+      }
+      return result<T>([]);
+    }
+
     if (sql.startsWith('update app_user set is_active=false')) {
       const user = this.users.find((item) => item.id === params[0]);
       if (user) {
@@ -224,6 +244,13 @@ class FakeDb {
     }
 
     if (sql.startsWith('insert into app_user(role,email,username,password_hash,is_active,account_status)')) {
+      const duplicate = this.users.find((user) => user.email === params[0] || user.username === params[1]);
+      if (duplicate) {
+        throw {
+          code: '23505',
+          constraint: duplicate.email === params[0] ? 'app_user_email_key' : 'app_user_username_key'
+        };
+      }
       const row = {
         id: this.newId(),
         role: 'TENANT' as Role,
@@ -391,6 +418,33 @@ class FakeDb {
     if (sql.startsWith('select id, user_id from tenant')) {
       const tenant = this.tenants.find((item) => item.id === params[0] && item.manager_user_id === params[1] && item.status !== params[2]);
       return result<T>(tenant ? [{ id: tenant.id, user_id: tenant.user_id } as T] : []);
+    }
+
+    if (sql.startsWith('select tenant.id, tenant.user_id, app_user.email::text as account_email')) {
+      const tenant = this.tenants.find((item) => (
+        item.id === params[0] && item.manager_user_id === params[1] && item.status !== 'DELETED'
+      ));
+      const user = tenant?.user_id ? this.users.find((item) => item.id === tenant.user_id) : null;
+      return result<T>(tenant ? [{
+        id: tenant.id,
+        user_id: tenant.user_id,
+        account_email: user?.email ?? null,
+        account_status: user?.account_status ?? null
+      } as T] : []);
+    }
+
+    if (sql.startsWith('select file_url from tenant_document')) {
+      const urls = [...new Set(
+        this.tenantDocuments
+          .filter((document) => document.tenant_id === params[0])
+          .map((document) => String(document.file_url))
+      )];
+      return result<T>(urls.map((file_url) => ({ file_url } as T)));
+    }
+
+    if (sql.startsWith('delete from tenant_document where tenant_id=$1')) {
+      this.tenantDocuments = this.tenantDocuments.filter((document) => document.tenant_id !== params[0]);
+      return result<T>([]);
     }
 
     if (sql.startsWith("update tenant set status='deleted'")) {
@@ -678,6 +732,12 @@ class FakeDb {
           uploaded_by_user_id: params[9]
         }
       );
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('delete from app_user where id=$1')) {
+      this.users = this.users.filter((user) => user.id !== params[0]);
+      this.activationTokens = this.activationTokens.filter((token) => token.user_id !== params[0]);
       return result<T>([]);
     }
 

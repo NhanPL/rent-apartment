@@ -1,5 +1,6 @@
 import { DeleteOutlined, EditOutlined, EyeOutlined, MailOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons'
 import {
+  Alert,
   Button,
   Card,
   Descriptions,
@@ -116,6 +117,8 @@ export function TenantsPage() {
   const [deleteTarget, setDeleteTarget] = useState<TenantListItem | null>(null)
   const [deletingTenantId, setDeletingTenantId] = useState<string | null>(null)
   const [resendingTenantId, setResendingTenantId] = useState<string | null>(null)
+  const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null)
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(searchInput), 300)
@@ -158,6 +161,7 @@ export function TenantsPage() {
   }, [drawerInitialValues, drawerOpen, form])
 
   const openCreate = useCallback(() => {
+    setSaveErrorMessage(null)
     setDrawerMode('create')
     setEditingTenantId(null)
     setDrawerInitialValues(defaultTenantFormValues)
@@ -166,6 +170,7 @@ export function TenantsPage() {
   }, [])
 
   const openEdit = useCallback(async (id: string) => {
+    setSaveErrorMessage(null)
     setDrawerMode('edit')
     setEditingTenantId(id)
     setDiscardModalOpen(false)
@@ -241,6 +246,7 @@ export function TenantsPage() {
 
   const submitForm = useCallback(async () => {
     setSaveLoading(true)
+    setSaveErrorMessage(null)
     let profileSaved = false
     let activationEmailSent: boolean | null = null
     try {
@@ -275,15 +281,18 @@ export function TenantsPage() {
     } catch (saveError: unknown) {
       const formError = saveError as { errorFields?: Array<{ name: (string | number)[] }> }
       const firstError = formError.errorFields?.[0]
+      let userMessage: string
       if (firstError?.name) {
         window.setTimeout(() => form.scrollToField(firstError.name, { block: 'center' }), 0)
-        message.error(getFormErrorMessage(saveError))
+        userMessage = getFormErrorMessage(saveError)
       } else if (profileSaved) {
-        message.error(getUserErrorMessage(saveError, 'Tenant information was saved, but the identity images could not be updated. Please retry.'))
+        userMessage = getUserErrorMessage(saveError, 'Tenant information was saved, but the identity images could not be updated. Please retry.')
         await loadTenants()
       } else {
-        message.error(getUserErrorMessage(saveError, 'Unable to save the tenant.'))
+        userMessage = getUserErrorMessage(saveError, 'Unable to save the tenant.')
       }
+      setSaveErrorMessage(userMessage)
+      message.error(userMessage)
     } finally {
       setSaveLoading(false)
     }
@@ -293,6 +302,7 @@ export function TenantsPage() {
     if (!deleteTarget || deletingTenantId) return
     const tenantId = deleteTarget.id
     setDeletingTenantId(tenantId)
+    setDeleteErrorMessage(null)
     try {
       await deleteTenant(tenantId)
       setItems((currentItems) => currentItems.filter((item) => item.id !== tenantId))
@@ -304,7 +314,9 @@ export function TenantsPage() {
       message.success('Tenant deleted successfully.')
       await loadTenants()
     } catch (deleteError) {
-      message.error(getUserErrorMessage(deleteError, 'Unable to delete the tenant.'))
+      const userMessage = getUserErrorMessage(deleteError, 'Unable to delete the tenant.')
+      setDeleteErrorMessage(userMessage)
+      message.error(userMessage)
     } finally {
       setDeletingTenantId(null)
     }
@@ -412,7 +424,10 @@ export function TenantsPage() {
             aria-label={`Delete ${item.full_name}`}
             loading={deletingTenantId === item.id}
             disabled={Boolean(deletingTenantId)}
-            onClick={() => setDeleteTarget(item)}
+            onClick={() => {
+              setDeleteErrorMessage(null)
+              setDeleteTarget(item)
+            }}
           />
         </Space>
       ),
@@ -497,6 +512,16 @@ export function TenantsPage() {
           <Skeleton active paragraph={{ rows: 8 }} />
         ) : (
           <Form form={form} layout="vertical">
+            {saveErrorMessage ? (
+              <Alert
+                type="error"
+                message={saveErrorMessage}
+                showIcon
+                closable
+                onClose={() => setSaveErrorMessage(null)}
+                style={{ marginBottom: 16 }}
+              />
+            ) : null}
             <div className={`tenant-tab-grid ${isDesktop ? 'desktop-two-cols' : ''}`}>
               <Form.Item name="full_name" label="Full name" rules={[{ required: true, whitespace: true, message: 'Please enter the tenant name.' }]}>
                 <Input placeholder="Tenant full name" />
@@ -605,7 +630,10 @@ export function TenantsPage() {
       <Modal
         open={Boolean(deleteTarget)}
         title="Delete tenant?"
-        onCancel={() => setDeleteTarget(null)}
+        onCancel={() => {
+          setDeleteErrorMessage(null)
+          setDeleteTarget(null)
+        }}
         onOk={() => void confirmDeleteTenant()}
         okText="Delete"
         okButtonProps={{ danger: true, loading: Boolean(deletingTenantId) }}
@@ -616,6 +644,14 @@ export function TenantsPage() {
         zIndex={1200}
         getContainer={() => document.body}
       >
+        {deleteErrorMessage ? (
+          <Alert
+            type="error"
+            message={deleteErrorMessage}
+            showIcon
+            style={{ marginBottom: 16 }}
+          />
+        ) : null}
         This tenant profile will be removed. This action cannot be undone.
       </Modal>
 

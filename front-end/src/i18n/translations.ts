@@ -84,6 +84,14 @@ const accountActivation = [
   entry('Unable to resend the activation invitation.', 'Không thể gửi lại lời mời kích hoạt.'),
 ]
 
+const tenantFormErrors = [
+  entry('Email is required while the tenant has a login account.', 'Email là bắt buộc khi người thuê có tài khoản đăng nhập.'),
+  entry('This email address is already used by another account.', 'Địa chỉ email này đã được tài khoản khác sử dụng.'),
+  entry('This phone number is already used by another account.', 'Số điện thoại này đã được tài khoản khác sử dụng.'),
+  entry('This citizen ID number is already used by another tenant.', 'Số CCCD này đã được người thuê khác sử dụng.'),
+  entry('The submitted information is already used by another record.', 'Thông tin đã nhập đang được một bản ghi khác sử dụng.'),
+]
+
 const common = [
   entry('Actions', 'Thao tác'),
   entry('Action', 'Thao tác'),
@@ -956,6 +964,7 @@ export const translationCatalog: TranslationEntry[] = [
   ...navigation,
   ...auth,
   ...accountActivation,
+  ...tenantFormErrors,
   ...common,
   ...buildingsAndDashboard,
   ...tenantsAndContracts,

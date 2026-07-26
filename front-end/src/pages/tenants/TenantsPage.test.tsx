@@ -17,6 +17,7 @@ vi.mock('../../services/tenantsService', () => tenantMocks)
 vi.mock('../../services/uploadService', () => ({ uploadFileToCloudinary: uploadMocks.uploadFileToCloudinary }))
 
 import { TenantsPage } from './TenantsPage'
+import { ApiError } from '../../services/apiClient'
 
 const tenant = {
   id: 'tenant-1',
@@ -51,6 +52,7 @@ const existingFront = {
 
 describe('TenantsPage profile form', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     tenantMocks.listTenants.mockResolvedValue({ items: [tenant], page: 1, pageSize: 8, total: 1 })
     tenantMocks.createTenant.mockResolvedValue({
       message: 'Tenant created successfully',
@@ -65,6 +67,7 @@ describe('TenantsPage profile form', () => {
       identity_documents: { front: existingFront, back: null },
     })
     tenantMocks.updateTenant.mockResolvedValue(tenant)
+    tenantMocks.deleteTenant.mockResolvedValue(undefined)
     tenantMocks.resendTenantActivation.mockResolvedValue({
       message: 'Activation invitation sent successfully',
       emailSent: true,
@@ -151,5 +154,42 @@ describe('TenantsPage profile form', () => {
     await waitFor(() => {
       expect(tenantMocks.resendTenantActivation).toHaveBeenCalledWith('tenant-1')
     })
+  })
+
+  it('keeps a meaningful update error visible in the tenant drawer', async () => {
+    const user = userEvent.setup()
+    tenantMocks.updateTenant.mockRejectedValueOnce(
+      new ApiError('duplicate key value violates unique constraint', 'TENANT_EMAIL_EXISTS', 409),
+    )
+
+    render(<TenantsPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'Edit Tenant One' }))
+    await screen.findByDisplayValue('tenant@example.com')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    const updateAlerts = await screen.findAllByRole('alert')
+    expect(updateAlerts.some((alert) => (
+      alert.textContent?.includes('This email address is already used by another account.')
+    ))).toBe(true)
+    expect(screen.getByRole('dialog', { name: 'Edit Tenant' })).toBeInTheDocument()
+  })
+
+  it('keeps a Cloudinary deletion error visible in the confirmation dialog', async () => {
+    const user = userEvent.setup()
+    tenantMocks.deleteTenant.mockRejectedValueOnce(
+      new ApiError('Unable to delete file from Cloudinary', 'CLOUDINARY_DELETE_FAILED', 502),
+    )
+
+    render(<TenantsPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'Delete Tenant One' }))
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+    const deleteAlerts = await screen.findAllByRole('alert')
+    expect(deleteAlerts.some((alert) => (
+      alert.textContent?.includes('The file could not be removed from Cloudinary. No data was deleted.')
+    ))).toBe(true)
+    expect(screen.getByText('This tenant profile will be removed. This action cannot be undone.')).toBeInTheDocument()
   })
 })
