@@ -6,6 +6,7 @@ import { Localized } from '../../../shared/components/Localized'
 import { AuthLayout } from '../../../shared/layout/AuthLayout'
 import { activateAccount, validateAccountActivation } from '../authApi'
 import type { ActivationTokenDetails } from '../types/auth'
+import { passwordLengthRules } from '../passwordPolicy'
 import './ActivateAccountPage.css'
 
 interface ActivationFormValues {
@@ -124,8 +125,7 @@ export function ActivateAccountPage() {
                   name="newPassword"
                   rules={[
                     { required: true, message: 'Please enter a new password.' },
-                    { min: 8, message: 'The new password must contain at least 8 characters.' },
-                    { max: 72, message: 'The new password cannot exceed 72 characters.' },
+                    ...passwordLengthRules,
                   ]}
                 >
                   <Input.Password autoComplete="new-password" placeholder="Enter your new password" />

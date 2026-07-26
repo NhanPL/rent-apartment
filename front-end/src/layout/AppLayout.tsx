@@ -3,6 +3,7 @@ import { Alert, Button, Drawer, Dropdown, Form, Grid, Input, Layout, Menu, Modal
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { ChangePasswordPayload } from '../features/auth/types/auth'
+import { PASSWORD_MAX_LENGTH, passwordLengthRules } from '../features/auth/passwordPolicy'
 import type { SidebarRouteItem } from '../routes/routeConfig'
 import { getFormErrorMessage, getUserErrorMessage } from '../services/errorMessage'
 import { useI18n } from '../i18n'
@@ -215,7 +216,13 @@ export function AppLayout({
           <Form.Item
             name="currentPassword"
             label="Current password"
-            rules={[{ required: true, message: 'Please enter your current password.' }]}
+            rules={[
+              { required: true, message: 'Please enter your current password.' },
+              {
+                max: PASSWORD_MAX_LENGTH,
+                message: `The password cannot exceed ${PASSWORD_MAX_LENGTH} characters.`,
+              },
+            ]}
           >
             <Input.Password autoComplete="current-password" />
           </Form.Item>
@@ -225,8 +232,7 @@ export function AppLayout({
             dependencies={['currentPassword']}
             rules={[
               { required: true, message: 'Please enter a new password.' },
-              { min: 8, message: 'The new password must contain at least 8 characters.' },
-              { max: 72, message: 'The new password cannot exceed 72 characters.' },
+              ...passwordLengthRules,
               ({ getFieldValue }) => ({
                 validator(_, value: string) {
                   if (!value || value !== getFieldValue('currentPassword')) return Promise.resolve()

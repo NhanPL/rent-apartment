@@ -1,10 +1,10 @@
-import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import type { PoolClient } from 'pg';
 import { env } from '../../config/env';
 import { query, withTransaction } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
 import { writeAuditLog } from '../../shared/services/audit-log.service';
+import { assertPasswordPolicy, hashPassword } from '../../shared/utils/password';
 import { sendTenantActivationEmail } from '../../shared/services/email.service';
 
 type ActivationClient = Pick<PoolClient, 'query'>;
@@ -185,9 +185,10 @@ export const activateTenantAccount = async (
   token: string,
   newPassword: string
 ): Promise<void> => {
+  assertPasswordPolicy(newPassword);
   await withTransaction(async (client) => {
     const activation = await findValidActivationToken(client, token, true);
-    const passwordHash = await bcrypt.hash(newPassword, 10);
+    const passwordHash = await hashPassword(newPassword);
 
     await client.query(
       `UPDATE app_user

@@ -1,7 +1,12 @@
-import bcrypt from 'bcrypt';
 import { query, withTransaction } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
 import { AppRole } from '../../shared/middleware/auth';
+import {
+  assertPasswordPolicy,
+  hashPassword,
+  isCurrentPasswordHash,
+  verifyPasswordHash
+} from '../../shared/utils/password';
 import {
   createAuthSession,
   revokeUserSessions,
@@ -62,17 +67,24 @@ const toUserProfile = async (user: UserRow): Promise<UserProfile> => {
   };
 };
 
-const isBcryptHash = (hash: string): boolean => hash.startsWith('$2a$') || hash.startsWith('$2b$') || hash.startsWith('$2y$');
-
 const hasPassword = (user: UserRow): user is UserRow & { password_hash: string } => Boolean(user.password_hash?.trim());
 
-const verifyPassword = async (user: UserRow, plainPassword: string): Promise<boolean> => {
+const verifyPassword = async (
+  user: UserRow,
+  plainPassword: string,
+  upgradeHash = false
+): Promise<boolean> => {
   if (!hasPassword(user)) {
     return false;
   }
 
-  if (isBcryptHash(user.password_hash)) {
-    return bcrypt.compare(plainPassword, user.password_hash);
+  const applicationResult = await verifyPasswordHash(plainPassword, user.password_hash);
+  if (applicationResult !== null) {
+    if (applicationResult && upgradeHash && !isCurrentPasswordHash(user.password_hash)) {
+      const upgradedHash = await hashPassword(plainPassword);
+      await query('UPDATE app_user SET password_hash = $1 WHERE id = $2', [upgradedHash, user.id]);
+    }
+    return applicationResult;
   }
 
   const { rows } = await query<{ is_valid: boolean }>('SELECT crypt($1, $2) = $2 AS is_valid', [plainPassword, user.password_hash]);
@@ -82,8 +94,10 @@ const verifyPassword = async (user: UserRow, plainPassword: string): Promise<boo
     return false;
   }
 
-  const rehashed = await bcrypt.hash(plainPassword, 10);
-  await query('UPDATE app_user SET password_hash = $1 WHERE id = $2', [rehashed, user.id]);
+  if (upgradeHash) {
+    const rehashed = await hashPassword(plainPassword);
+    await query('UPDATE app_user SET password_hash = $1 WHERE id = $2', [rehashed, user.id]);
+  }
   return true;
 };
 
@@ -114,7 +128,7 @@ export const authenticateLogin = async (
     throw invalidCredentials();
   }
 
-  const passwordMatches = await verifyPassword(user, password);
+  const passwordMatches = await verifyPassword(user, password, true);
   if (!passwordMatches) {
     throw invalidCredentials();
   }
@@ -149,6 +163,7 @@ export const getCurrentUser = async (userId: string): Promise<UserProfile> => {
 };
 
 export const changePassword = async (userId: string, currentPassword: string, newPassword: string): Promise<void> => {
+  assertPasswordPolicy(newPassword);
   const { rows } = await query<UserRow>(
     'SELECT id, role, email, username, password_hash, is_active, account_status, session_version FROM app_user WHERE id = $1 LIMIT 1',
     [userId]
@@ -163,11 +178,11 @@ export const changePassword = async (userId: string, currentPassword: string, ne
     throw new AppError(400, 'Current password is incorrect', 'CURRENT_PASSWORD_INCORRECT');
   }
 
-  if (currentPassword === newPassword) {
+  if (currentPassword === newPassword || await verifyPassword(user, newPassword)) {
     throw new AppError(400, 'New password must be different from the current password', 'PASSWORD_REUSE_NOT_ALLOWED');
   }
 
-  const passwordHash = await bcrypt.hash(newPassword, 10);
+  const passwordHash = await hashPassword(newPassword);
   await withTransaction(async (client) => {
     await client.query(
       'UPDATE app_user SET password_hash = $1, session_version = session_version + 1 WHERE id = $2',
