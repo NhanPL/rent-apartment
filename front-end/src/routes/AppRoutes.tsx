@@ -9,6 +9,8 @@ import { Localized } from '../shared/components/Localized'
 
 const LoginPage = lazy(() => import('../features/auth/pages/LoginPage').then((module) => ({ default: module.LoginPage })))
 const ActivateAccountPage = lazy(() => import('../features/auth/pages/ActivateAccountPage').then((module) => ({ default: module.ActivateAccountPage })))
+const ForgotPasswordPage = lazy(() => import('../features/auth/pages/ForgotPasswordPage').then((module) => ({ default: module.ForgotPasswordPage })))
+const ResetPasswordPage = lazy(() => import('../features/auth/pages/ResetPasswordPage').then((module) => ({ default: module.ResetPasswordPage })))
 const BuildingsPage = lazy(() => import('../pages/buildings/BuildingsPage').then((module) => ({ default: module.BuildingsPage })))
 const ContractsPage = lazy(() => import('../pages/contracts/ContractsPage').then((module) => ({ default: module.ContractsPage })))
 const RentalRegistrationPage = lazy(() => import('../pages/rental-registration/RentalRegistrationPage').then((module) => ({ default: module.RentalRegistrationPage })))
@@ -94,14 +96,23 @@ export function AppRoutes() {
     setPathname('/login')
   }
 
+  if (pathname === '/activate-account' || pathname === '/forgot-password' || pathname === '/reset-password') {
+    return (
+      <Suspense fallback={<RouteFallback />}>
+        {pathname === '/activate-account' ? <ActivateAccountPage /> : null}
+        {pathname === '/forgot-password' ? <ForgotPasswordPage /> : null}
+        {pathname === '/reset-password' ? <ResetPasswordPage /> : null}
+      </Suspense>
+    )
+  }
+
   if (!isAuthenticated || !user) {
-    const isActivationPage = pathname === '/activate-account'
-    if (pathname !== '/login' && !isActivationPage) {
+    if (pathname !== '/login') {
       window.history.replaceState(null, '', '/login')
     }
     return (
       <Suspense fallback={<RouteFallback />}>
-        {isActivationPage ? <ActivateAccountPage /> : <LoginPage />}
+        <LoginPage />
       </Suspense>
     )
   }

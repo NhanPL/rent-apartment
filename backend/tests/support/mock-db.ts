@@ -58,6 +58,8 @@ class FakeDb {
   paymentProofs: Row[] = [];
   payments: Row[] = [];
   activationTokens: Row[] = [];
+  passwordResetRequests: Row[] = [];
+  passwordResetTokens: Row[] = [];
   auditLogs: Row[] = [];
   tenantUpdateFailure: Error | null = null;
 
@@ -75,10 +77,10 @@ class FakeDb {
     this.sequence = 9000;
 
     this.users = [
-      { id: ids.managerAUser, role: 'MANAGER', email: 'manager@example.com', username: 'manager', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', last_login_at: null },
-      { id: ids.managerBUser, role: 'MANAGER', email: 'manager-b@example.com', username: 'manager-b', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', last_login_at: null },
-      { id: ids.tenantAUser, role: 'TENANT', email: 'tenant@example.com', username: 'tenant', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', last_login_at: null },
-      { id: ids.tenantBUser, role: 'TENANT', email: 'tenant-b@example.com', username: 'tenant-b', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', last_login_at: null }
+      { id: ids.managerAUser, role: 'MANAGER', email: 'manager@example.com', username: 'manager', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null },
+      { id: ids.managerBUser, role: 'MANAGER', email: 'manager-b@example.com', username: 'manager-b', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null },
+      { id: ids.tenantAUser, role: 'TENANT', email: 'tenant@example.com', username: 'tenant', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null },
+      { id: ids.tenantBUser, role: 'TENANT', email: 'tenant-b@example.com', username: 'tenant-b', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null }
     ];
     this.managerProfiles = [
       { user_id: ids.managerAUser, full_name: 'Manager A' },
@@ -142,6 +144,8 @@ class FakeDb {
     this.paymentProofs = [];
     this.payments = [];
     this.activationTokens = [];
+    this.passwordResetRequests = [];
+    this.passwordResetTokens = [];
     this.auditLogs = [];
     this.tenantUpdateFailure = null;
   }
@@ -157,12 +161,19 @@ class FakeDb {
       throw new Error('FOR UPDATE cannot be applied to the nullable side of an outer join');
     }
 
+    if (sql.startsWith('select pg_advisory_xact_lock(')) {
+      return result<T>([]);
+    }
+
     if (sql.includes('from app_user') && sql.includes('where email = $1 or username = $1')) {
       const identifier = String(params[0]);
       return result<T>(this.users.filter((user) => user.email === identifier || user.username === identifier) as T[]);
     }
 
-    if (sql.includes('from app_user') && sql.includes('where id = $1 limit 1')) {
+    if (
+      sql.includes('from app_user')
+      && (sql.includes('where id = $1 limit 1') || sql.includes('where id=$1 limit 1'))
+    ) {
       const user = this.users.find((item) => item.id === params[0]);
       return result<T>(user ? [user as T] : []);
     }
@@ -181,10 +192,23 @@ class FakeDb {
       return result<T>([]);
     }
 
+    if (sql.startsWith('select id, email::text as email from app_user where email=$1')) {
+      const user = this.users.find((item) => (
+        String(item.email).toLocaleLowerCase() === String(params[0]).toLocaleLowerCase()
+        && item.account_status === 'ACTIVE'
+        && item.is_active
+        && Boolean(String(item.password_hash ?? '').trim())
+      ));
+      return result<T>(user ? [{ id: user.id, email: user.email } as T] : []);
+    }
+
     if (sql.startsWith('update app_user set password_hash')) {
       const user = this.users.find((item) => item.id === params[1]);
       if (user) {
         user.password_hash = params[0] as string;
+        if (sql.includes('session_version=session_version + 1')) {
+          user.session_version += 1;
+        }
         if (sql.includes("account_status='active'")) {
           user.account_status = 'ACTIVE';
           user.is_active = true;
@@ -269,6 +293,7 @@ class FakeDb {
         password_hash: null,
         is_active: false,
         account_status: 'PENDING_ACTIVATION',
+        session_version: 0,
         last_login_at: null
       };
       this.users.push(row);
@@ -291,6 +316,85 @@ class FakeDb {
         metadata: JSON.parse(String(params[4] ?? '{}')),
         created_at: new Date().toISOString()
       });
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('select count(*) filter (where identifier_hash=$1)::int as identifier_count')) {
+      const threshold = Date.now() - Number(params[2]) * 60 * 1000;
+      return result<T>([{
+        identifier_count: this.passwordResetRequests.filter((item) => (
+          item.identifier_hash === params[0] && new Date(item.created_at).getTime() > threshold
+        )).length,
+        ip_count: this.passwordResetRequests.filter((item) => (
+          item.ip_hash === params[1] && new Date(item.created_at).getTime() > threshold
+        )).length
+      } as T]);
+    }
+
+    if (sql.startsWith('insert into password_reset_request(')) {
+      this.passwordResetRequests.push({
+        id: this.newId(),
+        identifier_hash: params[0],
+        ip_hash: params[1],
+        user_id: params[2],
+        created_at: new Date().toISOString()
+      });
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('update password_reset_token set revoked_at=now()')) {
+      const userId = params[0];
+      const excludedId = params[1];
+      this.passwordResetTokens
+        .filter((token) => (
+          token.user_id === userId
+          && token.id !== excludedId
+          && !token.used_at
+          && !token.revoked_at
+        ))
+        .forEach((token) => {
+          token.revoked_at = new Date().toISOString();
+        });
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('insert into password_reset_token(')) {
+      this.passwordResetTokens.push({
+        id: this.newId(),
+        user_id: params[0],
+        token_hash: params[1],
+        expires_at: params[2],
+        used_at: null,
+        revoked_at: null,
+        created_at: new Date().toISOString()
+      });
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('select reset_token.id, reset_token.user_id')) {
+      const resetToken = this.passwordResetTokens.find((token) => (
+        token.token_hash === params[0]
+        && !token.used_at
+        && !token.revoked_at
+        && new Date(token.expires_at).getTime() > Date.now()
+      ));
+      const user = resetToken
+        ? this.users.find((item) => (
+          item.id === resetToken.user_id
+          && item.account_status === 'ACTIVE'
+          && item.is_active
+        ))
+        : null;
+      return result<T>(resetToken && user ? [{
+        id: resetToken.id,
+        user_id: resetToken.user_id,
+        email: user.email
+      } as T] : []);
+    }
+
+    if (sql.startsWith('update password_reset_token set used_at=now()')) {
+      const resetToken = this.passwordResetTokens.find((token) => token.id === params[0]);
+      if (resetToken) resetToken.used_at = new Date().toISOString();
       return result<T>([]);
     }
 

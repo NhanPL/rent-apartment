@@ -5,6 +5,8 @@ export const API_ROUTES = {
     logout: '/auth/logout',
     me: '/auth/me',
     password: '/auth/password',
+    passwordResetRequest: '/auth/password-reset/request',
+    passwordResetConfirm: '/auth/password-reset/confirm',
     activation: '/auth/activation',
     activate: '/auth/activate',
   },

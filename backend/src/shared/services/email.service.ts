@@ -15,6 +15,16 @@ interface TenantActivationPayload {
   expiresAt: string;
 }
 
+interface PasswordResetPayload {
+  to: string;
+  resetUrl: string;
+  expiresAt: string;
+}
+
+interface PasswordChangedPayload {
+  to: string;
+}
+
 let transporter: ReturnType<typeof nodemailer.createTransport> | null = null;
 
 const isSmtpConfigured = (): boolean =>
@@ -79,6 +89,31 @@ export const sendTenantActivationEmail = async (payload: TenantActivationPayload
     <p><a href="${activationUrl}">Activate account</a></p>
     <p>This link expires at ${expiresAt} UTC and can only be used once.</p>
     <p>If you did not expect this invitation, you can ignore this email.</p>
+  `;
+
+  return sendEmail({ to: payload.to, subject, html });
+};
+
+export const sendPasswordResetEmail = async (payload: PasswordResetPayload): Promise<boolean> => {
+  const subject = 'Reset your rental account password';
+  const resetUrl = escapeHtml(payload.resetUrl);
+  const expiresAt = escapeHtml(new Date(payload.expiresAt).toLocaleString('en-US', { timeZone: 'UTC' }));
+  const html = `
+    <p>We received a request to reset your rental account password.</p>
+    <p><a href="${resetUrl}">Reset password</a></p>
+    <p>This link expires at ${expiresAt} UTC and can only be used once.</p>
+    <p>If you did not request a password reset, you can ignore this email.</p>
+  `;
+
+  return sendEmail({ to: payload.to, subject, html });
+};
+
+export const sendPasswordChangedEmail = async (payload: PasswordChangedPayload): Promise<boolean> => {
+  const subject = 'Your rental account password was changed';
+  const html = `
+    <p>Your rental account password has been changed successfully.</p>
+    <p>All existing sessions have been signed out.</p>
+    <p>If you did not make this change, contact your property manager immediately.</p>
   `;
 
   return sendEmail({ to: payload.to, subject, html });

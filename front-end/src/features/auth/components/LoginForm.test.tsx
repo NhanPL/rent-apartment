@@ -29,4 +29,18 @@ describe('LoginForm', () => {
     expect(await screen.findByText('Please enter your password.')).toBeInTheDocument()
     expect(authMocks.login).not.toHaveBeenCalled()
   })
+
+  it('opens the forgot password page', async () => {
+    const user = userEvent.setup()
+    window.history.replaceState(null, '', '/login')
+
+    render(
+      <I18nProvider>
+        <LoginForm />
+      </I18nProvider>,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Forgot password?' }))
+    expect(window.location.pathname).toBe('/forgot-password')
+  })
 })

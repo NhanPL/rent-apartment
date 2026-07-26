@@ -14,6 +14,11 @@ import {
   activateTenantAccount,
   validateActivationToken
 } from './account-activation.service';
+import {
+  confirmPasswordReset,
+  PASSWORD_RESET_REQUEST_MESSAGE,
+  requestPasswordReset
+} from './password-reset.service';
 
 const router = Router();
 
@@ -52,6 +57,24 @@ const activationTokenSchema = z.string().trim().min(32).max(256);
 
 const activateAccountSchema = z.object({
   token: activationTokenSchema,
+  newPassword: z.string().min(8).max(72),
+  confirmPassword: z.string().min(8).max(72)
+}).superRefine((data, ctx) => {
+  if (data.newPassword !== data.confirmPassword) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['confirmPassword'],
+      message: 'Password confirmation does not match'
+    });
+  }
+});
+
+const requestPasswordResetSchema = z.object({
+  email: z.string().trim().email().max(320)
+});
+
+const confirmPasswordResetSchema = z.object({
+  token: z.string().trim().min(1).max(256),
   newPassword: z.string().min(8).max(72),
   confirmPassword: z.string().min(8).max(72)
 }).superRefine((data, ctx) => {
@@ -109,6 +132,26 @@ router.post('/activate', asyncHandler(async (req, res) => {
   }
 
   await activateTenantAccount(parsed.data.token, parsed.data.newPassword);
+  res.json({ success: true });
+}));
+
+router.post('/password-reset/request', asyncHandler(async (req, res) => {
+  const parsed = requestPasswordResetSchema.safeParse(req.body);
+  if (!parsed.success) {
+    throw new AppError(400, 'Please enter a valid email address.', 'VALIDATION_ERROR');
+  }
+
+  await requestPasswordReset(parsed.data.email, req.ip || req.socket.remoteAddress || 'unknown');
+  res.status(202).json({ message: PASSWORD_RESET_REQUEST_MESSAGE });
+}));
+
+router.post('/password-reset/confirm', asyncHandler(async (req, res) => {
+  const parsed = confirmPasswordResetSchema.safeParse(req.body);
+  if (!parsed.success) {
+    throw new AppError(400, 'Please enter and confirm a valid password.', 'VALIDATION_ERROR');
+  }
+
+  await confirmPasswordReset(parsed.data.token, parsed.data.newPassword);
   res.json({ success: true });
 }));
 

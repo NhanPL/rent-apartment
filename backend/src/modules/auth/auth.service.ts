@@ -12,6 +12,7 @@ interface UserRow {
   password_hash: string | null;
   is_active: boolean;
   account_status: AccountStatus;
+  session_version: number;
 }
 
 type AccountStatus = 'PENDING_ACTIVATION' | 'ACTIVE' | 'DISABLED';
@@ -92,7 +93,7 @@ const canAuthenticate = (user: UserRow | undefined): user is UserRow & { passwor
 
 export const authenticateLogin = async (identifier: string, password: string): Promise<LoginResult> => {
   const { rows } = await query<UserRow>(
-    `SELECT id, role, email, username, password_hash, is_active, account_status
+    `SELECT id, role, email, username, password_hash, is_active, account_status, session_version
      FROM app_user
      WHERE email = $1 OR username = $1
      LIMIT 1`,
@@ -114,8 +115,8 @@ export const authenticateLogin = async (identifier: string, password: string): P
   await query('UPDATE app_user SET last_login_at = now() WHERE id = $1', [user.id]);
 
   return {
-    accessToken: signAccessToken({ userId: user.id, role: user.role }),
-    refreshToken: signRefreshToken({ userId: user.id, role: user.role }),
+    accessToken: signAccessToken({ userId: user.id, role: user.role, sessionVersion: user.session_version }),
+    refreshToken: signRefreshToken({ userId: user.id, role: user.role, sessionVersion: user.session_version }),
     user: userProfile
   };
 };
@@ -127,18 +128,33 @@ export const refreshAccessToken = async (refreshToken: string): Promise<{ access
       throw new AppError(401, 'Invalid refresh token');
     }
 
-    const { rows } = await query<{ id: string; role: AppRole; is_active: boolean; account_status: AccountStatus }>(
-      'SELECT id, role, is_active, account_status FROM app_user WHERE id = $1 LIMIT 1',
+    const { rows } = await query<{
+      id: string;
+      role: AppRole;
+      is_active: boolean;
+      account_status: AccountStatus;
+      session_version: number;
+    }>(
+      'SELECT id, role, is_active, account_status, session_version FROM app_user WHERE id = $1 LIMIT 1',
       [payload.userId]
     );
 
     const user = rows[0];
-    if (!user || !user.is_active || user.account_status !== 'ACTIVE') {
+    if (
+      !user
+      || !user.is_active
+      || user.account_status !== 'ACTIVE'
+      || user.session_version !== (payload.sessionVersion ?? 0)
+    ) {
       throw new AppError(401, 'Invalid refresh token');
     }
 
     return {
-      accessToken: signAccessToken({ userId: user.id, role: user.role })
+      accessToken: signAccessToken({
+        userId: user.id,
+        role: user.role,
+        sessionVersion: user.session_version
+      })
     };
   } catch (error) {
     if (error instanceof AppError) {
@@ -150,7 +166,7 @@ export const refreshAccessToken = async (refreshToken: string): Promise<{ access
 
 export const getCurrentUser = async (userId: string): Promise<UserProfile> => {
   const { rows } = await query<UserRow>(
-    'SELECT id, role, email, username, password_hash, is_active, account_status FROM app_user WHERE id = $1 LIMIT 1',
+    'SELECT id, role, email, username, password_hash, is_active, account_status, session_version FROM app_user WHERE id = $1 LIMIT 1',
     [userId]
   );
 
@@ -164,7 +180,7 @@ export const getCurrentUser = async (userId: string): Promise<UserProfile> => {
 
 export const changePassword = async (userId: string, currentPassword: string, newPassword: string): Promise<void> => {
   const { rows } = await query<UserRow>(
-    'SELECT id, role, email, username, password_hash, is_active, account_status FROM app_user WHERE id = $1 LIMIT 1',
+    'SELECT id, role, email, username, password_hash, is_active, account_status, session_version FROM app_user WHERE id = $1 LIMIT 1',
     [userId]
   );
 
@@ -182,5 +198,8 @@ export const changePassword = async (userId: string, currentPassword: string, ne
   }
 
   const passwordHash = await bcrypt.hash(newPassword, 10);
-  await query('UPDATE app_user SET password_hash = $1 WHERE id = $2', [passwordHash, userId]);
+  await query(
+    'UPDATE app_user SET password_hash = $1, session_version = session_version + 1 WHERE id = $2',
+    [passwordHash, userId]
+  );
 };
