@@ -173,7 +173,7 @@ export const createTenant = async (raw: Record<string, unknown>, managerId: stri
   const tenantPayload = validateCreateInput((raw.tenant as Record<string, unknown> | undefined) ?? raw);
   const contractPayload = (raw.contract as Record<string, unknown> | null | undefined) ?? null;
 
-  const generatedPassword = generateRandomPassword(8);
+  const generatedPassword = generateRandomPassword();
   const passwordHash = await bcrypt.hash(generatedPassword, 10);
 
   const { tenantId, userId, loginEmail, username, tenantName } = await withTransaction(async (client) => {

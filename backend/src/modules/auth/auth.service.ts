@@ -11,7 +11,10 @@ interface UserRow {
   username: string | null;
   password_hash: string | null;
   is_active: boolean;
+  account_status: AccountStatus;
 }
+
+type AccountStatus = 'PENDING_ACTIVATION' | 'ACTIVE' | 'DISABLED';
 
 interface UserProfile {
   id: string;
@@ -27,6 +30,8 @@ export interface LoginResult {
   refreshToken: string;
   user: UserProfile;
 }
+
+export const INVALID_CREDENTIALS_MESSAGE = 'The username or password is incorrect. Please try again.';
 
 const toUserProfile = async (user: UserRow): Promise<UserProfile> => {
   const managerProfilePromise =
@@ -57,7 +62,7 @@ const hasPassword = (user: UserRow): user is UserRow & { password_hash: string }
 
 const verifyPassword = async (user: UserRow, plainPassword: string): Promise<boolean> => {
   if (!hasPassword(user)) {
-    return true;
+    return false;
   }
 
   if (isBcryptHash(user.password_hash)) {
@@ -76,9 +81,18 @@ const verifyPassword = async (user: UserRow, plainPassword: string): Promise<boo
   return true;
 };
 
-export const authenticateLogin = async (identifier: string, password = ''): Promise<LoginResult> => {
+const invalidCredentials = (): AppError => (
+  new AppError(401, INVALID_CREDENTIALS_MESSAGE, 'INVALID_CREDENTIALS')
+);
+
+const canAuthenticate = (user: UserRow | undefined): user is UserRow & { password_hash: string } => {
+  if (!user) return false;
+  return user.account_status === 'ACTIVE' && user.is_active && hasPassword(user);
+};
+
+export const authenticateLogin = async (identifier: string, password: string): Promise<LoginResult> => {
   const { rows } = await query<UserRow>(
-    `SELECT id, role, email, username, password_hash, is_active
+    `SELECT id, role, email, username, password_hash, is_active, account_status
      FROM app_user
      WHERE email = $1 OR username = $1
      LIMIT 1`,
@@ -86,13 +100,13 @@ export const authenticateLogin = async (identifier: string, password = ''): Prom
   );
 
   const user = rows[0];
-  if (!user || !user.is_active) {
-    throw new AppError(401, 'Invalid credentials');
+  if (!canAuthenticate(user)) {
+    throw invalidCredentials();
   }
 
   const passwordMatches = await verifyPassword(user, password);
   if (!passwordMatches) {
-    throw new AppError(401, 'Invalid credentials');
+    throw invalidCredentials();
   }
 
   const userProfile = await toUserProfile(user);
@@ -113,13 +127,13 @@ export const refreshAccessToken = async (refreshToken: string): Promise<{ access
       throw new AppError(401, 'Invalid refresh token');
     }
 
-    const { rows } = await query<{ id: string; role: AppRole; is_active: boolean }>(
-      'SELECT id, role, is_active FROM app_user WHERE id = $1 LIMIT 1',
+    const { rows } = await query<{ id: string; role: AppRole; is_active: boolean; account_status: AccountStatus }>(
+      'SELECT id, role, is_active, account_status FROM app_user WHERE id = $1 LIMIT 1',
       [payload.userId]
     );
 
     const user = rows[0];
-    if (!user || !user.is_active) {
+    if (!user || !user.is_active || user.account_status !== 'ACTIVE') {
       throw new AppError(401, 'Invalid refresh token');
     }
 
@@ -136,12 +150,12 @@ export const refreshAccessToken = async (refreshToken: string): Promise<{ access
 
 export const getCurrentUser = async (userId: string): Promise<UserProfile> => {
   const { rows } = await query<UserRow>(
-    'SELECT id, role, email, username, password_hash, is_active FROM app_user WHERE id = $1 LIMIT 1',
+    'SELECT id, role, email, username, password_hash, is_active, account_status FROM app_user WHERE id = $1 LIMIT 1',
     [userId]
   );
 
   const user = rows[0];
-  if (!user || !user.is_active) {
+  if (!user || !user.is_active || user.account_status !== 'ACTIVE') {
     throw new AppError(404, 'User not found');
   }
 
@@ -150,12 +164,12 @@ export const getCurrentUser = async (userId: string): Promise<UserProfile> => {
 
 export const changePassword = async (userId: string, currentPassword: string, newPassword: string): Promise<void> => {
   const { rows } = await query<UserRow>(
-    'SELECT id, role, email, username, password_hash, is_active FROM app_user WHERE id = $1 LIMIT 1',
+    'SELECT id, role, email, username, password_hash, is_active, account_status FROM app_user WHERE id = $1 LIMIT 1',
     [userId]
   );
 
   const user = rows[0];
-  if (!user || !user.is_active) {
+  if (!user || !user.is_active || user.account_status !== 'ACTIVE') {
     throw new AppError(404, 'User not found', 'USER_NOT_FOUND');
   }
 

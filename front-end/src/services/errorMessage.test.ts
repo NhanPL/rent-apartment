@@ -8,6 +8,11 @@ describe('getUserErrorMessage', () => {
       .toBe('The room has a current or future occupant.')
   })
 
+  it('uses a generic message for invalid login credentials', () => {
+    expect(getUserErrorMessage(new ApiError('Invalid credentials', 'INVALID_CREDENTIALS', 401)))
+      .toBe('The username or password is incorrect. Please try again.')
+  })
+
   it('uses an HTTP fallback when the backend code is unknown', () => {
     expect(getUserErrorMessage(new ApiError('technical message', 'NEW_CODE', 403)))
       .toBe('You do not have permission to perform this action.')

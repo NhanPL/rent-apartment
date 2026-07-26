@@ -3,6 +3,7 @@ import { translate } from '../i18n'
 
 const errorMessages: Record<string, string> = {
   VALIDATION_ERROR: 'Some fields are invalid. Please review them and try again.',
+  INVALID_CREDENTIALS: 'The username or password is incorrect. Please try again.',
   UNAUTHORIZED: 'Your session has expired. Please sign in again.',
   FORBIDDEN: 'You do not have permission to perform this action.',
   CURRENT_PASSWORD_INCORRECT: 'The current password is incorrect.',
