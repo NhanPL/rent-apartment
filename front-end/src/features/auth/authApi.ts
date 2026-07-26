@@ -5,8 +5,10 @@ import type {
   ActivationTokenDetails,
   AuthUser,
   ChangePasswordPayload,
+  ConfirmPasswordResetPayload,
   LoginPayload,
   LoginResponse,
+  RequestPasswordResetPayload,
 } from './types/auth'
 
 export function login(payload: LoginPayload) {
@@ -53,6 +55,22 @@ export function validateAccountActivation(token: string) {
 
 export function activateAccount(payload: ActivateAccountPayload) {
   return apiRequest<{ success: boolean }>(API_ROUTES.auth.activate, {
+    method: 'POST',
+    body: payload,
+    skipAuth: true,
+  })
+}
+
+export function requestPasswordReset(payload: RequestPasswordResetPayload) {
+  return apiRequest<{ message: string }>(API_ROUTES.auth.passwordResetRequest, {
+    method: 'POST',
+    body: payload,
+    skipAuth: true,
+  })
+}
+
+export function confirmPasswordReset(payload: ConfirmPasswordResetPayload) {
+  return apiRequest<{ success: boolean }>(API_ROUTES.auth.passwordResetConfirm, {
     method: 'POST',
     body: payload,
     skipAuth: true,

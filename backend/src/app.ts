@@ -26,6 +26,10 @@ export const app = express();
 const frontendDistPath = path.resolve(__dirname, '../../front-end/dist');
 const frontendIndexPath = path.join(frontendDistPath, 'index.html');
 
+if (env.TRUST_PROXY_HOPS > 0) {
+  app.set('trust proxy', env.TRUST_PROXY_HOPS);
+}
+
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', env.CLIENT_ORIGIN);
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');

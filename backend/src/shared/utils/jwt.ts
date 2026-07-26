@@ -6,6 +6,7 @@ import { AppRole } from '../middleware/auth';
 export interface JwtUserPayload {
   userId: string;
   role: AppRole;
+  sessionVersion?: number;
 }
 
 interface BasePayload extends JwtUserPayload {

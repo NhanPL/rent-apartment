@@ -84,6 +84,27 @@ const accountActivation = [
   entry('Unable to resend the activation invitation.', 'Không thể gửi lại lời mời kích hoạt.'),
 ]
 
+const passwordReset = [
+  entry('Forgot password?', 'Quên mật khẩu?'),
+  entry('Forgot password', 'Quên mật khẩu'),
+  entry('Enter your account email to receive a password reset link.', 'Nhập email tài khoản để nhận liên kết đặt lại mật khẩu.'),
+  entry('Email', 'Email'),
+  entry('Please enter your email address.', 'Vui lòng nhập địa chỉ email.'),
+  entry('Please enter a valid email address.', 'Vui lòng nhập địa chỉ email hợp lệ.'),
+  entry('Enter your email address', 'Nhập địa chỉ email'),
+  entry('Send reset link', 'Gửi liên kết đặt lại'),
+  entry('Check your email', 'Kiểm tra email của bạn'),
+  entry('If an active account exists for this email, password reset instructions will be sent shortly.', 'Nếu có tài khoản đang hoạt động với email này, hướng dẫn đặt lại mật khẩu sẽ sớm được gửi.'),
+  entry('Unable to request a password reset. Please try again.', 'Không thể yêu cầu đặt lại mật khẩu. Vui lòng thử lại.'),
+  entry('Reset password', 'Đặt lại mật khẩu'),
+  entry('Create a new password for your account.', 'Tạo mật khẩu mới cho tài khoản của bạn.'),
+  entry('Password reset successfully', 'Đặt lại mật khẩu thành công'),
+  entry('Your password has been changed and all existing sessions have been signed out.', 'Mật khẩu đã được thay đổi và tất cả phiên đăng nhập hiện có đã bị đăng xuất.'),
+  entry('Unable to reset password', 'Không thể đặt lại mật khẩu'),
+  entry('This password reset link is invalid, expired, or has already been used.', 'Liên kết đặt lại mật khẩu không hợp lệ, đã hết hạn hoặc đã được sử dụng.'),
+  entry('Unable to reset your password. Please request a new link and try again.', 'Không thể đặt lại mật khẩu. Vui lòng yêu cầu liên kết mới và thử lại.'),
+]
+
 const tenantFormErrors = [
   entry('Email is required while the tenant has a login account.', 'Email là bắt buộc khi người thuê có tài khoản đăng nhập.'),
   entry('This email address is already used by another account.', 'Địa chỉ email này đã được tài khoản khác sử dụng.'),
@@ -965,6 +986,7 @@ export const translationCatalog: TranslationEntry[] = [
   ...navigation,
   ...auth,
   ...accountActivation,
+  ...passwordReset,
   ...tenantFormErrors,
   ...common,
   ...buildingsAndDashboard,

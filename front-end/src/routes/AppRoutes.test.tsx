@@ -70,6 +70,14 @@ vi.mock('../features/auth/pages/ActivateAccountPage', () => ({
   ActivateAccountPage: () => <div>Activate Account Page</div>,
 }))
 
+vi.mock('../features/auth/pages/ForgotPasswordPage', () => ({
+  ForgotPasswordPage: () => <div>Forgot Password Page</div>,
+}))
+
+vi.mock('../features/auth/pages/ResetPasswordPage', () => ({
+  ResetPasswordPage: () => <div>Reset Password Page</div>,
+}))
+
 vi.mock('../pages/dashboard/DashboardPage', () => ({
   DashboardPage: () => <div>Dashboard Page</div>,
 }))
@@ -166,6 +174,18 @@ describe('AppRoutes', () => {
     expect(await screen.findByText('Activate Account Page')).not.toBeNull()
     expect(window.location.pathname).toBe('/activate-account')
     expect(window.location.search).toBe('?token=invitation-token')
+  })
+
+  it.each([
+    ['/forgot-password', 'Forgot Password Page'],
+    ['/reset-password?token=reset-token', 'Reset Password Page'],
+  ])('allows users to open public password route %s', async (path, pageText) => {
+    window.history.replaceState(null, '', path)
+
+    render(<AppRoutes />)
+
+    expect(await screen.findByText(pageText)).not.toBeNull()
+    expect(window.location.pathname).toBe(path.split('?')[0])
   })
 
   it('renders the requested manager route with manager sidebar items', async () => {

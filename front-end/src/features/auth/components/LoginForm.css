@@ -47,6 +47,17 @@
   margin-bottom: 16px;
 }
 
+.login-forgot-password {
+  min-height: 32px;
+  margin-top: 8px;
+  display: flex;
+  justify-content: center;
+}
+
+.login-forgot-password .ant-btn {
+  padding-inline: 8px;
+}
+
 @media (max-width: 768px) {
   .login-card {
     width: 100%;

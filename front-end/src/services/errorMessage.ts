@@ -29,6 +29,7 @@ const errorMessages: Record<string, string> = {
   TENANT_UPDATE_FAILED: 'Unable to update tenant information. Please try again.',
   DUPLICATE_RECORD: 'The submitted information is already used by another record.',
   ACTIVATION_TOKEN_INVALID: 'This activation link is invalid, expired, or has already been used.',
+  PASSWORD_RESET_TOKEN_INVALID: 'This password reset link is invalid, expired, or has already been used.',
   ACCOUNT_ALREADY_ACTIVE: 'This tenant account is already active.',
   ACCOUNT_ACTIVATION_NOT_PENDING: 'This tenant account cannot be activated.',
   CONTRACT_NOT_FOUND: 'Contract not found or you do not have access to it.',

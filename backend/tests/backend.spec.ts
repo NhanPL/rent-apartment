@@ -5,12 +5,16 @@ vi.mock('../src/db', async () => import('./support/mock-db'));
 
 const emailServiceMocks = vi.hoisted(() => ({
   sendEmail: vi.fn().mockResolvedValue(true),
-  sendTenantActivationEmail: vi.fn().mockResolvedValue(true)
+  sendTenantActivationEmail: vi.fn().mockResolvedValue(true),
+  sendPasswordResetEmail: vi.fn().mockResolvedValue(true),
+  sendPasswordChangedEmail: vi.fn().mockResolvedValue(true)
 }));
 
 vi.mock('../src/shared/services/email.service', () => ({
   sendEmail: emailServiceMocks.sendEmail,
-  sendTenantActivationEmail: emailServiceMocks.sendTenantActivationEmail
+  sendTenantActivationEmail: emailServiceMocks.sendTenantActivationEmail,
+  sendPasswordResetEmail: emailServiceMocks.sendPasswordResetEmail,
+  sendPasswordChangedEmail: emailServiceMocks.sendPasswordChangedEmail
 }));
 vi.mock('../src/modules/fixed-charges/fixed-charges.service', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/modules/fixed-charges/fixed-charges.service')>();
@@ -65,6 +69,10 @@ describe('backend API smoke tests', () => {
     emailServiceMocks.sendEmail.mockClear();
     emailServiceMocks.sendTenantActivationEmail.mockClear();
     emailServiceMocks.sendTenantActivationEmail.mockResolvedValue(true);
+    emailServiceMocks.sendPasswordResetEmail.mockClear();
+    emailServiceMocks.sendPasswordResetEmail.mockResolvedValue(true);
+    emailServiceMocks.sendPasswordChangedEmail.mockClear();
+    emailServiceMocks.sendPasswordChangedEmail.mockResolvedValue(true);
     uploadServiceMocks.deleteCloudinaryUpload.mockClear();
     uploadServiceMocks.deleteCloudinaryUpload.mockResolvedValue(undefined);
     uploadServiceMocks.validateStoredUpload.mockClear();
@@ -223,6 +231,154 @@ describe('backend API smoke tests', () => {
       .expect(400);
 
     expect(response.body).toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
+  it('requests password reset without revealing whether the account exists', async () => {
+    const expectedMessage =
+      'If an active account exists for this email, password reset instructions will be sent shortly.';
+
+    const existingResponse = await request(app)
+      .post('/api/auth/password-reset/request')
+      .send({ email: 'manager@example.com' })
+      .expect(202);
+    const missingResponse = await request(app)
+      .post('/api/auth/password-reset/request')
+      .send({ email: 'missing@example.com' })
+      .expect(202);
+
+    expect(existingResponse.body).toEqual({ message: expectedMessage });
+    expect(missingResponse.body).toEqual({ message: expectedMessage });
+    expect(emailServiceMocks.sendPasswordResetEmail).toHaveBeenCalledTimes(1);
+
+    const emailPayload = emailServiceMocks.sendPasswordResetEmail.mock.calls[0][0] as {
+      resetUrl: string;
+      expiresAt: string;
+    };
+    const rawToken = new URL(emailPayload.resetUrl).searchParams.get('token');
+    expect(rawToken).toEqual(expect.any(String));
+    expect(fakeDb.passwordResetTokens[0].token_hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(fakeDb.passwordResetTokens[0].token_hash).not.toBe(rawToken);
+    expect(new Date(emailPayload.expiresAt).getTime()).toBeGreaterThan(Date.now());
+    expect(fakeDb.auditLogs.filter((entry) => entry.action === 'PASSWORD_RESET_REQUESTED')).toHaveLength(2);
+  });
+
+  it('rate limits password reset delivery while keeping the same response', async () => {
+    const expectedMessage =
+      'If an active account exists for this email, password reset instructions will be sent shortly.';
+
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const response = await request(app)
+        .post('/api/auth/password-reset/request')
+        .send({ email: 'manager@example.com' })
+        .expect(202);
+      expect(response.body).toEqual({ message: expectedMessage });
+    }
+
+    expect(emailServiceMocks.sendPasswordResetEmail).toHaveBeenCalledTimes(3);
+    expect(fakeDb.passwordResetTokens.filter((token) => !token.revoked_at)).toHaveLength(1);
+    expect(fakeDb.auditLogs.at(-1)).toMatchObject({
+      action: 'PASSWORD_RESET_REQUESTED',
+      metadata: { outcome: 'RATE_LIMITED' }
+    });
+  });
+
+  it('resets the password, revokes sessions, and cannot reuse the reset token', async () => {
+    const oldSession = await login('manager@example.com');
+    await request(app)
+      .post('/api/auth/password-reset/request')
+      .send({ email: 'manager@example.com' })
+      .expect(202);
+
+    const emailPayload = emailServiceMocks.sendPasswordResetEmail.mock.calls[0][0] as {
+      resetUrl: string;
+    };
+    const token = new URL(emailPayload.resetUrl).searchParams.get('token');
+    expect(token).toBeTruthy();
+    fakeDb.passwordResetTokens.push({
+      id: '00000000-0000-4000-8000-000000009999',
+      user_id: ids.managerAUser,
+      token_hash: 'f'.repeat(64),
+      expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      used_at: null,
+      revoked_at: null,
+      created_at: new Date().toISOString()
+    });
+
+    await request(app)
+      .post('/api/auth/password-reset/confirm')
+      .send({
+        token,
+        newPassword: 'reset-password-123',
+        confirmPassword: 'reset-password-123'
+      })
+      .expect(200, { success: true });
+
+    await request(app)
+      .get('/api/auth/me')
+      .set(auth(oldSession.accessToken))
+      .expect(401);
+    await request(app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: oldSession.refreshToken })
+      .expect(401);
+    await request(app)
+      .post('/api/auth/login')
+      .send({ identifier: 'manager@example.com', password: 'password' })
+      .expect(401);
+    await request(app)
+      .post('/api/auth/login')
+      .send({ identifier: 'manager@example.com', password: 'reset-password-123' })
+      .expect(200);
+
+    expect(emailServiceMocks.sendPasswordChangedEmail).toHaveBeenCalledWith({
+      to: 'manager@example.com'
+    });
+    expect(fakeDb.passwordResetTokens[0].used_at).toEqual(expect.any(String));
+    expect(fakeDb.passwordResetTokens[1].revoked_at).toEqual(expect.any(String));
+    expect(fakeDb.auditLogs).toContainEqual(expect.objectContaining({
+      action: 'PASSWORD_RESET_COMPLETED',
+      entity_id: ids.managerAUser
+    }));
+
+    await request(app)
+      .post('/api/auth/password-reset/confirm')
+      .send({
+        token,
+        newPassword: 'another-password-123',
+        confirmPassword: 'another-password-123'
+      })
+      .expect(400);
+  });
+
+  it('rejects an expired password reset token without changing the password', async () => {
+    await request(app)
+      .post('/api/auth/password-reset/request')
+      .send({ email: 'tenant@example.com' })
+      .expect(202);
+    const emailPayload = emailServiceMocks.sendPasswordResetEmail.mock.calls[0][0] as {
+      resetUrl: string;
+    };
+    const token = new URL(emailPayload.resetUrl).searchParams.get('token');
+    fakeDb.passwordResetTokens[0].expires_at = '2000-01-01T00:00:00.000Z';
+
+    const response = await request(app)
+      .post('/api/auth/password-reset/confirm')
+      .send({
+        token,
+        newPassword: 'expired-token-password',
+        confirmPassword: 'expired-token-password'
+      })
+      .expect(400);
+
+    expect(response.body).toMatchObject({
+      code: 'PASSWORD_RESET_TOKEN_INVALID',
+      message: 'This password reset link is invalid, expired, or has already been used.'
+    });
+    await request(app)
+      .post('/api/auth/login')
+      .send({ identifier: 'tenant@example.com', password: 'password' })
+      .expect(200);
+    expect(emailServiceMocks.sendPasswordChangedEmail).not.toHaveBeenCalled();
   });
 
   it('enforces RBAC for manager-only tenant endpoints', async () => {

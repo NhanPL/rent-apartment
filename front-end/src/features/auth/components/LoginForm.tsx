@@ -14,6 +14,11 @@ function getHomePathByRole(role: 'MANAGER' | 'TENANT') {
   return role === 'TENANT' ? '/my-room' : '/dashboard'
 }
 
+function goToForgotPassword() {
+  window.history.pushState(null, '', '/forgot-password')
+  window.dispatchEvent(new PopStateEvent('popstate'))
+}
+
 export function LoginForm() {
   const { t } = useI18n()
   const [loading, setLoading] = useState(false)
@@ -87,6 +92,11 @@ export function LoginForm() {
         <Button type="primary" htmlType="submit" loading={loading} block>
           Sign in
         </Button>
+        <div className="login-forgot-password">
+          <Button type="link" onClick={goToForgotPassword}>
+            Forgot password?
+          </Button>
+        </div>
       </Form>
     </Card>
     </Localized>
