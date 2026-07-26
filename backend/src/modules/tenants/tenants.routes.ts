@@ -192,6 +192,15 @@ const parseIntParam = (value: unknown, fallback: number): number => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const isUniqueConstraintError = (error: unknown): boolean => (
+  Boolean(
+    error
+    && typeof error === 'object'
+    && 'code' in error
+    && (error as { code?: string }).code === '23505'
+  )
+);
+
 router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const page = parseIntParam(req.query.page, 1);
   const pageSize = Math.min(parseIntParam(req.query.pageSize, 10), 100);
@@ -382,82 +391,100 @@ router.patch('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
     AND status <> 'DELETED'
   `;
 
-  const result = await withTransaction(async (client) => {
-    const currentTenantRs = await client.query<TenantUpdateScopeRow>(
-      `SELECT tenant.id, tenant.user_id, app_user.email::text AS account_email,
-              app_user.account_status
-       FROM tenant
-       LEFT JOIN app_user ON app_user.id=tenant.user_id
-       WHERE tenant.id=$1
-         AND tenant.manager_user_id=$2
-         AND tenant.status <> 'DELETED'
-       FOR UPDATE`,
-      [req.params.id, req.auth!.userId]
-    );
-    const currentTenant = currentTenantRs.rows[0];
-    if (!currentTenant) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
-
-    if (tenantPayload.status === 'MOVED_OUT') {
-      const activeContract = await client.query<{ id: string }>(
-        `SELECT c.id
-         FROM contract_tenant ct
-         JOIN contract c ON c.id=ct.contract_id
-         WHERE ct.tenant_id=$1
-           AND ct.left_at IS NULL
-           AND c.status='ACTIVE'
-         LIMIT 1`,
-        [req.params.id]
+  let result: Record<string, unknown>;
+  try {
+    result = await withTransaction<Record<string, unknown>>(async (client) => {
+      const currentTenantRs = await client.query<TenantUpdateScopeRow>(
+        `SELECT tenant.id, tenant.user_id, app_user.email::text AS account_email,
+                app_user.account_status
+         FROM tenant
+         LEFT JOIN app_user ON app_user.id=tenant.user_id
+         WHERE tenant.id=$1
+           AND tenant.manager_user_id=$2
+           AND tenant.status <> 'DELETED'
+         FOR UPDATE OF tenant`,
+        [req.params.id, req.auth!.userId]
       );
-      if (activeContract.rows[0]) {
-        throw new AppError(409, 'End active contract before marking tenant as moved out', 'TENANT_HAS_ACTIVE_CONTRACT');
-      }
-    }
+      const currentTenant = currentTenantRs.rows[0];
+      if (!currentTenant) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
 
-    if (Object.prototype.hasOwnProperty.call(tenantPayload, 'email') && currentTenant.user_id) {
-      const nextEmail = String(tenantPayload.email ?? '').trim();
-      if (!nextEmail) {
-        throw new AppError(
-          400,
-          'Email is required while the tenant has a login account.',
-          'TENANT_EMAIL_REQUIRED'
+      if (tenantPayload.status === 'MOVED_OUT') {
+        const activeContract = await client.query<{ id: string }>(
+          `SELECT c.id
+           FROM contract_tenant ct
+           JOIN contract c ON c.id=ct.contract_id
+           WHERE ct.tenant_id=$1
+             AND ct.left_at IS NULL
+             AND c.status='ACTIVE'
+           LIMIT 1`,
+          [req.params.id]
         );
-      }
-
-      const emailChanged = nextEmail.toLocaleLowerCase() !== currentTenant.account_email?.toLocaleLowerCase();
-      if (emailChanged) {
-        await client.query(
-          `UPDATE app_user
-           SET email=$1,
-               username=CASE WHEN username=email THEN $1 ELSE username END
-           WHERE id=$2`,
-          [nextEmail, currentTenant.user_id]
-        );
-
-        if (currentTenant.account_status === 'PENDING_ACTIVATION') {
-          await client.query(
-            `UPDATE account_activation_token
-             SET revoked_at=now()
-             WHERE user_id=$1
-               AND used_at IS NULL
-               AND revoked_at IS NULL`,
-            [currentTenant.user_id]
-          );
+        if (activeContract.rows[0]) {
+          throw new AppError(409, 'End active contract before marking tenant as moved out', 'TENANT_HAS_ACTIVE_CONTRACT');
         }
       }
-    }
 
-    const updated =
-      entries.length > 0
-        ? await client.query(`UPDATE tenant SET ${sets.join(',')} WHERE ${scopedTenantWhere} RETURNING *`, params)
-        : await client.query(
-          `SELECT * FROM tenant
-           WHERE ${scopedTenantWhere}`,
-          params
-        );
-    if (!updated.rows[0]) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
-    await upsertTenantContract(client, req.params.id, contractPayload, req.auth!.userId);
-    return updated.rows[0];
-  });
+      if (Object.prototype.hasOwnProperty.call(tenantPayload, 'email') && currentTenant.user_id) {
+        const nextEmail = String(tenantPayload.email ?? '').trim();
+        if (!nextEmail) {
+          throw new AppError(
+            400,
+            'Email is required while the tenant has a login account.',
+            'TENANT_EMAIL_REQUIRED'
+          );
+        }
+
+        const emailChanged = nextEmail.toLocaleLowerCase() !== currentTenant.account_email?.toLocaleLowerCase();
+        if (emailChanged) {
+          await client.query(
+            `UPDATE app_user
+             SET email=$1,
+                 username=CASE WHEN username=email THEN $1 ELSE username END
+             WHERE id=$2`,
+            [nextEmail, currentTenant.user_id]
+          );
+
+          if (currentTenant.account_status === 'PENDING_ACTIVATION') {
+            await client.query(
+              `UPDATE account_activation_token
+               SET revoked_at=now()
+               WHERE user_id=$1
+                 AND used_at IS NULL
+                 AND revoked_at IS NULL`,
+              [currentTenant.user_id]
+            );
+          }
+        }
+      }
+
+      const updated =
+        entries.length > 0
+          ? await client.query<Record<string, unknown>>(
+            `UPDATE tenant SET ${sets.join(',')} WHERE ${scopedTenantWhere} RETURNING *`,
+            params
+          )
+          : await client.query<Record<string, unknown>>(
+            `SELECT * FROM tenant
+             WHERE ${scopedTenantWhere}`,
+            params
+          );
+      if (!updated.rows[0]) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
+      await upsertTenantContract(client, req.params.id, contractPayload, req.auth!.userId);
+      return updated.rows[0];
+    });
+  } catch (error) {
+    if (error instanceof AppError || isUniqueConstraintError(error)) throw error;
+    console.error('Failed to update tenant', {
+      tenantId: req.params.id,
+      managerId: req.auth!.userId,
+      error: error instanceof Error ? error.message : 'Unknown database error'
+    });
+    throw new AppError(
+      500,
+      'Unable to update tenant information. Please try again.',
+      'TENANT_UPDATE_FAILED'
+    );
+  }
   res.json(result);
 }));
 

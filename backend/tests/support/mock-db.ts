@@ -59,6 +59,7 @@ class FakeDb {
   payments: Row[] = [];
   activationTokens: Row[] = [];
   auditLogs: Row[] = [];
+  tenantUpdateFailure: Error | null = null;
 
   private sequence = 9000;
 
@@ -142,10 +143,19 @@ class FakeDb {
     this.payments = [];
     this.activationTokens = [];
     this.auditLogs = [];
+    this.tenantUpdateFailure = null;
   }
 
   async query<T extends Row = Row>(text: string, params: unknown[] = []) {
     const sql = normalizeSql(text);
+
+    if (
+      sql.includes('left join app_user')
+      && sql.endsWith('for update')
+      && !sql.endsWith('for update of tenant')
+    ) {
+      throw new Error('FOR UPDATE cannot be applied to the nullable side of an outer join');
+    }
 
     if (sql.includes('from app_user') && sql.includes('where email = $1 or username = $1')) {
       const identifier = String(params[0]);
@@ -421,6 +431,7 @@ class FakeDb {
     }
 
     if (sql.startsWith('select tenant.id, tenant.user_id, app_user.email::text as account_email')) {
+      if (this.tenantUpdateFailure) throw this.tenantUpdateFailure;
       const tenant = this.tenants.find((item) => (
         item.id === params[0] && item.manager_user_id === params[1] && item.status !== 'DELETED'
       ));

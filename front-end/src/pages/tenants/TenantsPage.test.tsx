@@ -159,7 +159,7 @@ describe('TenantsPage profile form', () => {
   it('keeps a meaningful update error visible in the tenant drawer', async () => {
     const user = userEvent.setup()
     tenantMocks.updateTenant.mockRejectedValueOnce(
-      new ApiError('duplicate key value violates unique constraint', 'TENANT_EMAIL_EXISTS', 409),
+      new ApiError('Internal server error', 'TENANT_UPDATE_FAILED', 500),
     )
 
     render(<TenantsPage />)
@@ -170,9 +170,23 @@ describe('TenantsPage profile form', () => {
 
     const updateAlerts = await screen.findAllByRole('alert')
     expect(updateAlerts.some((alert) => (
-      alert.textContent?.includes('This email address is already used by another account.')
+      alert.textContent?.includes('Unable to update tenant information. Please try again.')
     ))).toBe(true)
     expect(screen.getByRole('dialog', { name: 'Edit Tenant' })).toBeInTheDocument()
+  })
+
+  it('shows form validation errors without calling the tenant API', async () => {
+    const user = userEvent.setup()
+    render(<TenantsPage />)
+
+    await user.click(await screen.findByRole('button', { name: /Add Tenant/ }))
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    const validationAlerts = await screen.findAllByRole('alert')
+    expect(validationAlerts.some((alert) => (
+      alert.textContent?.includes('Please enter the tenant name.')
+    ))).toBe(true)
+    expect(tenantMocks.createTenant).not.toHaveBeenCalled()
   })
 
   it('keeps a Cloudinary deletion error visible in the confirmation dialog', async () => {

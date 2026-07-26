@@ -21,6 +21,7 @@ import {
   message,
 } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
+import type { FormProps } from 'antd'
 import dayjs from 'dayjs'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -244,13 +245,13 @@ export function TenantsPage() {
     if (Object.keys(changes).length > 0) await updateTenantIdentityDocuments(tenantId, changes)
   }, [drawerInitialValues.identity_back, drawerInitialValues.identity_front, resolveIdentityDocumentChange])
 
-  const submitForm = useCallback(async () => {
+  const submitForm = useCallback(async (validatedValues?: TenantFormValues) => {
     setSaveLoading(true)
     setSaveErrorMessage(null)
     let profileSaved = false
     let activationEmailSent: boolean | null = null
     try {
-      const values = await form.validateFields()
+      const values = validatedValues ?? await form.validateFields()
       const payload = mapTenantFormValuesToPayload(values)
       let tenantId = editingTenantId
 
@@ -297,6 +298,16 @@ export function TenantsPage() {
       setSaveLoading(false)
     }
   }, [drawerMode, editingTenantId, form, loadTenants, saveIdentityDocuments])
+
+  const handleFormValidationFailed = useCallback<NonNullable<FormProps<TenantFormValues>['onFinishFailed']>>((formError) => {
+    const firstError = formError.errorFields[0]
+    if (firstError?.name) {
+      window.setTimeout(() => form.scrollToField(firstError.name, { block: 'center' }), 0)
+    }
+    const userMessage = getFormErrorMessage(formError)
+    setSaveErrorMessage(userMessage)
+    message.error(userMessage)
+  }, [form])
 
   const confirmDeleteTenant = useCallback(async () => {
     if (!deleteTarget || deletingTenantId) return
@@ -511,7 +522,12 @@ export function TenantsPage() {
         {drawerLoading ? (
           <Skeleton active paragraph={{ rows: 8 }} />
         ) : (
-          <Form form={form} layout="vertical">
+          <Form
+            form={form}
+            layout="vertical"
+            onFinish={(values) => void submitForm(values)}
+            onFinishFailed={handleFormValidationFailed}
+          >
             {saveErrorMessage ? (
               <Alert
                 type="error"
@@ -577,9 +593,9 @@ export function TenantsPage() {
                 <Button
                   size={isMobile ? 'large' : 'middle'}
                   type="primary"
+                  htmlType="submit"
                   loading={saveLoading}
                   disabled={saveLoading}
-                  onClick={() => void submitForm()}
                 >
                   Save
                 </Button>

@@ -26,6 +26,7 @@ const errorMessages: Record<string, string> = {
   TENANT_EMAIL_EXISTS: 'This email address is already used by another account.',
   TENANT_PHONE_EXISTS: 'This phone number is already used by another account.',
   TENANT_IDENTITY_EXISTS: 'This citizen ID number is already used by another tenant.',
+  TENANT_UPDATE_FAILED: 'Unable to update tenant information. Please try again.',
   DUPLICATE_RECORD: 'The submitted information is already used by another record.',
   ACTIVATION_TOKEN_INVALID: 'This activation link is invalid, expired, or has already been used.',
   ACCOUNT_ALREADY_ACTIVE: 'This tenant account is already active.',

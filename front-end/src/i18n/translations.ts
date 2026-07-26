@@ -89,6 +89,7 @@ const tenantFormErrors = [
   entry('This email address is already used by another account.', 'Địa chỉ email này đã được tài khoản khác sử dụng.'),
   entry('This phone number is already used by another account.', 'Số điện thoại này đã được tài khoản khác sử dụng.'),
   entry('This citizen ID number is already used by another tenant.', 'Số CCCD này đã được người thuê khác sử dụng.'),
+  entry('Unable to update tenant information. Please try again.', 'Không thể cập nhật thông tin người thuê. Vui lòng thử lại.'),
   entry('The submitted information is already used by another record.', 'Thông tin đã nhập đang được một bản ghi khác sử dụng.'),
 ]
 

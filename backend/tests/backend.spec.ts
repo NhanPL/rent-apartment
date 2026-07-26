@@ -415,6 +415,31 @@ describe('backend API smoke tests', () => {
     });
   });
 
+  it('returns a safe, meaningful error when the tenant update query fails', async () => {
+    const managerSession = await login('manager@example.com');
+    fakeDb.tenantUpdateFailure = new Error('database implementation detail');
+
+    const response = await request(app)
+      .patch(`/api/tenants/${ids.tenantA}`)
+      .set(auth(managerSession.accessToken))
+      .send({
+        tenant: {
+          full_name: 'Alice Tenant',
+          identity_number: 'ID-A',
+          email: 'tenant@example.com',
+          phone: '0900000001',
+          status: 'ACTIVE'
+        }
+      })
+      .expect(500);
+
+    expect(response.body).toMatchObject({
+      code: 'TENANT_UPDATE_FAILED',
+      message: 'Unable to update tenant information. Please try again.'
+    });
+    expect(response.body.message).not.toContain('database implementation detail');
+  });
+
   it('activates a pending tenant account with a one-time hashed token', async () => {
     const managerSession = await login('manager@example.com');
     const created = await request(app)
