@@ -43,7 +43,7 @@ PORT=4000
 DATABASE_URL=postgres://user:pass@localhost:5432/rent_apartment
 DB_SSL=false
 DB_SSL_REJECT_UNAUTHORIZED=false
-CLIENT_ORIGIN=http://localhost:5173
+CORS_ALLOWED_ORIGINS=http://localhost:5173
 FRONTEND_URL=http://localhost:5173
 ACCOUNT_ACTIVATION_EXPIRES_HOURS=48
 ```
@@ -73,6 +73,20 @@ When `APP_ENV` is `staging` or `production`, the refresh cookie automatically
 uses `Secure`. If the frontend and API are deployed on different sites, leave
 `REFRESH_COOKIE_SAME_SITE` blank to use the production default `None`; local
 development defaults to `Lax`.
+
+`CORS_ALLOWED_ORIGINS` is a comma-separated list of exact HTTP(S) origins.
+Development and test default to `http://localhost:5173` when it is blank.
+Staging and production require an explicit value and do not accept `*` because
+credentialed requests are enabled. Configure it independently in each deployed
+environment, for example:
+
+```env
+# staging
+CORS_ALLOWED_ORIGINS=https://staging.rent-apartment.example
+
+# production
+CORS_ALLOWED_ORIGINS=https://rent-apartment.example,https://www.rent-apartment.example
+```
 
 Account passwords use a consistent 12 to 128 character policy across the API
 and frontend. Long passphrases are supported by hashing the complete UTF-8

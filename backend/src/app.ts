@@ -21,23 +21,17 @@ import authRoutes from './modules/auth/auth.routes';
 import { requireAuth } from './shared/middleware/auth';
 import { errorHandler } from './shared/middleware/error-handler';
 import { env } from './config/env';
+import { corsOptions } from './config/cors';
 
 export const app = express();
 const frontendDistPath = path.resolve(__dirname, '../../front-end/dist');
 const frontendIndexPath = path.join(frontendDistPath, 'index.html');
-const allowedOrigins = env.CLIENT_ORIGIN
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
 
 if (env.TRUST_PROXY_HOPS > 0) {
   app.set('trust proxy', env.TRUST_PROXY_HOPS);
 }
 
-app.use(cors({
-  origin: allowedOrigins,
-  credentials: true
-}));
+app.use(cors(corsOptions));
 
 app.use(express.json());
 

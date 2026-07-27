@@ -201,7 +201,7 @@ describe('backend API smoke tests', () => {
       .send({ identifier: 'manager@example.com', password: 'password' })
       .expect(403);
 
-    expect(response.body).toMatchObject({ code: 'UNTRUSTED_ORIGIN' });
+    expect(response.body).toMatchObject({ code: 'CORS_ORIGIN_DENIED' });
     expect(fakeDb.authSessions).toHaveLength(0);
   });
 
