@@ -1,4 +1,4 @@
-import { apiRequest } from '../../services/apiClient'
+import { apiRequest, refreshAuthSession } from '../../services/apiClient'
 import { API_ROUTES } from '../../services/apiRoutes'
 import type {
   ActivateAccountPayload,
@@ -20,10 +20,7 @@ export function login(payload: LoginPayload) {
 }
 
 export function refresh() {
-  return apiRequest<{ accessToken: string }>(API_ROUTES.auth.refresh, {
-    method: 'POST',
-    skipAuth: true,
-  })
+  return refreshAuthSession()
 }
 
 export function me() {

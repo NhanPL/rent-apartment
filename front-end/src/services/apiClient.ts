@@ -19,6 +19,10 @@ interface ApiErrorPayload {
   code?: string
 }
 
+interface RefreshSession {
+  accessToken: string
+}
+
 export class ApiError extends Error {
   code: string
   status?: number
@@ -35,9 +39,9 @@ async function parseError(response: Response): Promise<ApiError> {
   return new ApiError(payload?.message ?? 'Request failed', payload?.code ?? 'REQUEST_FAILED', response.status)
 }
 
-let refreshPromise: Promise<boolean> | null = null
+let refreshPromise: Promise<RefreshSession> | null = null
 
-async function performRefresh() {
+async function performRefresh(): Promise<RefreshSession> {
   const response = await fetch(`${API_BASE_URL}${API_ROUTES.auth.refresh}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -45,21 +49,33 @@ async function performRefresh() {
   })
 
   if (!response.ok) {
-    return false
+    throw await parseError(response)
   }
 
-  const data = (await response.json()) as { accessToken: string }
+  const data = (await response.json()) as RefreshSession
+  if (!data.accessToken) {
+    throw new ApiError('The refresh response did not include an access token.', 'INVALID_REFRESH_RESPONSE')
+  }
   setAccessToken(data.accessToken)
-  return true
+  return data
 }
 
-async function tryRefreshToken() {
+export function refreshAuthSession(): Promise<RefreshSession> {
   if (!refreshPromise) {
     refreshPromise = performRefresh().finally(() => {
       refreshPromise = null
     })
   }
   return refreshPromise
+}
+
+async function tryRefreshToken() {
+  try {
+    await refreshAuthSession()
+    return true
+  } catch {
+    return false
+  }
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
