@@ -32,6 +32,11 @@ import {
   getRefreshTokenCookie,
   setRefreshTokenCookie
 } from './refresh-cookie';
+import {
+  loginRateLimit,
+  passwordResetRateLimit,
+  refreshRateLimit
+} from '../../config/rate-limit';
 
 const router = Router();
 
@@ -86,7 +91,7 @@ const validateNewPassword = (
   }
 };
 
-router.post('/login', asyncHandler(async (req, res) => {
+router.post('/login', loginRateLimit, asyncHandler(async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
     throw new AppError(401, INVALID_CREDENTIALS_MESSAGE, 'INVALID_CREDENTIALS');
@@ -104,7 +109,7 @@ router.post('/login', asyncHandler(async (req, res) => {
   res.json({ accessToken: result.accessToken, user: result.user });
 }));
 
-router.post('/refresh', asyncHandler(async (req, res) => {
+router.post('/refresh', refreshRateLimit, asyncHandler(async (req, res) => {
   const refreshToken = getRefreshTokenCookie(req);
   if (!refreshToken) {
     clearRefreshTokenCookie(res);
@@ -154,7 +159,7 @@ router.post('/activate', asyncHandler(async (req, res) => {
   res.json({ success: true });
 }));
 
-router.post('/password-reset/request', asyncHandler(async (req, res) => {
+router.post('/password-reset/request', passwordResetRateLimit, asyncHandler(async (req, res) => {
   const parsed = requestPasswordResetSchema.safeParse(req.body);
   if (!parsed.success) {
     throw new AppError(400, 'Please enter a valid email address.', 'VALIDATION_ERROR');
@@ -164,7 +169,7 @@ router.post('/password-reset/request', asyncHandler(async (req, res) => {
   res.status(202).json({ message: PASSWORD_RESET_REQUEST_MESSAGE });
 }));
 
-router.post('/password-reset/confirm', asyncHandler(async (req, res) => {
+router.post('/password-reset/confirm', passwordResetRateLimit, asyncHandler(async (req, res) => {
   const parsed = confirmPasswordResetSchema.safeParse(req.body);
   if (!parsed.success) {
     throw new AppError(400, 'Please enter and confirm a valid password.', 'VALIDATION_ERROR');
