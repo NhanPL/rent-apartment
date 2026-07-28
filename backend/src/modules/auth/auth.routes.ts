@@ -1,7 +1,5 @@
 import { Router } from 'express';
-import type { Request } from 'express';
 import { z } from 'zod';
-import { env } from '../../config/env';
 import { requireAuth } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
@@ -36,16 +34,6 @@ import {
 } from './refresh-cookie';
 
 const router = Router();
-const trustedOrigins = new Set(
-  env.CLIENT_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean)
-);
-
-const assertTrustedOrigin = (req: Request): void => {
-  const origin = req.header('origin');
-  if (origin && !trustedOrigins.has(origin)) {
-    throw new AppError(403, 'Request origin is not allowed', 'UNTRUSTED_ORIGIN');
-  }
-};
 
 const loginSchema = z.object({
   identifier: z.string().trim().min(1),
@@ -99,7 +87,6 @@ const validateNewPassword = (
 };
 
 router.post('/login', asyncHandler(async (req, res) => {
-  assertTrustedOrigin(req);
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
     throw new AppError(401, INVALID_CREDENTIALS_MESSAGE, 'INVALID_CREDENTIALS');
@@ -118,7 +105,6 @@ router.post('/login', asyncHandler(async (req, res) => {
 }));
 
 router.post('/refresh', asyncHandler(async (req, res) => {
-  assertTrustedOrigin(req);
   const refreshToken = getRefreshTokenCookie(req);
   if (!refreshToken) {
     clearRefreshTokenCookie(res);
@@ -138,7 +124,6 @@ router.post('/refresh', asyncHandler(async (req, res) => {
 }));
 
 router.post('/logout', asyncHandler(async (req, res) => {
-  assertTrustedOrigin(req);
   const refreshToken = getRefreshTokenCookie(req);
   if (refreshToken) await revokeSessionByRefreshToken(refreshToken);
   clearRefreshTokenCookie(res);

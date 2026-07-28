@@ -11,6 +11,22 @@ const optionalSameSite = z.preprocess(
   z.enum(['strict', 'lax', 'none']).optional()
 );
 
+export type AppEnvironment = 'development' | 'test' | 'staging' | 'production';
+
+export const resolveCorsAllowedOrigins = (
+  appEnvironment: AppEnvironment,
+  configuredOrigins: string
+): string => {
+  const configured = configuredOrigins.trim();
+  if (configured) return configured;
+  if (appEnvironment === 'development' || appEnvironment === 'test') {
+    return 'http://localhost:5173';
+  }
+  throw new Error(
+    `CORS_ALLOWED_ORIGINS is required when APP_ENV=${appEnvironment}`
+  );
+};
+
 const envSchema = z.object({
   APP_ENV: z.enum(['development', 'test', 'staging', 'production']).default(defaultAppEnv),
   PORT: z.coerce.number().int().positive().default(4000),
@@ -34,7 +50,7 @@ const envSchema = z.object({
   PASSWORD_RESET_MAX_PER_IDENTIFIER: z.coerce.number().int().min(1).max(20).default(3),
   PASSWORD_RESET_MAX_PER_IP: z.coerce.number().int().min(1).max(100).default(10),
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(1),
-  CLIENT_ORIGIN: z.string().default('http://localhost:5173'),
+  CORS_ALLOWED_ORIGINS: optionalString,
   FRONTEND_URL: z.string().default('http://localhost:5173'),
   DEFAULT_BANK_CODE: z.string().optional(),
   DEFAULT_BANK_ACCOUNT_NO: z.string().optional(),
@@ -59,4 +75,12 @@ if (!parsed.success) {
   throw new Error(`Invalid environment variables: ${parsed.error.message}`);
 }
 
-export const env = parsed.data;
+const corsAllowedOrigins = resolveCorsAllowedOrigins(
+  parsed.data.APP_ENV,
+  parsed.data.CORS_ALLOWED_ORIGINS
+);
+
+export const env = {
+  ...parsed.data,
+  CORS_ALLOWED_ORIGINS: corsAllowedOrigins
+};
