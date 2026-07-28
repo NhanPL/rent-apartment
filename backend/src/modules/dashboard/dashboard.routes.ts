@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { getDashboardSummary } from './dashboard.service';
-import { parseBody } from '../../shared/utils/validation';
+import { parseQuery } from '../../shared/utils/validation';
 
 const router = Router();
 
@@ -14,7 +14,7 @@ const dashboardQuerySchema = z.object({
 });
 
 router.get('/summary', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  const query = parseBody(dashboardQuerySchema, req.query);
+  const query = parseQuery(dashboardQuerySchema, req.query);
   res.json(await getDashboardSummary(req.auth!.userId, {
     month: query.month,
     buildingId: query.building_id ?? query.buildingId

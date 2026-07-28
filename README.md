@@ -120,6 +120,29 @@ single Render/Vercel ingress. Do not set a larger value than the real topology:
 Express uses this setting to derive `req.ip`, which is part of rate-limit and
 brute-force keys.
 
+Security headers are applied with Helmet. The CSP allows the application,
+Ant Design inline styles, direct uploads to Cloudinary, Cloudinary assets, and
+VietQR images while blocking framing and browser plugins. HSTS is enabled only
+when `APP_ENV=production`; development and test remain HTTP-compatible. HSTS
+does not include subdomains or preload by default, avoiding accidental policy
+for hosts that may not be HTTPS-ready.
+
+The API accepts JSON metadata only and rejects direct multipart uploads. Files
+are uploaded directly to a signed Cloudinary endpoint, with format, resource
+type, context folder, and per-context size limits validated by the API:
+
+```env
+JSON_BODY_LIMIT_KB=256
+UPLOAD_MAX_TENANT_DOCUMENT_MB=10
+UPLOAD_MAX_UTILITY_EVIDENCE_MB=5
+UPLOAD_MAX_PAYMENT_PROOF_MB=5
+UPLOAD_MAX_CONTRACT_DOCUMENT_MB=15
+```
+
+If the architecture later changes so the API receives file bytes directly,
+add server-side magic-byte inspection before persisting any upload. A browser
+MIME type or filename extension must never be treated as proof of file content.
+
 Account passwords use a consistent 12 to 128 character policy across the API
 and frontend. Long passphrases are supported by hashing the complete UTF-8
 password with SHA-256 before bcrypt; existing bcrypt and PostgreSQL `crypt`

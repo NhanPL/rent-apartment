@@ -25,6 +25,7 @@ interface UploadContextConfig {
   folder: string;
   maxBytes: number;
   allowedMimeTypes: string[];
+  allowedFormats: string[];
   allowedResourceTypes: UploadResourceType[];
   roles: AppRole[];
 }
@@ -33,33 +34,38 @@ const rootFolder = env.CLOUDINARY_UPLOAD_ROOT_FOLDER.replace(/^\/+|\/+$/g, '') |
 
 const imageMimeTypes = ['image/jpeg', 'image/png', 'image/webp'];
 const imageAndPdfMimeTypes = [...imageMimeTypes, 'application/pdf'];
+const megabytes = (value: number): number => value * 1024 * 1024;
 
 const contextConfig: Record<UploadContext, UploadContextConfig> = {
   TENANT_DOCUMENT: {
     folder: `${rootFolder}/tenant-documents`,
-    maxBytes: 10 * 1024 * 1024,
+    maxBytes: megabytes(env.UPLOAD_MAX_TENANT_DOCUMENT_MB),
     allowedMimeTypes: imageAndPdfMimeTypes,
+    allowedFormats: ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
     allowedResourceTypes: ['image', 'raw'],
     roles: ['TENANT', 'MANAGER']
   },
   UTILITY_EVIDENCE: {
     folder: `${rootFolder}/utility-evidence`,
-    maxBytes: 5 * 1024 * 1024,
+    maxBytes: megabytes(env.UPLOAD_MAX_UTILITY_EVIDENCE_MB),
     allowedMimeTypes: imageMimeTypes,
+    allowedFormats: ['jpg', 'jpeg', 'png', 'webp'],
     allowedResourceTypes: ['image'],
     roles: ['TENANT', 'MANAGER']
   },
   PAYMENT_PROOF: {
     folder: `${rootFolder}/payment-proofs`,
-    maxBytes: 5 * 1024 * 1024,
+    maxBytes: megabytes(env.UPLOAD_MAX_PAYMENT_PROOF_MB),
     allowedMimeTypes: imageMimeTypes,
+    allowedFormats: ['jpg', 'jpeg', 'png', 'webp'],
     allowedResourceTypes: ['image'],
     roles: ['TENANT']
   },
   CONTRACT_DOCUMENT: {
     folder: `${rootFolder}/contract-documents`,
-    maxBytes: 15 * 1024 * 1024,
+    maxBytes: megabytes(env.UPLOAD_MAX_CONTRACT_DOCUMENT_MB),
     allowedMimeTypes: imageAndPdfMimeTypes,
+    allowedFormats: ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
     allowedResourceTypes: ['image', 'raw'],
     roles: ['MANAGER']
   }
@@ -118,6 +124,10 @@ export const validateUploadFile = (
     throw new AppError(400, 'Resource type is not allowed for this upload context', 'UPLOAD_RESOURCE_TYPE_INVALID');
   }
 
+  if (resourceType !== inferResourceType(mimeType)) {
+    throw new AppError(400, 'Resource type does not match the declared file type', 'UPLOAD_RESOURCE_TYPE_INVALID');
+  }
+
   if (!Number.isInteger(payload.file_size) || payload.file_size <= 0 || payload.file_size > config.maxBytes) {
     throw new AppError(400, 'File size exceeds the upload limit for this context', 'UPLOAD_SIZE_INVALID');
   }
@@ -125,14 +135,49 @@ export const validateUploadFile = (
   return resourceType;
 };
 
-export const assertCloudinaryUrl = (fileUrl: string): void => {
-  if (!env.CLOUDINARY_CLOUD_NAME) return;
-
+export const assertCloudinaryUrl = (
+  fileUrl: string,
+  expected?: {
+    folder: string;
+    resourceType: UploadResourceType;
+    mimeType: string;
+  }
+): void => {
   try {
     const url = new URL(fileUrl);
-    const expectedPathPrefix = `/${env.CLOUDINARY_CLOUD_NAME}/`;
-    if (url.hostname !== 'res.cloudinary.com' || !url.pathname.startsWith(expectedPathPrefix)) {
+    if (url.protocol !== 'https:' || url.hostname !== 'res.cloudinary.com') {
       throw new AppError(400, 'Uploaded file must be hosted on the configured Cloudinary cloud', 'UPLOAD_URL_INVALID');
+    }
+
+    const segments = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+    if (env.CLOUDINARY_CLOUD_NAME && segments[0] !== env.CLOUDINARY_CLOUD_NAME) {
+      throw new AppError(400, 'Uploaded file must be hosted on the configured Cloudinary cloud', 'UPLOAD_URL_INVALID');
+    }
+
+    if (expected) {
+      const uploadIndex = segments.indexOf('upload');
+      const resourceType = segments[uploadIndex - 1];
+      const assetSegments = segments
+        .slice(uploadIndex + 1)
+        .filter((segment, index) => !(index === 0 && /^v\d+$/.test(segment)));
+      const assetPath = assetSegments.join('/');
+      const extension = assetSegments.at(-1)?.split('.').pop()?.toLowerCase() ?? '';
+      const allowedExtensions = expected.mimeType === 'image/jpeg'
+        ? ['jpg', 'jpeg']
+        : [expected.mimeType.split('/')[1]];
+
+      if (
+        uploadIndex < 2
+        || resourceType !== expected.resourceType
+        || !assetPath.startsWith(`${expected.folder}/`)
+        || !allowedExtensions.includes(extension)
+      ) {
+        throw new AppError(
+          400,
+          'Uploaded file does not match the signed upload context',
+          'UPLOAD_URL_INVALID'
+        );
+      }
     }
   } catch (error) {
     if (error instanceof AppError) throw error;
@@ -143,7 +188,12 @@ export const assertCloudinaryUrl = (fileUrl: string): void => {
 export const validateStoredUpload = (context: UploadContext, payload: UploadFileMetadata, role?: AppRole): UploadResourceType => {
   if (role) assertUploadContextAllowed(context, role);
   const resourceType = validateUploadFile(context, payload);
-  assertCloudinaryUrl(payload.file_url);
+  const config = getUploadContextConfig(context);
+  assertCloudinaryUrl(payload.file_url, {
+    folder: config.folder,
+    resourceType,
+    mimeType: payload.mime_type.trim().toLowerCase()
+  });
   return resourceType;
 };
 
@@ -161,7 +211,12 @@ export const createCloudinaryUploadSignature = (
   const config = getUploadContextConfig(context);
   const resourceType = validateUploadFile(context, { ...payload, folder: payload.folder ?? config.folder });
   const timestamp = Math.floor(Date.now() / 1000);
-  const signature = signParams({ folder: config.folder, timestamp }, env.CLOUDINARY_API_SECRET!);
+  const allowedFormats = config.allowedFormats.join(',');
+  const signature = signParams({
+    allowed_formats: allowedFormats,
+    folder: config.folder,
+    timestamp
+  }, env.CLOUDINARY_API_SECRET!);
 
   return {
     cloud_name: env.CLOUDINARY_CLOUD_NAME!,
@@ -169,6 +224,7 @@ export const createCloudinaryUploadSignature = (
     timestamp,
     signature,
     folder: config.folder,
+    allowed_formats: allowedFormats,
     resource_type: resourceType,
     upload_url: `https://api.cloudinary.com/v1_1/${env.CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`,
     allowed_mime_types: config.allowedMimeTypes,

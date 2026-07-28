@@ -4,18 +4,40 @@ import { query, withTransaction } from '../../db';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
-import { parseBody } from '../../shared/utils/validation';
+import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 import { deleteCloudinaryUpload, validateStoredUpload } from '../uploads/uploads.service';
 import { assertRoomCanHostActiveContract, CURRENT_CONTRACT_STATUS, getContractRoomForManager } from './contracts.rules';
 import { assertTenantBelongsToManager } from '../tenants/tenants.repository';
 import { businessStageSql, getContractBusinessStage } from './business-stage';
 
 const router = Router();
+registerUuidParams(router, ['id', 'documentId', 'tenantId']);
 type DbRow = Record<string, any>;
 type TxClient = Parameters<Parameters<typeof withTransaction>[0]>[0];
 type Queryable = Pick<TxClient, 'query'>;
 
 const contractStatusSchema = z.enum(['DRAFT', 'ACTIVE', 'ENDED', 'CANCELLED']);
+const contractBusinessStageSchema = z.enum([
+  'RESERVED',
+  'WAITING_SIGNATURE',
+  'WAITING_HANDOVER',
+  'ACTIVE',
+  'CANCELLED',
+  'ENDED'
+]);
+const contractListQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(100).default(20),
+  search: z.string().trim().max(200).default(''),
+  building_id: z.string().uuid().optional(),
+  room_id: z.string().uuid().optional(),
+  tenant_id: z.string().uuid().optional(),
+  status: contractStatusSchema.optional(),
+  business_stage: contractBusinessStageSchema.optional()
+});
+const participantRemovalQuerySchema = z.object({
+  left_at: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
+});
 const nullableString = z.string().trim().nullable().optional();
 const contractTenantSchema = z.object({
   tenant_id: z.string().uuid(),
@@ -61,11 +83,6 @@ const contractDocumentSchema = z.object({
   file_size: z.coerce.number().int().positive(),
   note: nullableString
 });
-
-const parseIntParam = (value: unknown, fallback: number): number => {
-  const parsed = Number.parseInt(String(value ?? ''), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-};
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 
@@ -249,16 +266,16 @@ const insertOrReactivateParticipant = async (
 };
 
 router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  const page = parseIntParam(req.query.page, 1);
-  const pageSize = Math.min(parseIntParam(req.query.pageSize, 20), 100);
+  const filters = parseQuery(contractListQuerySchema, req.query);
+  const { page, pageSize } = filters;
   const offset = (page - 1) * pageSize;
 
-  const search = String(req.query.search ?? '').trim();
-  const buildingId = String(req.query.building_id ?? '').trim();
-  const roomId = String(req.query.room_id ?? '').trim();
-  const tenantId = String(req.query.tenant_id ?? '').trim();
-  const status = String(req.query.status ?? '').trim();
-  const businessStage = String(req.query.business_stage ?? '').trim();
+  const search = filters.search;
+  const buildingId = filters.building_id;
+  const roomId = filters.room_id;
+  const tenantId = filters.tenant_id;
+  const status = filters.status;
+  const businessStage = filters.business_stage;
 
   const params: unknown[] = [req.auth!.userId];
   const conditions = ['b.manager_user_id=$1'];
@@ -682,7 +699,8 @@ router.patch('/:id/tenants/:tenantId', requireRole('MANAGER'), asyncHandler(asyn
 }));
 
 router.delete('/:id/tenants/:tenantId', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  const leftAt = String(req.query.left_at ?? '').trim() || today();
+  const filters = parseQuery(participantRemovalQuerySchema, req.query);
+  const leftAt = filters.left_at ?? today();
   await withTransaction(async (client) => {
     const contract = await getScopedContract(client, req.params.id, req.auth!.userId, true);
     if (contract.status === 'ENDED' || contract.status === 'CANCELLED') {

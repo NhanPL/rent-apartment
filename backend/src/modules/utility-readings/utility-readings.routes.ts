@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
-import { parseBody } from '../../shared/utils/validation';
+import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 import { validateStoredUpload } from '../uploads/uploads.service';
 import {
   approveUtilityReading,
@@ -15,6 +15,7 @@ import {
 } from './utility-readings.service';
 
 const router = Router();
+registerUuidParams(router, ['id']);
 
 const utilityEvidenceFileSchema = z.object({
   file_name: z.string().trim().nullable().optional(),
@@ -46,19 +47,22 @@ const utilityRejectSchema = z.object({
 });
 
 const utilityReadingStatusSchema = z.enum(['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'INVOICED']);
+const utilityReadingListQuerySchema = z.object({
+  building_id: z.string().uuid().optional(),
+  buildingId: z.string().uuid().optional(),
+  room_id: z.string().uuid().optional(),
+  roomId: z.string().uuid().optional(),
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])(?:-01)?$/).optional(),
+  status: utilityReadingStatusSchema.optional()
+});
 
 router.get('/', asyncHandler(async (req, res) => {
-  const status = String(req.query.status ?? '').trim();
-  if (status && !utilityReadingStatusSchema.safeParse(status).success) {
-    res.status(400).json({ message: 'Invalid utility reading status', code: 'VALIDATION_ERROR' });
-    return;
-  }
-
+  const filters = parseQuery(utilityReadingListQuerySchema, req.query);
   res.json(await listUtilityReadings(req.auth!, {
-    buildingId: String(req.query.building_id ?? req.query.buildingId ?? '').trim() || undefined,
-    roomId: String(req.query.room_id ?? req.query.roomId ?? '').trim() || undefined,
-    month: String(req.query.month ?? '').trim() || undefined,
-    status: status || undefined
+    buildingId: filters.building_id ?? filters.buildingId,
+    roomId: filters.room_id ?? filters.roomId,
+    month: filters.month,
+    status: filters.status
   }));
 }));
 

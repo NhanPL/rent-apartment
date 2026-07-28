@@ -4,7 +4,7 @@ import { query, withTransaction } from '../../db';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
-import { parseBody } from '../../shared/utils/validation';
+import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 import { CURRENT_CONTRACT_STATUS } from '../contracts/contracts.rules';
 import { resendTenantActivation } from '../auth/account-activation.service';
 import {
@@ -22,6 +22,7 @@ import {
 } from './tenant-identity-documents.service';
 
 const router = Router();
+registerUuidParams(router, ['id']);
 const db = { query };
 
 interface TenantListRow {
@@ -73,6 +74,14 @@ interface TenantDocumentDeleteRow {
 
 const nullableString = z.string().trim().nullable().optional();
 const tenantWritableStatusSchema = z.enum(['ACTIVE', 'MOVED_OUT', 'BLACKLIST']);
+const tenantListQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce.number().int().positive().max(100).default(10),
+  search: z.string().trim().max(200).default(''),
+  status: tenantWritableStatusSchema.optional(),
+  building_id: z.string().uuid().optional(),
+  room_id: z.string().uuid().optional()
+});
 
 const tenantContractSchema = z.object({
   building_id: z.string().uuid().nullable().optional(),
@@ -187,11 +196,6 @@ const upsertTenantContract = async (client: Parameters<Parameters<typeof withTra
   );
 };
 
-const parseIntParam = (value: unknown, fallback: number): number => {
-  const parsed = Number.parseInt(String(value ?? ''), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-};
-
 const isUniqueConstraintError = (error: unknown): boolean => (
   Boolean(
     error
@@ -202,14 +206,14 @@ const isUniqueConstraintError = (error: unknown): boolean => (
 );
 
 router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  const page = parseIntParam(req.query.page, 1);
-  const pageSize = Math.min(parseIntParam(req.query.pageSize, 10), 100);
+  const filters = parseQuery(tenantListQuerySchema, req.query);
+  const { page, pageSize } = filters;
   const offset = (page - 1) * pageSize;
 
-  const search = String(req.query.search ?? '').trim();
-  const status = String(req.query.status ?? '').trim();
-  const buildingId = String(req.query.building_id ?? '').trim();
-  const roomId = String(req.query.room_id ?? '').trim();
+  const search = filters.search;
+  const status = filters.status;
+  const buildingId = filters.building_id;
+  const roomId = filters.room_id;
 
   const conditions: string[] = [
     `t.manager_user_id=$1`,

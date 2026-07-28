@@ -5,10 +5,11 @@ import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { firstDayOfMonth } from '../../shared/utils/date';
 import { AppError } from '../../shared/errors/app-error';
-import { parseBody } from '../../shared/utils/validation';
+import { parseBody, registerUuidParams } from '../../shared/utils/validation';
 import { validateStoredUpload } from '../uploads/uploads.service';
 
 const router = Router();
+registerUuidParams(router, ['id']);
 router.use(requireRole('TENANT'));
 
 const tenantDocumentSchema = z.object({

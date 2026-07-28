@@ -2,8 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
-import { AppError } from '../../shared/errors/app-error';
-import { parseBody } from '../../shared/utils/validation';
+import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 import { paymentProofRateLimit } from '../../config/rate-limit';
 import { validateStoredUpload } from '../uploads/uploads.service';
 import {
@@ -17,6 +16,7 @@ import {
 } from './payments.service';
 
 const router = Router();
+registerUuidParams(router, ['id', 'invoiceId']);
 
 const paymentRequestSchema = z.object({
   invoice_id: z.string().uuid(),
@@ -53,15 +53,14 @@ const paymentRequestFiltersSchema = z.object({
 });
 
 router.get('/requests', asyncHandler(async (req, res) => {
-  const parsed = paymentRequestFiltersSchema.safeParse(req.query);
-  if (!parsed.success) throw new AppError(400, 'Invalid payment request filters', 'VALIDATION_ERROR');
+  const filters = parseQuery(paymentRequestFiltersSchema, req.query);
   res.json(await listPaymentRequests(req.auth!, {
-    month: parsed.data.month,
-    buildingId: parsed.data.building_id,
-    roomId: parsed.data.room_id,
-    tenantId: parsed.data.tenant_id,
-    requestStatus: parsed.data.request_status,
-    latestProofStatus: parsed.data.latest_proof_status
+    month: filters.month,
+    buildingId: filters.building_id,
+    roomId: filters.room_id,
+    tenantId: filters.tenant_id,
+    requestStatus: filters.request_status,
+    latestProofStatus: filters.latest_proof_status
   }));
 }));
 

@@ -4,9 +4,10 @@ import { query } from '../../db';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
-import { parseBody } from '../../shared/utils/validation';
+import { parseBody, registerUuidParams } from '../../shared/utils/validation';
 
 const router = Router();
+registerUuidParams(router, ['id']);
 
 const buildingBodySchema = z.object({
   code: z.string().trim().min(1),

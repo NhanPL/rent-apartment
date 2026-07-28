@@ -322,6 +322,28 @@ describe('backend API smoke tests', () => {
     }
   });
 
+  it('rejects invalid UUID path parameters and UUID query filters before database access', async () => {
+    const session = await login('manager@example.com');
+
+    const invalidPath = await request(app)
+      .get('/api/buildings/not-a-uuid')
+      .set(auth(session.accessToken))
+      .expect(400);
+    expect(invalidPath.body).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'Invalid UUID path parameter: id'
+    });
+
+    const invalidQuery = await request(app)
+      .get('/api/rooms?building_id=not-a-uuid')
+      .set(auth(session.accessToken))
+      .expect(400);
+    expect(invalidQuery.body).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      message: 'Invalid request query'
+    });
+  });
+
   it('temporarily locks repeated failures for an account identifier', async () => {
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 

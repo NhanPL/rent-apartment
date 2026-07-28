@@ -14,11 +14,19 @@ import {
   updateInvoiceStatus,
   updateManualInvoice
 } from './invoices.service';
-import { parseBody } from '../../shared/utils/validation';
+import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 
 const router = Router();
+registerUuidParams(router, ['id', 'utilityReadingId']);
 
 const invoiceStatusSchema = z.enum(['DRAFT', 'ISSUED', 'PAID', 'VOID', 'OVERDUE']);
+const invoicePrefillQuerySchema = z.object({
+  room_id: z.string().uuid().optional(),
+  roomId: z.string().uuid().optional(),
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])(?:-01)?$/)
+}).refine((value) => value.room_id || value.roomId, {
+  message: 'room_id is required'
+});
 
 const invoiceUpsertSchema = z.object({
   contract_id: z.string().uuid(),
@@ -62,12 +70,12 @@ router.get('/', asyncHandler(async (req, res) => {
 }));
 
 router.get('/prefill', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  const roomId = String(req.query.room_id ?? req.query.roomId ?? '').trim();
-  if (!roomId) {
-    res.status(400).json({ message: 'room_id is required', code: 'VALIDATION_ERROR' });
-    return;
-  }
-  res.json(await getInvoicePrefill(roomId, String(req.query.month ?? ''), req.auth!.userId));
+  const filters = parseQuery(invoicePrefillQuerySchema, req.query);
+  res.json(await getInvoicePrefill(
+    filters.room_id ?? filters.roomId!,
+    filters.month,
+    req.auth!.userId
+  ));
 }));
 
 router.get('/:id', asyncHandler(async (req, res) => {
