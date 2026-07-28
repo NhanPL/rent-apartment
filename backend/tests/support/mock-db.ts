@@ -62,6 +62,7 @@ class FakeDb {
   passwordResetTokens: Row[] = [];
   authSessions: Row[] = [];
   authRefreshTokens: Row[] = [];
+  loginThrottles: Row[] = [];
   auditLogs: Row[] = [];
   tenantUpdateFailure: Error | null = null;
 
@@ -150,6 +151,7 @@ class FakeDb {
     this.passwordResetTokens = [];
     this.authSessions = [];
     this.authRefreshTokens = [];
+    this.loginThrottles = [];
     this.auditLogs = [];
     this.tenantUpdateFailure = null;
   }
@@ -166,6 +168,65 @@ class FakeDb {
     }
 
     if (sql.startsWith('select pg_advisory_xact_lock(')) {
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('select scope,key_hash,failed_count,locked_until from auth_login_throttle')) {
+      return result<T>(this.loginThrottles.filter((item) => (
+        (item.scope === 'IDENTIFIER' && item.key_hash === params[0])
+        || (item.scope === 'IP' && item.key_hash === params[1])
+      )) as T[]);
+    }
+
+    if (sql.startsWith('insert into auth_login_throttle(')) {
+      const scope = String(params[0]);
+      const keyHash = String(params[1]);
+      const windowMs = Number(params[2]) * 60 * 1000;
+      const currentTime = Date.now();
+      let throttle = this.loginThrottles.find((item) => (
+        item.scope === scope && item.key_hash === keyHash
+      ));
+      if (!throttle) {
+        throttle = {
+          scope,
+          key_hash: keyHash,
+          failed_count: 1,
+          window_started_at: new Date(currentTime).toISOString(),
+          last_failed_at: new Date(currentTime).toISOString(),
+          locked_until: null,
+          created_at: new Date(currentTime).toISOString(),
+          updated_at: new Date(currentTime).toISOString()
+        };
+        this.loginThrottles.push(throttle);
+      } else {
+        const expired = new Date(throttle.window_started_at).getTime() <= currentTime - windowMs;
+        throttle.failed_count = expired ? 1 : throttle.failed_count + 1;
+        if (expired) throttle.window_started_at = new Date(currentTime).toISOString();
+        throttle.last_failed_at = new Date(currentTime).toISOString();
+        throttle.updated_at = new Date(currentTime).toISOString();
+      }
+      return result<T>([throttle as T]);
+    }
+
+    if (sql.startsWith('update auth_login_throttle set locked_until=greatest(')) {
+      const throttle = this.loginThrottles.find((item) => (
+        item.scope === params[0] && item.key_hash === params[1]
+      ));
+      if (throttle) {
+        const requestedLock = Date.now() + Number(params[2]) * 1000;
+        throttle.locked_until = new Date(Math.max(
+          requestedLock,
+          throttle.locked_until ? new Date(throttle.locked_until).getTime() : 0
+        )).toISOString();
+        throttle.updated_at = new Date().toISOString();
+      }
+      return result<T>(throttle ? [throttle as T] : []);
+    }
+
+    if (sql.startsWith("delete from auth_login_throttle where scope='identifier'")) {
+      this.loginThrottles = this.loginThrottles.filter((item) => (
+        item.scope !== 'IDENTIFIER' || item.key_hash !== params[0]
+      ));
       return result<T>([]);
     }
 

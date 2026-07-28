@@ -64,7 +64,7 @@ APP_ENV=development
 REFRESH_COOKIE_NAME=rent_refresh_token
 REFRESH_COOKIE_DOMAIN=
 REFRESH_COOKIE_SAME_SITE=
-TRUST_PROXY_HOPS=1
+TRUST_PROXY_HOPS=0
 SESSION_CLEANUP_INTERVAL_HOURS=6
 SESSION_RETENTION_DAYS=30
 ```
@@ -87,6 +87,38 @@ CORS_ALLOWED_ORIGINS=https://staging.rent-apartment.example
 # production
 CORS_ALLOWED_ORIGINS=https://rent-apartment.example,https://www.rent-apartment.example
 ```
+
+The API applies a global limiter and stricter limits to login, token refresh,
+password reset, upload signatures, and payment-proof submissions. Login
+failures are additionally tracked in PostgreSQL by HMAC-hashed IP and account
+identifier. Repeated failures cause temporary, progressively longer lockouts
+and write an `AUTH_LOGIN_BRUTE_FORCE_SUSPECTED` audit event.
+
+```env
+RATE_LIMIT_GLOBAL_WINDOW_MINUTES=15
+RATE_LIMIT_GLOBAL_MAX=300
+RATE_LIMIT_LOGIN_WINDOW_MINUTES=15
+RATE_LIMIT_LOGIN_MAX=10
+RATE_LIMIT_REFRESH_WINDOW_MINUTES=5
+RATE_LIMIT_REFRESH_MAX=30
+RATE_LIMIT_PASSWORD_RESET_WINDOW_MINUTES=15
+RATE_LIMIT_PASSWORD_RESET_MAX=10
+RATE_LIMIT_UPLOAD_SIGNATURE_WINDOW_MINUTES=1
+RATE_LIMIT_UPLOAD_SIGNATURE_MAX=30
+RATE_LIMIT_PAYMENT_PROOF_WINDOW_MINUTES=15
+RATE_LIMIT_PAYMENT_PROOF_MAX=10
+LOGIN_FAILURE_WINDOW_MINUTES=15
+LOGIN_FAILURE_MAX_PER_IDENTIFIER=5
+LOGIN_FAILURE_MAX_PER_IP=20
+LOGIN_LOCK_BASE_SECONDS=30
+LOGIN_LOCK_MAX_MINUTES=15
+```
+
+For direct local development, use `TRUST_PROXY_HOPS=0`. Staging and production
+must set the exact number of trusted reverse-proxy hops, commonly `1` for a
+single Render/Vercel ingress. Do not set a larger value than the real topology:
+Express uses this setting to derive `req.ip`, which is part of rate-limit and
+brute-force keys.
 
 Account passwords use a consistent 12 to 128 character policy across the API
 and frontend. Long passphrases are supported by hashing the complete UTF-8

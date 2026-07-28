@@ -4,6 +4,7 @@ import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
 import { parseBody } from '../../shared/utils/validation';
+import { paymentProofRateLimit } from '../../config/rate-limit';
 import { validateStoredUpload } from '../uploads/uploads.service';
 import {
   createPaymentRequest,
@@ -85,7 +86,7 @@ router.post('/requests/:id/expire', requireRole('MANAGER'), asyncHandler(async (
   res.json(await updatePaymentRequestStatus(req.params.id, req.auth!.userId, 'EXPIRED'));
 }));
 
-router.post('/requests/:id/proofs', requireRole('TENANT'), asyncHandler(async (req, res) => {
+router.post('/requests/:id/proofs', paymentProofRateLimit, requireRole('TENANT'), asyncHandler(async (req, res) => {
   const body = parseBody(paymentProofSchema, req.body);
   validateStoredUpload('PAYMENT_PROOF', body, req.auth!.role);
   res.status(201).json(await submitPaymentProof(req.params.id, body, req.auth!.userId));

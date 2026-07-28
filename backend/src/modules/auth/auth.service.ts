@@ -12,6 +12,11 @@ import {
   revokeUserSessions,
   type SessionRequestContext
 } from './session.service';
+import {
+  assertLoginNotThrottled,
+  clearIdentifierLoginFailures,
+  recordLoginFailure
+} from './login-throttle.service';
 
 interface UserRow {
   id: string;
@@ -115,6 +120,8 @@ export const authenticateLogin = async (
   password: string,
   context: SessionRequestContext
 ): Promise<LoginResult> => {
+  await assertLoginNotThrottled(identifier, context.clientIp);
+
   const { rows } = await query<UserRow>(
     `SELECT id, role, email, username, password_hash, is_active, account_status, session_version
      FROM app_user
@@ -125,11 +132,13 @@ export const authenticateLogin = async (
 
   const user = rows[0];
   if (!canAuthenticate(user)) {
+    await recordLoginFailure(identifier, context.clientIp);
     throw invalidCredentials();
   }
 
   const passwordMatches = await verifyPassword(user, password, true);
   if (!passwordMatches) {
+    await recordLoginFailure(identifier, context.clientIp);
     throw invalidCredentials();
   }
 
@@ -141,6 +150,7 @@ export const authenticateLogin = async (
     role: user.role,
     sessionVersion: user.session_version
   }, context);
+  await clearIdentifierLoginFailures(identifier);
 
   return {
     ...session,

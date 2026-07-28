@@ -322,6 +322,110 @@ describe('backend API smoke tests', () => {
     }
   });
 
+  it('temporarily locks repeated failures for an account identifier', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await request(app)
+        .post('/api/auth/login')
+        .send({ identifier: 'manager@example.com', password: 'wrong-password' })
+        .expect(401);
+    }
+
+    const blocked = await request(app)
+      .post('/api/auth/login')
+      .send({ identifier: 'manager@example.com', password: 'wrong-password' })
+      .expect(429);
+
+    expect(blocked.body).toMatchObject({
+      code: 'LOGIN_TEMPORARILY_LOCKED',
+      message: 'Too many failed login attempts. Please wait and try again.'
+    });
+    expect(fakeDb.auditLogs).toContainEqual(expect.objectContaining({
+      action: 'AUTH_LOGIN_BRUTE_FORCE_SUSPECTED',
+      entity_type: 'AUTHENTICATION'
+    }));
+    expect(JSON.stringify(fakeDb.auditLogs)).not.toContain('manager@example.com');
+    expect(warning).toHaveBeenCalledWith(
+      'Suspected login brute force blocked',
+      expect.any(Object)
+    );
+
+    const identifierThrottle = fakeDb.loginThrottles.find(
+      (item) => item.scope === 'IDENTIFIER'
+    )!;
+    identifierThrottle.locked_until = new Date(Date.now() - 1000).toISOString();
+
+    await request(app)
+      .post('/api/auth/login')
+      .send({ identifier: 'manager@example.com', password: 'wrong-password' })
+      .expect(401);
+
+    expect(fakeDb.auditLogs.at(-1)).toMatchObject({
+      action: 'AUTH_LOGIN_BRUTE_FORCE_SUSPECTED',
+      metadata: {
+        throttles: [
+          expect.objectContaining({
+            scope: 'IDENTIFIER',
+            failedCount: 6,
+            lockSeconds: 60
+          })
+        ]
+      }
+    });
+  });
+
+  it('clears identifier failures after a successful login without clearing the IP counter', async () => {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await request(app)
+        .post('/api/auth/login')
+        .send({ identifier: 'manager@example.com', password: 'wrong-password' })
+        .expect(401);
+    }
+
+    await login('manager@example.com');
+
+    expect(fakeDb.loginThrottles).toHaveLength(1);
+    expect(fakeDb.loginThrottles[0]).toMatchObject({
+      scope: 'IP',
+      failed_count: 2
+    });
+  });
+
+  it('temporarily blocks an IP attacking multiple account identifiers', async () => {
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await request(app)
+        .post('/api/auth/login')
+        .send({
+          identifier: `missing-${attempt}@example.com`,
+          password: 'wrong-password'
+        })
+        .expect(401);
+    }
+
+    const blocked = await request(app)
+      .post('/api/auth/login')
+      .send({ identifier: 'manager@example.com', password: 'password' })
+      .expect(429);
+
+    expect(blocked.body.code).toBe('LOGIN_TEMPORARILY_LOCKED');
+    expect(fakeDb.auditLogs.at(-1)).toMatchObject({
+      action: 'AUTH_LOGIN_BRUTE_FORCE_SUSPECTED',
+      metadata: {
+        throttles: [
+          expect.objectContaining({
+            scope: 'IP',
+            failedCount: 20,
+            lockSeconds: 30
+          })
+        ]
+      }
+    });
+    expect(warning).toHaveBeenCalled();
+  });
+
   it.each([
     ['manager@example.com', 'MANAGER'],
     ['tenant@example.com', 'TENANT']

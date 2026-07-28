@@ -22,6 +22,7 @@ import { requireAuth } from './shared/middleware/auth';
 import { errorHandler } from './shared/middleware/error-handler';
 import { env } from './config/env';
 import { corsOptions } from './config/cors';
+import { globalRateLimit } from './config/rate-limit';
 
 export const app = express();
 const frontendDistPath = path.resolve(__dirname, '../../front-end/dist');
@@ -32,7 +33,7 @@ if (env.TRUST_PROXY_HOPS > 0) {
 }
 
 app.use(cors(corsOptions));
-
+app.use('/api', globalRateLimit);
 app.use(express.json());
 
 app.get('/health', (_req, res) => res.json({ ok: true }));

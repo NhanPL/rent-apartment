@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
 import { parseBody } from '../../shared/utils/validation';
+import { uploadSignatureRateLimit } from '../../config/rate-limit';
 import {
   createCloudinaryUploadSignature,
   uploadContextValues,
@@ -29,7 +30,7 @@ const uploadMetadataSchema = z.object({
   resource_type: z.enum(uploadResourceTypeValues).optional()
 });
 
-router.get('/signature', asyncHandler(async (req, res) => {
+router.get('/signature', uploadSignatureRateLimit, asyncHandler(async (req, res) => {
   const result = uploadSignatureSchema.safeParse(req.query);
   if (!result.success) {
     throw new AppError(400, 'Invalid upload signature query', 'VALIDATION_ERROR');
