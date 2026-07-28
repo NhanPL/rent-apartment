@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
-import { parseBody } from '../../shared/utils/validation';
+import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 import {
   createBuildingCharge,
   createChargeCatalog,
@@ -33,6 +33,7 @@ import {
 } from './fixed-charges.service';
 
 const router = Router();
+registerUuidParams(router, ['id']);
 router.use(requireRole('MANAGER'));
 
 const chargeTypeSchema = z.enum(['FLAT', 'PER_PERSON', 'PER_VEHICLE']);
@@ -98,13 +99,40 @@ const roomMonthExtraCreateSchema = z.object({
 
 const roomMonthExtraUpdateSchema = roomMonthExtraCreateSchema.partial();
 
-const parseOptionalBoolean = (value: unknown): boolean | undefined => {
-  if (value === undefined) return undefined;
-  return String(value).toLowerCase() === 'true';
-};
+const catalogQuerySchema = z.object({
+  is_active: z.enum(['true', 'false']).transform((value) => value === 'true').optional()
+});
+
+const buildingFilterQuerySchema = z.object({
+  building_id: z.string().uuid().optional(),
+  buildingId: z.string().uuid().optional()
+});
+
+const roomFilterQuerySchema = buildingFilterQuerySchema.extend({
+  room_id: z.string().uuid().optional(),
+  roomId: z.string().uuid().optional()
+});
+
+const contractFilterQuerySchema = roomFilterQuerySchema.extend({
+  contract_id: z.string().uuid().optional(),
+  contractId: z.string().uuid().optional()
+});
+
+const roomMonthFilterQuerySchema = roomFilterQuerySchema.extend({
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])(?:-01)?$/).optional()
+});
+
+const resolveQuerySchema = z.object({
+  contract_id: z.string().uuid().optional(),
+  contractId: z.string().uuid().optional(),
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])(?:-01)?$/)
+}).refine((value) => value.contract_id || value.contractId, {
+  message: 'contract_id is required'
+});
 
 router.get('/catalog', asyncHandler(async (req, res) => {
-  res.json(await listChargeCatalog(parseOptionalBoolean(req.query.is_active)));
+  const filters = parseQuery(catalogQuerySchema, req.query);
+  res.json(await listChargeCatalog(filters.is_active));
 }));
 
 router.get('/catalog/:id', asyncHandler(async (req, res) => {
@@ -127,7 +155,8 @@ router.delete('/catalog/:id', asyncHandler(async (req, res) => {
 }));
 
 router.get('/building-charges', asyncHandler(async (req, res) => {
-  const buildingId = String(req.query.building_id ?? req.query.buildingId ?? '').trim() || undefined;
+  const filters = parseQuery(buildingFilterQuerySchema, req.query);
+  const buildingId = filters.building_id ?? filters.buildingId;
   res.json(await listBuildingCharges(req.auth!.userId, buildingId));
 }));
 
@@ -151,8 +180,9 @@ router.delete('/building-charges/:id', asyncHandler(async (req, res) => {
 }));
 
 router.get('/room-overrides', asyncHandler(async (req, res) => {
-  const buildingId = String(req.query.building_id ?? req.query.buildingId ?? '').trim() || undefined;
-  const roomId = String(req.query.room_id ?? req.query.roomId ?? '').trim() || undefined;
+  const filters = parseQuery(roomFilterQuerySchema, req.query);
+  const buildingId = filters.building_id ?? filters.buildingId;
+  const roomId = filters.room_id ?? filters.roomId;
   res.json(await listRoomChargeOverrides(req.auth!.userId, { buildingId, roomId }));
 }));
 
@@ -176,9 +206,10 @@ router.delete('/room-overrides/:id', asyncHandler(async (req, res) => {
 }));
 
 router.get('/contract-overrides', asyncHandler(async (req, res) => {
-  const buildingId = String(req.query.building_id ?? req.query.buildingId ?? '').trim() || undefined;
-  const roomId = String(req.query.room_id ?? req.query.roomId ?? '').trim() || undefined;
-  const contractId = String(req.query.contract_id ?? req.query.contractId ?? '').trim() || undefined;
+  const filters = parseQuery(contractFilterQuerySchema, req.query);
+  const buildingId = filters.building_id ?? filters.buildingId;
+  const roomId = filters.room_id ?? filters.roomId;
+  const contractId = filters.contract_id ?? filters.contractId;
   res.json(await listContractChargeOverrides(req.auth!.userId, { buildingId, roomId, contractId }));
 }));
 
@@ -202,9 +233,10 @@ router.delete('/contract-overrides/:id', asyncHandler(async (req, res) => {
 }));
 
 router.get('/room-month-extras', asyncHandler(async (req, res) => {
-  const buildingId = String(req.query.building_id ?? req.query.buildingId ?? '').trim() || undefined;
-  const roomId = String(req.query.room_id ?? req.query.roomId ?? '').trim() || undefined;
-  const month = String(req.query.month ?? '').trim() || undefined;
+  const filters = parseQuery(roomMonthFilterQuerySchema, req.query);
+  const buildingId = filters.building_id ?? filters.buildingId;
+  const roomId = filters.room_id ?? filters.roomId;
+  const month = filters.month;
   res.json(await listRoomMonthExtras(req.auth!.userId, { buildingId, roomId, month }));
 }));
 
@@ -228,14 +260,12 @@ router.delete('/room-month-extras/:id', asyncHandler(async (req, res) => {
 }));
 
 router.get('/resolve', asyncHandler(async (req, res) => {
-  const contractId = String(req.query.contract_id ?? req.query.contractId ?? '').trim();
-  const month = String(req.query.month ?? '').trim();
-  if (!contractId || !month) {
-    res.status(400).json({ message: 'contract_id and month are required', code: 'VALIDATION_ERROR' });
-    return;
-  }
-
-  res.json(await resolveFixedChargesPreview(contractId, month, req.auth!.userId));
+  const filters = parseQuery(resolveQuerySchema, req.query);
+  res.json(await resolveFixedChargesPreview(
+    filters.contract_id ?? filters.contractId!,
+    filters.month,
+    req.auth!.userId
+  ));
 }));
 
 export default router;

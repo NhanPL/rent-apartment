@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
-import { parseBody } from '../../shared/utils/validation';
+import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 import {
   createUtilityRate,
   deleteUtilityRate,
@@ -12,6 +12,7 @@ import {
 } from './utility-rates.service';
 
 const router = Router();
+registerUuidParams(router, ['id']);
 router.use(requireRole('MANAGER'));
 
 const utilityRateCreateSchema = z.object({
@@ -23,9 +24,14 @@ const utilityRateCreateSchema = z.object({
 });
 
 const utilityRateUpdateSchema = utilityRateCreateSchema.partial();
+const utilityRateListQuerySchema = z.object({
+  building_id: z.string().uuid().optional(),
+  buildingId: z.string().uuid().optional()
+});
 
 router.get('/', asyncHandler(async (req, res) => {
-  const buildingId = String(req.query.building_id ?? req.query.buildingId ?? '').trim() || undefined;
+  const filters = parseQuery(utilityRateListQuerySchema, req.query);
+  const buildingId = filters.building_id ?? filters.buildingId;
   res.json(await listUtilityRates(req.auth!.userId, buildingId));
 }));
 

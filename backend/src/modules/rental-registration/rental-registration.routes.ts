@@ -4,15 +4,19 @@ import { query, withTransaction } from '../../db';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
-import { parseBody } from '../../shared/utils/validation';
+import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 import { businessStageSql, getContractBusinessStage } from '../contracts/business-stage';
 
 const router = Router();
+registerUuidParams(router, ['contractId']);
 type DbRow = Record<string, any>;
 type TxClient = Parameters<Parameters<typeof withTransaction>[0]>[0];
 type Queryable = Pick<TxClient, 'query'>;
 
 const nullableString = z.string().trim().nullable().optional();
+const availableRoomQuerySchema = z.object({
+  building_id: z.string().uuid().optional()
+});
 
 const tenantDraftSchema = z.object({
   full_name: z.string().trim().min(1),
@@ -154,7 +158,8 @@ const assertTenantAvailable = async (client: Queryable, tenantId: string) => {
 };
 
 router.get('/available-rooms', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  const buildingId = String(req.query.building_id ?? '').trim();
+  const filters = parseQuery(availableRoomQuerySchema, req.query);
+  const buildingId = filters.building_id ?? '';
   const params: unknown[] = [req.auth!.userId];
   const conditions = ['b.manager_user_id=$1', "r.status='ACTIVE'", 'occupancy.id IS NULL'];
 

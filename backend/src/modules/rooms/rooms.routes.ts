@@ -4,11 +4,16 @@ import { query } from '../../db';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
-import { parseBody } from '../../shared/utils/validation';
+import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 
 const router = Router();
+registerUuidParams(router, ['id']);
 
 const nullableString = z.string().trim().nullable().optional();
+const roomListQuerySchema = z.object({
+  buildingId: z.string().uuid().optional(),
+  building_id: z.string().uuid().optional()
+});
 
 const roomCreateSchema = z.object({
   building_id: z.string().uuid(),
@@ -76,7 +81,8 @@ const roomSummaryJoins = `
 `;
 
 router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  const buildingId = (req.query.buildingId ?? req.query.building_id) as string | undefined;
+  const filters = parseQuery(roomListQuerySchema, req.query);
+  const buildingId = filters.buildingId ?? filters.building_id;
   const { rows } = buildingId
     ? await query(
       `SELECT ${roomSummarySelect}

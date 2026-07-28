@@ -10,6 +10,7 @@ interface UploadSignature {
   timestamp: number
   signature: string
   folder: string
+  allowed_formats: string
   resource_type: UploadResourceType
   upload_url: string
   allowed_mime_types: string[]
@@ -80,6 +81,7 @@ export async function uploadFileToCloudinary(file: File, context: UploadContext)
   formData.append('timestamp', String(signature.timestamp))
   formData.append('signature', signature.signature)
   formData.append('folder', signature.folder)
+  formData.append('allowed_formats', signature.allowed_formats)
 
   const response = await fetch(signature.upload_url, {
     method: 'POST',

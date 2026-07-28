@@ -1,8 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { asyncHandler } from '../../shared/middleware/async-handler';
-import { AppError } from '../../shared/errors/app-error';
-import { parseBody } from '../../shared/utils/validation';
+import { parseBody, parseQuery } from '../../shared/utils/validation';
 import { uploadSignatureRateLimit } from '../../config/rate-limit';
 import {
   createCloudinaryUploadSignature,
@@ -31,12 +30,8 @@ const uploadMetadataSchema = z.object({
 });
 
 router.get('/signature', uploadSignatureRateLimit, asyncHandler(async (req, res) => {
-  const result = uploadSignatureSchema.safeParse(req.query);
-  if (!result.success) {
-    throw new AppError(400, 'Invalid upload signature query', 'VALIDATION_ERROR');
-  }
-
-  res.json(createCloudinaryUploadSignature(result.data.context, result.data, req.auth!.role));
+  const query = parseQuery(uploadSignatureSchema, req.query);
+  res.json(createCloudinaryUploadSignature(query.context, query, req.auth!.role));
 }));
 
 router.post('/metadata', asyncHandler(async (req, res) => {

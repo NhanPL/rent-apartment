@@ -23,6 +23,8 @@ import { errorHandler } from './shared/middleware/error-handler';
 import { env } from './config/env';
 import { corsOptions } from './config/cors';
 import { globalRateLimit } from './config/rate-limit';
+import { securityHeaders } from './config/security';
+import { rejectDirectFileUploads } from './shared/middleware/request-hardening';
 
 export const app = express();
 const frontendDistPath = path.resolve(__dirname, '../../front-end/dist');
@@ -32,9 +34,15 @@ if (env.TRUST_PROXY_HOPS > 0) {
   app.set('trust proxy', env.TRUST_PROXY_HOPS);
 }
 
+app.use(securityHeaders);
 app.use(cors(corsOptions));
 app.use('/api', globalRateLimit);
-app.use(express.json());
+app.use('/api', rejectDirectFileUploads);
+app.use(express.json({
+  limit: `${env.JSON_BODY_LIMIT_KB}kb`,
+  strict: true,
+  type: ['application/json', 'application/*+json']
+}));
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 app.use('/api/auth', authRoutes);

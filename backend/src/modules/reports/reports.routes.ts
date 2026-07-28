@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
-import { parseBody } from '../../shared/utils/validation';
+import { parseQuery } from '../../shared/utils/validation';
 import { getReportsCsv, getReportsData } from './reports.service';
 
 const router = Router();
@@ -32,12 +32,12 @@ const toFilters = (query: z.infer<typeof reportsQuerySchema>) => ({
 });
 
 router.get('/summary', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  const query = parseBody(reportsQuerySchema, req.query);
+  const query = parseQuery(reportsQuerySchema, req.query);
   res.json(await getReportsData(req.auth!.userId, toFilters(query)));
 }));
 
 router.get('/export.csv', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  const query = parseBody(reportsExportQuerySchema, req.query);
+  const query = parseQuery(reportsExportQuerySchema, req.query);
   const csv = await getReportsCsv(req.auth!.userId, toFilters(query), query.section);
 
   res.header('Content-Type', 'text/csv; charset=utf-8');

@@ -21,6 +21,7 @@ describe('uploadFileToCloudinary', () => {
       timestamp: 123456,
       signature: 'signed-value',
       folder: 'rent-apartment/contract-documents',
+      allowed_formats: 'jpg,jpeg,png,webp,pdf',
       resource_type: 'raw',
       upload_url: 'https://api.cloudinary.com/v1_1/rentmate/raw/upload',
       allowed_mime_types: ['application/pdf'],
@@ -48,6 +49,8 @@ describe('uploadFileToCloudinary', () => {
       'https://api.cloudinary.com/v1_1/rentmate/raw/upload',
       expect.objectContaining({ method: 'POST' }),
     )
+    const uploadBody = fetchMock.mock.calls[0][1].body as FormData
+    expect(uploadBody.get('allowed_formats')).toBe('jpg,jpeg,png,webp,pdf')
     expect(uploaded).toMatchObject({
       file_name: 'SIGNED-CONTRACT.PDF',
       mime_type: 'application/pdf',

@@ -1,13 +1,23 @@
 import { NextFunction, Request, Response } from 'express';
 import { AppError } from '../errors/app-error';
+import { env, type AppEnvironment } from '../../config/env';
 
 interface DatabaseError {
   code?: string;
   constraint?: string;
 }
 
+interface RequestParserError extends Error {
+  status?: number;
+  type?: string;
+}
+
 const isDatabaseError = (error: unknown): error is DatabaseError => (
   Boolean(error && typeof error === 'object' && 'code' in error)
+);
+
+const isRequestParserError = (error: unknown): error is RequestParserError => (
+  error instanceof Error && 'type' in error
 );
 
 const uniqueConstraintErrors: Record<string, { message: string; code: string }> = {
@@ -29,19 +39,40 @@ const uniqueConstraintErrors: Record<string, { message: string; code: string }> 
   }
 };
 
-export const errorHandler = (err: unknown, _req: Request, res: Response, next: NextFunction): void => {
+export const createErrorHandler = (appEnvironment: AppEnvironment) => (
+  err: unknown,
+  _req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
   if (res.headersSent) {
     next(err);
     return;
   }
 
-  const includeStack = process.env.NODE_ENV !== 'production';
+  const includeStack = appEnvironment === 'development' || appEnvironment === 'test';
 
   if (err instanceof AppError) {
     res.status(err.statusCode).json({
       message: err.message,
       code: err.code,
       ...(includeStack ? { stack: err.stack } : {})
+    });
+    return;
+  }
+
+  if (isRequestParserError(err) && err.type === 'entity.too.large') {
+    res.status(413).json({
+      message: 'Request body is too large.',
+      code: 'PAYLOAD_TOO_LARGE'
+    });
+    return;
+  }
+
+  if (isRequestParserError(err) && err.type === 'entity.parse.failed') {
+    res.status(400).json({
+      message: 'Request body contains invalid JSON.',
+      code: 'INVALID_JSON'
     });
     return;
   }
@@ -70,3 +101,5 @@ export const errorHandler = (err: unknown, _req: Request, res: Response, next: N
     ...(includeStack ? { stack: String(err) } : {})
   });
 };
+
+export const errorHandler = createErrorHandler(env.APP_ENV);
