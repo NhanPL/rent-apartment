@@ -28,3 +28,5 @@ process.env.SMTP_FROM_EMAIL = process.env.SMTP_FROM_EMAIL ?? 'noreply@example.te
 process.env.CLOUDINARY_CLOUD_NAME = '';
 process.env.CLOUDINARY_API_KEY = '';
 process.env.CLOUDINARY_API_SECRET = '';
+process.env.DOCUMENT_ACCESS_SECRET = '';
+process.env.DOCUMENT_DELIVERY_BASE_URL = '';

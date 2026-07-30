@@ -3,7 +3,12 @@ import { z } from 'zod';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
-import { validateStoredUpload } from '../uploads/uploads.service';
+import {
+  cloudinaryDeliveryTypeValues,
+  normalizeStoredUpload,
+  uploadResourceTypeValues
+} from '../uploads/uploads.service';
+import { presentDocumentAsset } from '../documents/document-assets.service';
 import {
   approveUtilityReading,
   attachUtilityReadingEvidence,
@@ -21,7 +26,13 @@ const utilityEvidenceFileSchema = z.object({
   file_name: z.string().trim().nullable().optional(),
   file_url: z.string().trim().url(),
   mime_type: z.string().trim().min(1),
-  file_size: z.coerce.number().int().positive()
+  file_size: z.coerce.number().int().positive(),
+  resource_type: z.enum(uploadResourceTypeValues).optional(),
+  public_id: z.string().trim().min(1).optional(),
+  asset_id: z.string().trim().min(1).optional(),
+  version: z.coerce.number().int().positive().optional(),
+  format: z.string().trim().min(1).max(20).optional(),
+  delivery_type: z.enum(cloudinaryDeliveryTypeValues).optional()
 });
 
 const utilityReadingCreateSchema = z.object({
@@ -67,36 +78,95 @@ router.get('/', asyncHandler(async (req, res) => {
 }));
 
 router.get('/:id', asyncHandler(async (req, res) => {
-  res.json(await getUtilityReadingById(req.params.id, req.auth!));
+  const reading = await getUtilityReadingById(req.params.id, req.auth!);
+  res.json({
+    ...reading,
+    evidence: await Promise.all(
+      reading.evidence.map((item) => presentDocumentAsset(req, 'UTILITY_EVIDENCE', item as { id: string }, req.auth!))
+    )
+  });
 }));
 
 router.post('/', requireRole('TENANT'), asyncHandler(async (req, res) => {
   const body = parseBody(utilityReadingCreateSchema, req.body);
+  let evidence;
   if (body.evidence) {
-    validateStoredUpload('UTILITY_EVIDENCE', body.evidence.electricity, req.auth!.role);
-    validateStoredUpload('UTILITY_EVIDENCE', body.evidence.water, req.auth!.role);
+    const electricityAsset = normalizeStoredUpload('UTILITY_EVIDENCE', body.evidence.electricity, req.auth!.role, req.auth!.userId);
+    const waterAsset = normalizeStoredUpload('UTILITY_EVIDENCE', body.evidence.water, req.auth!.role, req.auth!.userId);
+    evidence = {
+      electricity: {
+        ...body.evidence.electricity,
+        public_id: electricityAsset.publicId,
+        asset_id: electricityAsset.assetId ?? undefined,
+        resource_type: electricityAsset.resourceType,
+        version: electricityAsset.version ?? undefined,
+        format: electricityAsset.format ?? undefined,
+        delivery_type: electricityAsset.deliveryType
+      },
+      water: {
+        ...body.evidence.water,
+        public_id: waterAsset.publicId,
+        asset_id: waterAsset.assetId ?? undefined,
+        resource_type: waterAsset.resourceType,
+        version: waterAsset.version ?? undefined,
+        format: waterAsset.format ?? undefined,
+        delivery_type: waterAsset.deliveryType
+      }
+    };
   }
-  res.status(201).json(await createUtilityReading(body, req.auth!.userId));
+  res.status(201).json(await createUtilityReading({ ...body, evidence }, req.auth!.userId));
 }));
 
 router.post('/:id/evidence', asyncHandler(async (req, res) => {
   const body = parseBody(utilityEvidenceSchema, req.body);
-  validateStoredUpload('UTILITY_EVIDENCE', body, req.auth!.role);
-  res.status(201).json(await attachUtilityReadingEvidence(req.params.id, body, req.auth!));
+  const asset = normalizeStoredUpload('UTILITY_EVIDENCE', body, req.auth!.role, req.auth!.userId);
+  const evidence = await attachUtilityReadingEvidence(req.params.id, {
+    ...body,
+    public_id: asset.publicId,
+    asset_id: asset.assetId ?? undefined,
+    resource_type: asset.resourceType,
+    version: asset.version ?? undefined,
+    format: asset.format ?? undefined,
+    delivery_type: asset.deliveryType
+  }, req.auth!);
+  res.status(201).json(await presentDocumentAsset(
+    req,
+    'UTILITY_EVIDENCE',
+    evidence as { id: string },
+    req.auth!
+  ));
 }));
 
 router.post('/:id/approve', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  res.json(await approveUtilityReading(req.params.id, req.auth!.userId));
+  const reading = await approveUtilityReading(req.params.id, req.auth!.userId);
+  res.json({
+    ...reading,
+    evidence: await Promise.all(
+      reading.evidence.map((item) => presentDocumentAsset(req, 'UTILITY_EVIDENCE', item as { id: string }, req.auth!))
+    )
+  });
 }));
 
 router.post('/:id/reject', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const { reason } = parseBody(utilityRejectSchema, req.body);
-  res.json(await rejectUtilityReading(req.params.id, req.auth!.userId, reason));
+  const reading = await rejectUtilityReading(req.params.id, req.auth!.userId, reason);
+  res.json({
+    ...reading,
+    evidence: await Promise.all(
+      reading.evidence.map((item) => presentDocumentAsset(req, 'UTILITY_EVIDENCE', item as { id: string }, req.auth!))
+    )
+  });
 }));
 
 router.post('/:id/request-correction', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const { reason } = parseBody(utilityRejectSchema, req.body);
-  res.json(await requestUtilityReadingCorrection(req.params.id, req.auth!.userId, reason));
+  const reading = await requestUtilityReadingCorrection(req.params.id, req.auth!.userId, reason);
+  res.json({
+    ...reading,
+    evidence: await Promise.all(
+      reading.evidence.map((item) => presentDocumentAsset(req, 'UTILITY_EVIDENCE', item as { id: string }, req.auth!))
+    )
+  });
 }));
 
 export default router;

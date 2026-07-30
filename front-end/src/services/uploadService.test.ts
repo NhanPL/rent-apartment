@@ -23,6 +23,7 @@ describe('uploadFileToCloudinary', () => {
       folder: 'rent-apartment/contract-documents',
       allowed_formats: 'jpg,jpeg,png,webp,pdf',
       resource_type: 'raw',
+      delivery_type: 'authenticated',
       upload_url: 'https://api.cloudinary.com/v1_1/rentmate/raw/upload',
       allowed_mime_types: ['application/pdf'],
       max_file_size: 15 * 1024 * 1024,
@@ -30,10 +31,14 @@ describe('uploadFileToCloudinary', () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: vi.fn().mockResolvedValue({
-        secure_url: 'https://res.cloudinary.com/rentmate/raw/upload/signed-contract.pdf',
+        secure_url: 'https://res.cloudinary.com/rentmate/raw/authenticated/v123/signed-contract.pdf',
         bytes: 7,
         resource_type: 'raw',
-        public_id: 'rent-apartment/contract-documents/signed-contract',
+        public_id: 'rent-apartment/contract-documents/signed-contract.pdf',
+        asset_id: 'asset-id',
+        version: 123,
+        format: 'pdf',
+        type: 'authenticated',
       }),
     })
     vi.stubGlobal('fetch', fetchMock)
@@ -51,10 +56,16 @@ describe('uploadFileToCloudinary', () => {
     )
     const uploadBody = fetchMock.mock.calls[0][1].body as FormData
     expect(uploadBody.get('allowed_formats')).toBe('jpg,jpeg,png,webp,pdf')
+    expect(uploadBody.get('type')).toBe('authenticated')
     expect(uploaded).toMatchObject({
       file_name: 'SIGNED-CONTRACT.PDF',
       mime_type: 'application/pdf',
       resource_type: 'raw',
+      public_id: 'rent-apartment/contract-documents/signed-contract.pdf',
+      asset_id: 'asset-id',
+      version: 123,
+      format: 'pdf',
+      delivery_type: 'authenticated',
     })
   })
 })

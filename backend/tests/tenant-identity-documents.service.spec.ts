@@ -6,8 +6,12 @@ const dbMocks = vi.hoisted(() => ({
 const repositoryMocks = vi.hoisted(() => ({
   assertTenantBelongsToManager: vi.fn()
 }));
-const uploadMocks = vi.hoisted(() => ({
-  deleteCloudinaryUpload: vi.fn()
+const assetJobMocks = vi.hoisted(() => ({
+  enqueueCloudinaryDeletion: vi.fn().mockResolvedValue(undefined),
+  processCloudinaryAssetJobs: vi.fn().mockResolvedValue(0)
+}));
+const auditMocks = vi.hoisted(() => ({
+  writeAuditLog: vi.fn().mockResolvedValue(undefined)
 }));
 
 vi.mock('../src/db', () => ({
@@ -16,8 +20,12 @@ vi.mock('../src/db', () => ({
 vi.mock('../src/modules/tenants/tenants.repository', () => ({
   assertTenantBelongsToManager: repositoryMocks.assertTenantBelongsToManager
 }));
-vi.mock('../src/modules/uploads/uploads.service', () => ({
-  deleteCloudinaryUpload: uploadMocks.deleteCloudinaryUpload
+vi.mock('../src/modules/documents/document-asset-jobs.service', () => ({
+  enqueueCloudinaryDeletion: assetJobMocks.enqueueCloudinaryDeletion,
+  processCloudinaryAssetJobs: assetJobMocks.processCloudinaryAssetJobs
+}));
+vi.mock('../src/shared/services/audit-log.service', () => ({
+  writeAuditLog: auditMocks.writeAuditLog
 }));
 
 import { updateTenantIdentityDocuments } from '../src/modules/tenants/tenant-identity-documents.service';
@@ -50,7 +58,9 @@ const newFront = {
 describe('updateTenantIdentityDocuments', () => {
   beforeEach(() => {
     repositoryMocks.assertTenantBelongsToManager.mockResolvedValue(undefined);
-    uploadMocks.deleteCloudinaryUpload.mockResolvedValue(undefined);
+    assetJobMocks.enqueueCloudinaryDeletion.mockClear();
+    assetJobMocks.processCloudinaryAssetJobs.mockClear();
+    auditMocks.writeAuditLog.mockClear();
   });
 
   it('replaces selected identity images, removes cleared images, and deletes superseded Cloudinary assets', async () => {
@@ -77,9 +87,20 @@ describe('updateTenantIdentityDocuments', () => {
 
     expect(repositoryMocks.assertTenantBelongsToManager).toHaveBeenCalledWith(client, 'tenant-1', 'manager-1');
     expect(client.query.mock.calls.some(([sql]) => String(sql).includes('INSERT INTO tenant_document'))).toBe(true);
-    expect(uploadMocks.deleteCloudinaryUpload).toHaveBeenCalledTimes(2);
-    expect(uploadMocks.deleteCloudinaryUpload).toHaveBeenCalledWith({ file_url: oldFront.file_url });
-    expect(uploadMocks.deleteCloudinaryUpload).toHaveBeenCalledWith({ file_url: oldBack.file_url });
+    expect(assetJobMocks.enqueueCloudinaryDeletion).toHaveBeenCalledTimes(2);
+    expect(assetJobMocks.enqueueCloudinaryDeletion).toHaveBeenCalledWith(
+      client,
+      'TENANT_DOCUMENT',
+      oldFront,
+      'TENANT_IDENTITY_DOCUMENT_REPLACED'
+    );
+    expect(assetJobMocks.enqueueCloudinaryDeletion).toHaveBeenCalledWith(
+      client,
+      'TENANT_DOCUMENT',
+      oldBack,
+      'TENANT_IDENTITY_DOCUMENT_REPLACED'
+    );
+    expect(auditMocks.writeAuditLog).toHaveBeenCalledTimes(2);
     expect(result.front?.file_url).toBe(newFront.file_url);
     expect(result.back).toBeNull();
   });

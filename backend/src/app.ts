@@ -14,6 +14,7 @@ import paymentsRoutes from './modules/payments/payments.routes';
 import fixedChargesRoutes from './modules/fixed-charges/fixed-charges.routes';
 import meRoutes from './modules/me/me.routes';
 import uploadsRoutes from './modules/uploads/uploads.routes';
+import documentAssetsRoutes, { documentDeliveryRoutes } from './modules/documents/document-assets.routes';
 import dashboardRoutes from './modules/dashboard/dashboard.routes';
 import reportsRoutes from './modules/reports/reports.routes';
 import monthlyBillingRoutes from './modules/monthly-billing/monthly-billing.routes';
@@ -46,6 +47,7 @@ app.use(express.json({
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
 app.use('/api/auth', authRoutes);
+app.use('/api/documents', documentDeliveryRoutes);
 app.use('/api', requireAuth);
 app.use('/api/buildings', buildingsRoutes);
 app.use('/api/rooms', roomsRoutes);
@@ -60,6 +62,7 @@ app.use('/api/payments', paymentsRoutes);
 app.use('/api/fixed-charges', fixedChargesRoutes);
 app.use('/api/me', meRoutes);
 app.use('/api/uploads', uploadsRoutes);
+app.use('/api/documents', documentAssetsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/reports', reportsRoutes);
 

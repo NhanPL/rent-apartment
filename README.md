@@ -137,7 +137,27 @@ UPLOAD_MAX_TENANT_DOCUMENT_MB=10
 UPLOAD_MAX_UTILITY_EVIDENCE_MB=5
 UPLOAD_MAX_PAYMENT_PROOF_MB=5
 UPLOAD_MAX_CONTRACT_DOCUMENT_MB=15
+DOCUMENT_ACCESS_SECRET=<separate_long_random_secret>
+DOCUMENT_DELIVERY_BASE_URL=http://localhost:4000
+DOCUMENT_ACCESS_TTL_SECONDS=300
+DOCUMENT_JOB_INTERVAL_MINUTES=15
+DOCUMENT_JOB_MAX_ATTEMPTS=8
+DOCUMENT_RECONCILIATION_INTERVAL_HOURS=24
+TENANT_DOCUMENT_RETENTION_DAYS=3650
+PAYMENT_PROOF_RETENTION_DAYS=1825
+UTILITY_EVIDENCE_RETENTION_DAYS=730
+CONTRACT_DOCUMENT_RETENTION_DAYS=3650
 ```
+
+Tenant documents, payment proofs, utility evidence, and contract documents are
+uploaded with Cloudinary `authenticated` delivery. API responses replace
+Cloudinary URLs with short-lived application-signed URLs; the delivery endpoint
+rechecks ownership before proxying file bytes. Apply
+`migrations/20260730_private_document_assets.sql` before deployment. Its
+durable asset jobs migrate legacy public assets, retry post-commit deletion,
+enforce retention, and record Cloudinary/database orphan findings.
+Reverse-proxy and analytics logging should redact the
+`/api/documents/delivery/*` path because it contains a short-lived bearer link.
 
 If the architecture later changes so the API receives file bytes directly,
 add server-side magic-byte inspection before persisting any upload. A browser

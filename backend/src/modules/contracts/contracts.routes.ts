@@ -5,7 +5,17 @@ import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
 import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
-import { deleteCloudinaryUpload, validateStoredUpload } from '../uploads/uploads.service';
+import {
+  cloudinaryDeliveryTypeValues,
+  getDocumentRetentionUntil,
+  normalizeStoredUpload,
+  uploadResourceTypeValues
+} from '../uploads/uploads.service';
+import {
+  enqueueCloudinaryDeletion,
+  processCloudinaryAssetJobs
+} from '../documents/document-asset-jobs.service';
+import { presentDocumentAsset } from '../documents/document-assets.service';
 import { assertRoomCanHostActiveContract, CURRENT_CONTRACT_STATUS, getContractRoomForManager } from './contracts.rules';
 import { assertTenantBelongsToManager } from '../tenants/tenants.repository';
 import { businessStageSql, getContractBusinessStage } from './business-stage';
@@ -81,6 +91,12 @@ const contractDocumentSchema = z.object({
   file_url: z.string().trim().url(),
   mime_type: z.string().trim().min(1),
   file_size: z.coerce.number().int().positive(),
+  resource_type: z.enum(uploadResourceTypeValues).optional(),
+  public_id: z.string().trim().min(1).optional(),
+  asset_id: z.string().trim().min(1).optional(),
+  version: z.coerce.number().int().positive().optional(),
+  format: z.string().trim().min(1).max(20).optional(),
+  delivery_type: z.enum(cloudinaryDeliveryTypeValues).optional(),
   note: nullableString
 });
 
@@ -378,32 +394,52 @@ router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
     signed_document_count: signedDocumentCount,
     business_stage: getContractBusinessStage({ ...contract, signed_document_count: signedDocumentCount }),
     tenants,
-    documents: documents.rows
+    documents: await Promise.all(
+      documents.rows.map((document: DbRow) => (
+        presentDocumentAsset(req, 'CONTRACT_DOCUMENT', document as { id: string }, req.auth!)
+      ))
+    )
   });
 }));
 
 router.post('/:id/documents', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const body = parseBody(contractDocumentSchema, req.body);
-  validateStoredUpload('CONTRACT_DOCUMENT', body, req.auth!.role);
+  const asset = normalizeStoredUpload('CONTRACT_DOCUMENT', body, req.auth!.role, req.auth!.userId);
   await getScopedContract({ query }, req.params.id, req.auth!.userId);
 
   const { rows } = await query<DbRow>(
-    `INSERT INTO contract_document(contract_id,doc_type,file_name,file_url,mime_type,file_size,uploaded_by_user_id,note)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+    `INSERT INTO contract_document(
+       contract_id,doc_type,file_name,file_url,mime_type,file_size,uploaded_by_user_id,note,
+       cloudinary_asset_id,cloudinary_public_id,cloudinary_resource_type,
+       cloudinary_version,cloudinary_format,cloudinary_delivery_type,retention_until
+     )
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      RETURNING *`,
     [
       req.params.id,
       body.doc_type,
       body.file_name ?? null,
-      body.file_url,
+      null,
       body.mime_type,
       body.file_size,
       req.auth!.userId,
-      body.note ?? null
+      body.note ?? null,
+      asset.assetId,
+      asset.publicId,
+      asset.resourceType,
+      asset.version,
+      asset.format,
+      asset.deliveryType,
+      getDocumentRetentionUntil('CONTRACT_DOCUMENT')
     ]
   );
 
-  res.status(201).json(rows[0]);
+  res.status(201).json(await presentDocumentAsset(
+    req,
+    'CONTRACT_DOCUMENT',
+    rows[0] as { id: string },
+    req.auth!
+  ));
 }));
 
 router.delete('/:id/documents/:documentId', requireRole('MANAGER'), asyncHandler(async (req, res) => {
@@ -417,10 +453,27 @@ router.delete('/:id/documents/:documentId', requireRole('MANAGER'), asyncHandler
   )).rows[0];
   if (!document) throw new AppError(404, 'Contract document not found', 'CONTRACT_DOCUMENT_NOT_FOUND');
 
-  await deleteCloudinaryUpload({
-    file_url: document.file_url
+  await withTransaction(async (client) => {
+    const locked = (await client.query<DbRow>(
+      `SELECT *
+       FROM contract_document
+       WHERE id=$1 AND contract_id=$2
+       FOR UPDATE`,
+      [req.params.documentId, req.params.id]
+    )).rows[0];
+    if (!locked) throw new AppError(404, 'Contract document not found', 'CONTRACT_DOCUMENT_NOT_FOUND');
+    await enqueueCloudinaryDeletion(
+      client,
+      'CONTRACT_DOCUMENT',
+      locked as { id: string; file_url: string | null },
+      'CONTRACT_DOCUMENT_DELETED'
+    );
+    await client.query('DELETE FROM contract_document WHERE id=$1 AND contract_id=$2', [
+      req.params.documentId,
+      req.params.id
+    ]);
   });
-  await query('DELETE FROM contract_document WHERE id=$1 AND contract_id=$2', [req.params.documentId, req.params.id]);
+  void processCloudinaryAssetJobs();
   res.status(204).send();
 }));
 

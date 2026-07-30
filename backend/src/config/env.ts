@@ -42,6 +42,18 @@ export const resolveTrustProxyHops = (
   );
 };
 
+export const resolveDocumentDeliveryBaseUrl = (
+  appEnvironment: AppEnvironment,
+  configuredUrl: string
+): string => {
+  const configured = configuredUrl.trim().replace(/\/+$/, '');
+  if (configured) return configured;
+  if (appEnvironment === 'development' || appEnvironment === 'test') return '';
+  throw new Error(
+    `DOCUMENT_DELIVERY_BASE_URL is required when APP_ENV=${appEnvironment}`
+  );
+};
+
 const envSchema = z.object({
   APP_ENV: z.enum(['development', 'test', 'staging', 'production']).default(defaultAppEnv),
   PORT: z.coerce.number().int().positive().default(4000),
@@ -87,6 +99,16 @@ const envSchema = z.object({
   UPLOAD_MAX_UTILITY_EVIDENCE_MB: z.coerce.number().int().min(1).max(20).default(5),
   UPLOAD_MAX_PAYMENT_PROOF_MB: z.coerce.number().int().min(1).max(20).default(5),
   UPLOAD_MAX_CONTRACT_DOCUMENT_MB: z.coerce.number().int().min(1).max(50).default(15),
+  DOCUMENT_ACCESS_SECRET: optionalString,
+  DOCUMENT_DELIVERY_BASE_URL: z.union([z.string().trim().url(), z.literal('')]).optional().default(''),
+  DOCUMENT_ACCESS_TTL_SECONDS: z.coerce.number().int().min(60).max(900).default(300),
+  DOCUMENT_JOB_INTERVAL_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
+  DOCUMENT_JOB_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(50).default(8),
+  DOCUMENT_RECONCILIATION_INTERVAL_HOURS: z.coerce.number().int().min(1).max(720).default(24),
+  TENANT_DOCUMENT_RETENTION_DAYS: z.coerce.number().int().min(1).max(36500).default(3650),
+  PAYMENT_PROOF_RETENTION_DAYS: z.coerce.number().int().min(1).max(36500).default(1825),
+  UTILITY_EVIDENCE_RETENTION_DAYS: z.coerce.number().int().min(1).max(36500).default(730),
+  CONTRACT_DOCUMENT_RETENTION_DAYS: z.coerce.number().int().min(1).max(36500).default(3650),
   CORS_ALLOWED_ORIGINS: optionalString,
   FRONTEND_URL: z.string().default('http://localhost:5173'),
   DEFAULT_BANK_CODE: z.string().optional(),
@@ -120,9 +142,14 @@ const trustProxyHops = resolveTrustProxyHops(
   parsed.data.APP_ENV,
   parsed.data.TRUST_PROXY_HOPS
 );
+const documentDeliveryBaseUrl = resolveDocumentDeliveryBaseUrl(
+  parsed.data.APP_ENV,
+  parsed.data.DOCUMENT_DELIVERY_BASE_URL
+);
 
 export const env = {
   ...parsed.data,
   CORS_ALLOWED_ORIGINS: corsAllowedOrigins,
-  TRUST_PROXY_HOPS: trustProxyHops
+  TRUST_PROXY_HOPS: trustProxyHops,
+  DOCUMENT_DELIVERY_BASE_URL: documentDeliveryBaseUrl
 };

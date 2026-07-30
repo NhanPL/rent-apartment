@@ -6,7 +6,13 @@ import { asyncHandler } from '../../shared/middleware/async-handler';
 import { firstDayOfMonth } from '../../shared/utils/date';
 import { AppError } from '../../shared/errors/app-error';
 import { parseBody, registerUuidParams } from '../../shared/utils/validation';
-import { validateStoredUpload } from '../uploads/uploads.service';
+import {
+  cloudinaryDeliveryTypeValues,
+  getDocumentRetentionUntil,
+  normalizeStoredUpload,
+  uploadResourceTypeValues
+} from '../uploads/uploads.service';
+import { presentDocumentAsset } from '../documents/document-assets.service';
 
 const router = Router();
 registerUuidParams(router, ['id']);
@@ -18,6 +24,12 @@ const tenantDocumentSchema = z.object({
   file_url: z.string().trim().url(),
   mime_type: z.string().trim().min(1),
   file_size: z.coerce.number().int().positive(),
+  resource_type: z.enum(uploadResourceTypeValues).optional(),
+  public_id: z.string().trim().min(1).optional(),
+  asset_id: z.string().trim().min(1).optional(),
+  version: z.coerce.number().int().positive().optional(),
+  format: z.string().trim().min(1).max(20).optional(),
+  delivery_type: z.enum(cloudinaryDeliveryTypeValues).optional(),
   note: z.string().trim().nullable().optional()
 });
 
@@ -138,30 +150,48 @@ router.get('/documents', asyncHandler(async (req, res) => {
      ORDER BY uploaded_at DESC, created_at DESC`,
     [tenantId]
   );
-  res.json(rows);
+  res.json(await Promise.all(
+    rows.map((document) => presentDocumentAsset(req, 'TENANT_DOCUMENT', document as { id: string }, req.auth!))
+  ));
 }));
 
 router.post('/documents', asyncHandler(async (req, res) => {
   const body = parseBody(tenantDocumentSchema, req.body);
-  validateStoredUpload('TENANT_DOCUMENT', body, req.auth!.role);
+  const asset = normalizeStoredUpload('TENANT_DOCUMENT', body, req.auth!.role, req.auth!.userId);
 
   const tenantId = await getCurrentTenantId(req.auth!.userId);
   const { rows } = await query(
-    `INSERT INTO tenant_document(tenant_id,doc_type,file_name,file_url,mime_type,file_size,uploaded_by_user_id,note)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+    `INSERT INTO tenant_document(
+       tenant_id,doc_type,file_name,file_url,mime_type,file_size,uploaded_by_user_id,note,
+       cloudinary_asset_id,cloudinary_public_id,cloudinary_resource_type,
+       cloudinary_version,cloudinary_format,cloudinary_delivery_type,retention_until
+     )
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      RETURNING *`,
     [
       tenantId,
       body.doc_type,
       body.file_name ?? null,
-      body.file_url,
+      null,
       body.mime_type,
       body.file_size,
       req.auth!.userId,
-      body.note ?? null
+      body.note ?? null,
+      asset.assetId,
+      asset.publicId,
+      asset.resourceType,
+      asset.version,
+      asset.format,
+      asset.deliveryType,
+      getDocumentRetentionUntil('TENANT_DOCUMENT')
     ]
   );
-  res.status(201).json(rows[0]);
+  res.status(201).json(await presentDocumentAsset(
+    req,
+    'TENANT_DOCUMENT',
+    rows[0] as { id: string },
+    req.auth!
+  ));
 }));
 
 router.get('/roommates', asyncHandler(async (req, res) => {

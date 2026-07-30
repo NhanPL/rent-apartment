@@ -24,4 +24,15 @@ describe('safe error logging', () => {
       message: 'An unexpected non-error value was thrown'
     });
   });
+
+  it('redacts Cloudinary and short-lived document delivery URLs', () => {
+    const result = toSafeErrorLog(new Error(
+      'failed https://res.cloudinary.com/demo/image/authenticated/v1/private.jpg at /api/documents/delivery/secret.token'
+    ));
+
+    expect(result.message).not.toContain('private.jpg');
+    expect(result.message).not.toContain('secret.token');
+    expect(result.message).toContain('[REDACTED_CLOUDINARY_URL]');
+    expect(result.message).toContain('/api/documents/delivery/[REDACTED]');
+  });
 });

@@ -17,7 +17,11 @@ describe('Cloudinary asset metadata', () => {
       file_url: 'https://res.cloudinary.com/rentmate/raw/upload/v123/rent-apartment/contract-documents/signed.pdf'
     })).toEqual({
       publicId: 'rent-apartment/contract-documents/signed.pdf',
-      resourceType: 'raw'
+      assetId: null,
+      resourceType: 'raw',
+      version: 123,
+      format: 'pdf',
+      deliveryType: 'upload'
     });
   });
 
@@ -26,7 +30,11 @@ describe('Cloudinary asset metadata', () => {
       file_url: 'https://res.cloudinary.com/rentmate/image/upload/v123/rent-apartment/contract-documents/photo.jpg'
     })).toEqual({
       publicId: 'rent-apartment/contract-documents/photo',
-      resourceType: 'image'
+      assetId: null,
+      resourceType: 'image',
+      version: 123,
+      format: 'jpg',
+      deliveryType: 'upload'
     });
   });
 
@@ -53,5 +61,27 @@ describe('Cloudinary asset metadata', () => {
       file_size: 1024,
       resource_type: 'image'
     }, 'TENANT')).toThrow('Uploaded file does not match the signed upload context');
+  });
+
+  it('rejects explicit public delivery for sensitive documents', () => {
+    expect(() => validateStoredUpload('PAYMENT_PROOF', {
+      file_name: 'proof.jpg',
+      file_url: 'https://res.cloudinary.com/rentmate/image/upload/v1/rent-apartment/payment-proofs/proof.jpg',
+      mime_type: 'image/jpeg',
+      file_size: 1024,
+      resource_type: 'image',
+      delivery_type: 'upload'
+    }, 'TENANT')).toThrow('Sensitive documents must use authenticated Cloudinary delivery');
+  });
+
+  it('rejects an asset uploaded under another user folder', () => {
+    expect(() => validateStoredUpload('PAYMENT_PROOF', {
+      file_name: 'proof.jpg',
+      file_url: 'https://res.cloudinary.com/rentmate/image/authenticated/v1/rent-apartment/payment-proofs/other-user/proof.jpg',
+      mime_type: 'image/jpeg',
+      file_size: 1024,
+      resource_type: 'image',
+      delivery_type: 'authenticated'
+    }, 'TENANT', 'tenant-user')).toThrow('Uploaded file does not match the signed upload context');
   });
 });

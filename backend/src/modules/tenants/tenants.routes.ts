@@ -14,7 +14,16 @@ import {
   validateTenantContractRoom
 } from './tenants.service';
 import { assertTenantBelongsToManager } from './tenants.repository';
-import { deleteCloudinaryUpload, validateStoredUpload } from '../uploads/uploads.service';
+import {
+  cloudinaryDeliveryTypeValues,
+  normalizeStoredUpload
+} from '../uploads/uploads.service';
+import {
+  enqueueCloudinaryDeletion,
+  processCloudinaryAssetJobs
+} from '../documents/document-asset-jobs.service';
+import { presentDocumentAsset } from '../documents/document-assets.service';
+import { writeAuditLog } from '../../shared/services/audit-log.service';
 import {
   mapTenantIdentityDocuments,
   updateTenantIdentityDocuments,
@@ -68,9 +77,7 @@ interface TenantUpdateScopeRow {
   account_status: 'PENDING_ACTIVATION' | 'ACTIVE' | 'DISABLED' | null;
 }
 
-interface TenantDocumentDeleteRow {
-  file_url: string;
-}
+interface TenantDocumentDeleteRow extends TenantIdentityDocumentRow {}
 
 const nullableString = z.string().trim().nullable().optional();
 const tenantWritableStatusSchema = z.enum(['ACTIVE', 'MOVED_OUT', 'BLACKLIST']);
@@ -120,7 +127,12 @@ const identityDocumentFileSchema = z.object({
   file_url: z.string().trim().url(),
   mime_type: z.enum(['image/jpeg', 'image/png', 'image/webp']),
   file_size: z.coerce.number().int().positive(),
-  resource_type: z.literal('image').optional()
+  resource_type: z.literal('image').optional(),
+  public_id: z.string().trim().min(1).optional(),
+  asset_id: z.string().trim().min(1).optional(),
+  version: z.coerce.number().int().positive().optional(),
+  format: z.string().trim().min(1).max(20).optional(),
+  delivery_type: z.enum(cloudinaryDeliveryTypeValues).optional()
 });
 
 const identityDocumentUpdateSchema = z.object({
@@ -343,11 +355,21 @@ router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
     )
   ]);
 
+  const identityDocuments = mapTenantIdentityDocuments(documentRs.rows);
+  const presentedIdentityDocuments = {
+    front: identityDocuments.front
+      ? await presentDocumentAsset(req, 'TENANT_DOCUMENT', identityDocuments.front, req.auth!)
+      : null,
+    back: identityDocuments.back
+      ? await presentDocumentAsset(req, 'TENANT_DOCUMENT', identityDocuments.back, req.auth!)
+      : null
+  };
+
   res.json({
     ...tenant,
     current_room: roomRs.rows[0] ?? null,
     current_contract: contractRs.rows[0] ?? null,
-    identity_documents: mapTenantIdentityDocuments(documentRs.rows)
+    identity_documents: presentedIdentityDocuments
   });
 }));
 
@@ -494,16 +516,41 @@ router.patch('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 
 router.put('/:id/identity-documents', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const body = parseBody(identityDocumentUpdateSchema, req.body);
-  for (const document of [body.front, body.back]) {
-    if (document) validateStoredUpload('TENANT_DOCUMENT', document, req.auth!.role);
-  }
+  const normalizeDocument = (document: NonNullable<typeof body.front>) => {
+    const asset = normalizeStoredUpload('TENANT_DOCUMENT', document, req.auth!.role, req.auth!.userId);
+    return {
+      ...document,
+      public_id: asset.publicId,
+      asset_id: asset.assetId ?? undefined,
+      resource_type: asset.resourceType,
+      version: asset.version ?? undefined,
+      format: asset.format ?? undefined,
+      delivery_type: asset.deliveryType
+    };
+  };
+  const updates = {
+    ...(Object.prototype.hasOwnProperty.call(body, 'front') && {
+      front: body.front ? normalizeDocument(body.front) : null
+    }),
+    ...(Object.prototype.hasOwnProperty.call(body, 'back') && {
+      back: body.back ? normalizeDocument(body.back) : null
+    })
+  };
 
-  res.json(await updateTenantIdentityDocuments(
+  const documents = await updateTenantIdentityDocuments(
     req.params.id,
     req.auth!.userId,
     req.auth!.userId,
-    body
-  ));
+    updates
+  );
+  res.json({
+    front: documents.front
+      ? await presentDocumentAsset(req, 'TENANT_DOCUMENT', documents.front, req.auth!)
+      : null,
+    back: documents.back
+      ? await presentDocumentAsset(req, 'TENANT_DOCUMENT', documents.back, req.auth!)
+      : null
+  });
 }));
 
 router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
@@ -548,16 +595,26 @@ router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
     }
 
     const documentRs = await client.query<TenantDocumentDeleteRow>(
-      `SELECT file_url
+      `SELECT id, tenant_id, doc_type, file_name, file_url, mime_type, file_size, uploaded_at,
+              cloudinary_asset_id, cloudinary_public_id, cloudinary_resource_type,
+              cloudinary_version, cloudinary_format, cloudinary_delivery_type
        FROM tenant_document
        WHERE tenant_id=$1
        FOR UPDATE`,
       [tenant.id]
     );
-    const documentUrls = [...new Set(documentRs.rows.map((document) => document.file_url))];
-    await Promise.all(
-      documentUrls.map((fileUrl) => deleteCloudinaryUpload({ file_url: fileUrl }))
-    );
+    for (const document of documentRs.rows) {
+      await enqueueCloudinaryDeletion(client, 'TENANT_DOCUMENT', document, 'TENANT_DELETED');
+      if (['IDENTITY_FRONT', 'IDENTITY_BACK'].includes(document.doc_type)) {
+        await writeAuditLog(client, {
+          actorUserId: req.auth!.userId,
+          action: 'TENANT_IDENTITY_DOCUMENT_DELETED',
+          entityType: 'tenant_document',
+          entityId: document.id,
+          metadata: { tenantId: tenant.id, documentType: document.doc_type, reason: 'TENANT_DELETED' }
+        });
+      }
+    }
     await client.query('DELETE FROM tenant_document WHERE tenant_id=$1', [tenant.id]);
 
     await client.query(
@@ -572,6 +629,7 @@ router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
     }
   });
 
+  void processCloudinaryAssetJobs();
   res.status(204).send();
 }));
 
