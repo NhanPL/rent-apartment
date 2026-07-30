@@ -772,13 +772,10 @@ class FakeDb {
       } as T] : []);
     }
 
-    if (sql.startsWith('select file_url from tenant_document')) {
-      const urls = [...new Set(
-        this.tenantDocuments
-          .filter((document) => document.tenant_id === params[0])
-          .map((document) => String(document.file_url))
-      )];
-      return result<T>(urls.map((file_url) => ({ file_url } as T)));
+    if (sql.startsWith('select id, tenant_id, doc_type, file_name, file_url') && sql.includes('from tenant_document')) {
+      return result<T>(
+        this.tenantDocuments.filter((document) => document.tenant_id === params[0]) as T[]
+      );
     }
 
     if (sql.startsWith('delete from tenant_document where tenant_id=$1')) {
@@ -937,6 +934,13 @@ class FakeDb {
         file_size: params[5],
         uploaded_by_user_id: params[6],
         note: params[7],
+        cloudinary_asset_id: params[8],
+        cloudinary_public_id: params[9],
+        cloudinary_resource_type: params[10],
+        cloudinary_version: params[11],
+        cloudinary_format: params[12],
+        cloudinary_delivery_type: params[13],
+        retention_until: params[14],
         uploaded_at: now,
         created_at: now
       };

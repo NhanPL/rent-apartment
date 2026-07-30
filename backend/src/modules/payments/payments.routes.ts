@@ -4,7 +4,12 @@ import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 import { paymentProofRateLimit } from '../../config/rate-limit';
-import { validateStoredUpload } from '../uploads/uploads.service';
+import {
+  cloudinaryDeliveryTypeValues,
+  normalizeStoredUpload,
+  uploadResourceTypeValues
+} from '../uploads/uploads.service';
+import { presentDocumentAsset } from '../documents/document-assets.service';
 import {
   createPaymentRequest,
   getPaymentRequestForInvoice,
@@ -34,6 +39,12 @@ const paymentProofSchema = z.object({
   file_url: z.string().trim().url(),
   mime_type: z.string().trim().min(1),
   file_size: z.coerce.number().int().positive(),
+  resource_type: z.enum(uploadResourceTypeValues).optional(),
+  public_id: z.string().trim().min(1).optional(),
+  asset_id: z.string().trim().min(1).optional(),
+  version: z.coerce.number().int().positive().optional(),
+  format: z.string().trim().min(1).max(20).optional(),
+  delivery_type: z.enum(cloudinaryDeliveryTypeValues).optional(),
   transfer_amount: z.coerce.number().positive().nullable().optional(),
   transfer_time: z.string().trim().nullable().optional(),
   payer_note: z.string().trim().nullable().optional()
@@ -52,6 +63,18 @@ const paymentRequestFiltersSchema = z.object({
   latest_proof_status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'NONE']).optional()
 });
 
+const presentPaymentRequestDetail = async (req: Parameters<typeof presentDocumentAsset>[0], detail: any) => {
+  if (!detail) return detail;
+  return {
+    ...detail,
+    proofs: await Promise.all(
+      (detail.proofs ?? []).map((proof: { id: string }) => (
+        presentDocumentAsset(req, 'PAYMENT_PROOF', proof, req.auth!)
+      ))
+    )
+  };
+};
+
 router.get('/requests', asyncHandler(async (req, res) => {
   const filters = parseQuery(paymentRequestFiltersSchema, req.query);
   res.json(await listPaymentRequests(req.auth!, {
@@ -65,11 +88,11 @@ router.get('/requests', asyncHandler(async (req, res) => {
 }));
 
 router.get('/requests/:id', asyncHandler(async (req, res) => {
-  res.json(await getPaymentRequestDetail(req.params.id, req.auth!));
+  res.json(await presentPaymentRequestDetail(req, await getPaymentRequestDetail(req.params.id, req.auth!)));
 }));
 
 router.get('/invoices/:invoiceId/request', asyncHandler(async (req, res) => {
-  res.json(await getPaymentRequestForInvoice(req.params.invoiceId, req.auth!));
+  res.json(await presentPaymentRequestDetail(req, await getPaymentRequestForInvoice(req.params.invoiceId, req.auth!)));
 }));
 
 router.post('/requests', requireRole('MANAGER'), asyncHandler(async (req, res) => {
@@ -87,17 +110,36 @@ router.post('/requests/:id/expire', requireRole('MANAGER'), asyncHandler(async (
 
 router.post('/requests/:id/proofs', paymentProofRateLimit, requireRole('TENANT'), asyncHandler(async (req, res) => {
   const body = parseBody(paymentProofSchema, req.body);
-  validateStoredUpload('PAYMENT_PROOF', body, req.auth!.role);
-  res.status(201).json(await submitPaymentProof(req.params.id, body, req.auth!.userId));
+  const asset = normalizeStoredUpload('PAYMENT_PROOF', body, req.auth!.role, req.auth!.userId);
+  const proof = await submitPaymentProof(req.params.id, {
+    ...body,
+    public_id: asset.publicId,
+    asset_id: asset.assetId ?? undefined,
+    resource_type: asset.resourceType,
+    version: asset.version ?? undefined,
+    format: asset.format ?? undefined,
+    delivery_type: asset.deliveryType
+  }, req.auth!.userId);
+  res.status(201).json(await presentDocumentAsset(
+    req,
+    'PAYMENT_PROOF',
+    proof as { id: string },
+    req.auth!
+  ));
 }));
 
 router.post('/proofs/:id/approve', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  res.json(await reviewPaymentProof(req.params.id, true, req.auth!.userId));
+  const result = await reviewPaymentProof(req.params.id, true, req.auth!.userId);
+  res.json({
+    ...result,
+    proof: await presentDocumentAsset(req, 'PAYMENT_PROOF', result.proof as { id: string }, req.auth!)
+  });
 }));
 
 router.post('/proofs/:id/reject', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const { reason } = parseBody(paymentRejectSchema, req.body);
-  res.json(await reviewPaymentProof(req.params.id, false, req.auth!.userId, reason));
+  const result = await reviewPaymentProof(req.params.id, false, req.auth!.userId, reason);
+  res.json(await presentDocumentAsset(req, 'PAYMENT_PROOF', result as { id: string }, req.auth!));
 }));
 
 export default router;

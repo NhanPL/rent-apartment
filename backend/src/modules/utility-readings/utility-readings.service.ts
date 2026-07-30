@@ -1,6 +1,12 @@
 import { query, withTransaction } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
 import { firstDayOfMonth } from '../../shared/utils/date';
+import {
+  getDocumentRetentionUntil,
+  resolveCloudinaryAsset,
+  type CloudinaryDeliveryType,
+  type UploadResourceType
+} from '../uploads/uploads.service';
 
 type DbRow = Record<string, any>;
 type AuthScope = { userId: string; role: 'MANAGER' | 'TENANT' };
@@ -30,6 +36,12 @@ interface UtilityEvidenceFilePayload {
   file_url: string;
   mime_type: string;
   file_size: number;
+  resource_type?: UploadResourceType;
+  public_id?: string;
+  asset_id?: string;
+  version?: number;
+  format?: string;
+  delivery_type?: CloudinaryDeliveryType;
 }
 
 export interface UtilityEvidencePayload {
@@ -38,6 +50,12 @@ export interface UtilityEvidencePayload {
   file_url: string;
   mime_type: string;
   file_size: number;
+  resource_type?: UploadResourceType;
+  public_id?: string;
+  asset_id?: string;
+  version?: number;
+  format?: string;
+  delivery_type?: CloudinaryDeliveryType;
   note?: string | null;
 }
 
@@ -233,22 +251,41 @@ export const createUtilityReading = async (payload: UtilityReadingCreatePayload,
     }
 
     if (payload.evidence) {
+      const electricityAsset = resolveCloudinaryAsset(payload.evidence.electricity);
+      const waterAsset = resolveCloudinaryAsset(payload.evidence.water);
       await client.query(
-        `INSERT INTO utility_reading_evidence(utility_reading_id,evidence_type,file_name,file_url,mime_type,file_size,uploaded_by_user_id)
+        `INSERT INTO utility_reading_evidence(
+           utility_reading_id,evidence_type,file_name,file_url,mime_type,file_size,uploaded_by_user_id,
+           cloudinary_asset_id,cloudinary_public_id,cloudinary_resource_type,
+           cloudinary_version,cloudinary_format,cloudinary_delivery_type,retention_until
+         )
          VALUES
-           ($1,'ELECTRIC',$2,$3,$4,$5,$10),
-           ($1,'WATER',$6,$7,$8,$9,$10)`,
+           ($1,'ELECTRIC',$2,$3,$4,$5,$10,$11,$12,$13,$14,$15,$16,$17),
+           ($1,'WATER',$6,$7,$8,$9,$10,$18,$19,$20,$21,$22,$23,$17)`,
         [
           reading.id,
           payload.evidence.electricity.file_name ?? null,
-          payload.evidence.electricity.file_url,
+          null,
           payload.evidence.electricity.mime_type,
           payload.evidence.electricity.file_size,
           payload.evidence.water.file_name ?? null,
-          payload.evidence.water.file_url,
+          null,
           payload.evidence.water.mime_type,
           payload.evidence.water.file_size,
-          userId
+          userId,
+          electricityAsset.assetId,
+          electricityAsset.publicId,
+          electricityAsset.resourceType,
+          electricityAsset.version,
+          electricityAsset.format,
+          electricityAsset.deliveryType,
+          getDocumentRetentionUntil('UTILITY_EVIDENCE'),
+          waterAsset.assetId,
+          waterAsset.publicId,
+          waterAsset.resourceType,
+          waterAsset.version,
+          waterAsset.format,
+          waterAsset.deliveryType
         ]
       );
     }
@@ -335,19 +372,31 @@ export const attachUtilityReadingEvidence = async (readingId: string, payload: U
     throw new AppError(409, 'Cannot attach evidence to invoiced reading', 'UTILITY_READING_LOCKED');
   }
 
+  const asset = resolveCloudinaryAsset(payload);
   const { rows } = await query<DbRow>(
-    `INSERT INTO utility_reading_evidence(utility_reading_id,evidence_type,file_name,file_url,mime_type,file_size,uploaded_by_user_id,note)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+    `INSERT INTO utility_reading_evidence(
+       utility_reading_id,evidence_type,file_name,file_url,mime_type,file_size,uploaded_by_user_id,note,
+       cloudinary_asset_id,cloudinary_public_id,cloudinary_resource_type,
+       cloudinary_version,cloudinary_format,cloudinary_delivery_type,retention_until
+     )
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      RETURNING *`,
     [
       readingId,
       payload.evidence_type,
       payload.file_name ?? null,
-      payload.file_url,
+      null,
       payload.mime_type ?? null,
       payload.file_size ?? null,
       scope.userId,
-      payload.note ?? null
+      payload.note ?? null,
+      asset.assetId,
+      asset.publicId,
+      asset.resourceType,
+      asset.version,
+      asset.format,
+      asset.deliveryType,
+      getDocumentRetentionUntil('UTILITY_EVIDENCE')
     ]
   );
   return rows[0];

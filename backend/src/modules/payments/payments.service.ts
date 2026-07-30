@@ -2,6 +2,7 @@ import { query, withTransaction } from '../../db';
 import { env } from '../../config/env';
 import { AppError } from '../../shared/errors/app-error';
 import { createVietQrPaymentData } from './vietqr.service';
+import { getDocumentRetentionUntil, resolveCloudinaryAsset } from '../uploads/uploads.service';
 
 type DbRow = Record<string, any>;
 type AuthScope = { userId: string; role: 'MANAGER' | 'TENANT' };
@@ -168,10 +169,34 @@ export const submitPaymentProof = async (paymentRequestId: string, payload: any,
     if (transferAmount <= 0) throw new AppError(400, 'Transfer amount must be greater than 0');
     if (transferAmount > remainingAmount) throw new AppError(400, 'Transfer amount cannot exceed remaining balance');
 
+    const asset = resolveCloudinaryAsset(payload);
     const created = await client.query<DbRow>(
-      `INSERT INTO payment_proof(payment_request_id,status,file_name,file_url,mime_type,file_size,submitted_by_user_id,transfer_amount,transfer_time,payer_note)
-       VALUES($1,'PENDING',$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [paymentRequestId, payload.file_name ?? null, payload.file_url, payload.mime_type ?? null, payload.file_size ?? null, tenantUserId, transferAmount, payload.transfer_time ?? null, payload.payer_note ?? null]
+      `INSERT INTO payment_proof(
+         payment_request_id,status,file_name,file_url,mime_type,file_size,submitted_by_user_id,
+         transfer_amount,transfer_time,payer_note,
+         cloudinary_asset_id,cloudinary_public_id,cloudinary_resource_type,
+         cloudinary_version,cloudinary_format,cloudinary_delivery_type,retention_until
+       )
+       VALUES($1,'PENDING',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+       RETURNING *`,
+      [
+        paymentRequestId,
+        payload.file_name ?? null,
+        null,
+        payload.mime_type ?? null,
+        payload.file_size ?? null,
+        tenantUserId,
+        transferAmount,
+        payload.transfer_time ?? null,
+        payload.payer_note ?? null,
+        asset.assetId,
+        asset.publicId,
+        asset.resourceType,
+        asset.version,
+        asset.format,
+        asset.deliveryType,
+        getDocumentRetentionUntil('PAYMENT_PROOF')
+      ]
     );
     await client.query(`UPDATE payment_request SET status='TRANSFER_SUBMITTED' WHERE id=$1`, [paymentRequestId]);
     return created.rows[0];

@@ -2,6 +2,7 @@ import { app } from './app';
 import { env } from './config/env';
 import { assertDatabaseConnection } from './db/connection';
 import { startSessionCleanupScheduler } from './modules/auth/session.service';
+import { startDocumentAssetScheduler } from './modules/documents/document-asset-jobs.service';
 import { toSafeErrorLog } from './shared/utils/safe-log';
 
 process.on('unhandledRejection', (reason) => {
@@ -20,6 +21,7 @@ async function bootstrap() {
     // eslint-disable-next-line no-console
     console.log('Database connected successfully.');
     startSessionCleanupScheduler();
+    startDocumentAssetScheduler();
 
     app.listen(env.PORT, () => {
       // eslint-disable-next-line no-console

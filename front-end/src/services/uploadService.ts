@@ -12,6 +12,7 @@ interface UploadSignature {
   folder: string
   allowed_formats: string
   resource_type: UploadResourceType
+  delivery_type: 'authenticated'
   upload_url: string
   allowed_mime_types: string[]
   max_file_size: number
@@ -23,6 +24,10 @@ interface CloudinaryUploadResponse {
   bytes: number
   resource_type: UploadResourceType
   public_id: string
+  asset_id: string
+  version: number
+  format: string
+  type: 'authenticated'
 }
 
 export interface UploadedCloudinaryFile {
@@ -32,6 +37,10 @@ export interface UploadedCloudinaryFile {
   file_size: number
   resource_type: UploadResourceType
   public_id: string
+  asset_id: string
+  version: number
+  format: string
+  delivery_type: 'authenticated'
 }
 
 const inferResourceType = (mimeType: string): UploadResourceType => (mimeType.startsWith('image/') ? 'image' : 'raw')
@@ -82,6 +91,7 @@ export async function uploadFileToCloudinary(file: File, context: UploadContext)
   formData.append('signature', signature.signature)
   formData.append('folder', signature.folder)
   formData.append('allowed_formats', signature.allowed_formats)
+  formData.append('type', signature.delivery_type)
 
   const response = await fetch(signature.upload_url, {
     method: 'POST',
@@ -100,5 +110,9 @@ export async function uploadFileToCloudinary(file: File, context: UploadContext)
     file_size: uploaded.bytes || file.size,
     resource_type: uploaded.resource_type,
     public_id: uploaded.public_id,
+    asset_id: uploaded.asset_id,
+    version: uploaded.version,
+    format: uploaded.format,
+    delivery_type: uploaded.type,
   }
 }

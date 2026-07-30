@@ -26,7 +26,15 @@ vi.mock('../src/modules/fixed-charges/fixed-charges.service', async (importOrigi
 
 const uploadServiceMocks = vi.hoisted(() => ({
   deleteCloudinaryUpload: vi.fn().mockResolvedValue(undefined),
-  validateStoredUpload: vi.fn().mockReturnValue('image')
+  validateStoredUpload: vi.fn().mockReturnValue('image'),
+  normalizeStoredUpload: vi.fn((_: string, payload: Record<string, any>) => ({
+    publicId: payload.public_id ?? `rent-apartment/test/${payload.file_name ?? 'asset'}`,
+    assetId: payload.asset_id ?? null,
+    resourceType: payload.resource_type ?? (String(payload.mime_type).startsWith('image/') ? 'image' : 'raw'),
+    version: payload.version ?? 1,
+    format: payload.format ?? (String(payload.mime_type) === 'application/pdf' ? 'pdf' : 'jpg'),
+    deliveryType: payload.delivery_type ?? 'authenticated'
+  }))
 }));
 
 vi.mock('../src/modules/uploads/uploads.service', async (importOriginal) => {
@@ -34,7 +42,34 @@ vi.mock('../src/modules/uploads/uploads.service', async (importOriginal) => {
   return {
     ...actual,
     deleteCloudinaryUpload: uploadServiceMocks.deleteCloudinaryUpload,
-    validateStoredUpload: uploadServiceMocks.validateStoredUpload
+    validateStoredUpload: uploadServiceMocks.validateStoredUpload,
+    normalizeStoredUpload: uploadServiceMocks.normalizeStoredUpload
+  };
+});
+
+const assetJobMocks = vi.hoisted(() => ({
+  enqueueCloudinaryDeletion: vi.fn().mockResolvedValue(undefined),
+  processCloudinaryAssetJobs: vi.fn().mockResolvedValue(0)
+}));
+
+vi.mock('../src/modules/documents/document-asset-jobs.service', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/modules/documents/document-asset-jobs.service')>();
+  return {
+    ...actual,
+    enqueueCloudinaryDeletion: assetJobMocks.enqueueCloudinaryDeletion,
+    processCloudinaryAssetJobs: assetJobMocks.processCloudinaryAssetJobs
+  };
+});
+
+vi.mock('../src/modules/documents/document-assets.service', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/modules/documents/document-assets.service')>();
+  return {
+    ...actual,
+    presentDocumentAsset: vi.fn(async (_req, _kind, row) => ({
+      ...row,
+      file_url: `http://localhost/api/documents/delivery/test-${row.id}`,
+      access_expires_at: '2026-07-30T00:05:00.000Z'
+    }))
   };
 });
 
@@ -86,6 +121,11 @@ describe('backend API smoke tests', () => {
     uploadServiceMocks.deleteCloudinaryUpload.mockResolvedValue(undefined);
     uploadServiceMocks.validateStoredUpload.mockClear();
     uploadServiceMocks.validateStoredUpload.mockReturnValue('image');
+    uploadServiceMocks.normalizeStoredUpload.mockClear();
+    assetJobMocks.enqueueCloudinaryDeletion.mockReset();
+    assetJobMocks.enqueueCloudinaryDeletion.mockResolvedValue(undefined);
+    assetJobMocks.processCloudinaryAssetJobs.mockClear();
+    assetJobMocks.processCloudinaryAssetJobs.mockResolvedValue(0);
   });
 
   it('authenticates, refreshes tokens, and returns the current user profile', async () => {
@@ -857,9 +897,8 @@ describe('backend API smoke tests', () => {
     });
     expect(fakeDb.users.find((user) => user.id === created.body.userId)).toBeUndefined();
     expect(fakeDb.tenantDocuments.filter((document) => document.tenant_id === tenantId)).toEqual([]);
-    expect(uploadServiceMocks.deleteCloudinaryUpload).toHaveBeenCalledTimes(2);
-    expect(uploadServiceMocks.deleteCloudinaryUpload).toHaveBeenCalledWith({ file_url: frontUrl });
-    expect(uploadServiceMocks.deleteCloudinaryUpload).toHaveBeenCalledWith({ file_url: backUrl });
+    expect(assetJobMocks.enqueueCloudinaryDeletion).toHaveBeenCalledTimes(2);
+    expect(uploadServiceMocks.deleteCloudinaryUpload).not.toHaveBeenCalled();
 
     await request(app)
       .post('/api/tenants')
@@ -874,7 +913,7 @@ describe('backend API smoke tests', () => {
       .expect(201);
   });
 
-  it('keeps tenant data when a Cloudinary document cannot be deleted', async () => {
+  it('keeps tenant data when the durable Cloudinary cleanup job cannot be queued', async () => {
     const managerSession = await login('manager@example.com');
     const fileUrl = 'https://res.cloudinary.com/demo/image/upload/tenant-documents/free-front.jpg';
     fakeDb.tenantDocuments.push({
@@ -882,7 +921,7 @@ describe('backend API smoke tests', () => {
       tenant_id: ids.tenantFree,
       file_url: fileUrl
     });
-    uploadServiceMocks.deleteCloudinaryUpload.mockRejectedValueOnce(
+    assetJobMocks.enqueueCloudinaryDeletion.mockRejectedValueOnce(
       new AppError(502, 'Unable to delete file from Cloudinary', 'CLOUDINARY_DELETE_FAILED')
     );
 
@@ -1243,9 +1282,16 @@ describe('backend API smoke tests', () => {
       .set(auth(managerSession.accessToken))
       .expect(204);
 
-    expect(uploadServiceMocks.deleteCloudinaryUpload).toHaveBeenCalledWith({
-      file_url: 'https://example.com/signed-contract.pdf'
-    });
+    expect(assetJobMocks.enqueueCloudinaryDeletion).toHaveBeenCalledWith(
+      expect.anything(),
+      'CONTRACT_DOCUMENT',
+      expect.objectContaining({
+        file_url: null,
+        cloudinary_public_id: 'rent-apartment/test/signed-contract.pdf',
+        cloudinary_delivery_type: 'authenticated'
+      }),
+      'CONTRACT_DOCUMENT_DELETED'
+    );
     expect(fakeDb.contractDocuments).toHaveLength(0);
 
     await request(app)

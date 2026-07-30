@@ -1,6 +1,15 @@
 import type { PoolClient } from 'pg';
 import { withTransaction } from '../../db';
-import { deleteCloudinaryUpload, type UploadFileMetadata } from '../uploads/uploads.service';
+import { writeAuditLog } from '../../shared/services/audit-log.service';
+import {
+  getDocumentRetentionUntil,
+  resolveCloudinaryAsset,
+  type UploadFileMetadata
+} from '../uploads/uploads.service';
+import {
+  enqueueCloudinaryDeletion,
+  processCloudinaryAssetJobs
+} from '../documents/document-asset-jobs.service';
 import { assertTenantBelongsToManager } from './tenants.repository';
 
 export type TenantIdentityDocumentType = 'IDENTITY_FRONT' | 'IDENTITY_BACK';
@@ -10,10 +19,16 @@ export interface TenantIdentityDocumentRow {
   tenant_id: string;
   doc_type: TenantIdentityDocumentType;
   file_name: string | null;
-  file_url: string;
+  file_url: string | null;
   mime_type: string;
   file_size: number | string;
   uploaded_at: string;
+  cloudinary_asset_id?: string | null;
+  cloudinary_public_id?: string | null;
+  cloudinary_resource_type?: 'image' | 'raw' | null;
+  cloudinary_version?: number | string | null;
+  cloudinary_format?: string | null;
+  cloudinary_delivery_type?: 'upload' | 'private' | 'authenticated' | null;
 }
 
 export interface TenantIdentityDocumentUpdates {
@@ -42,7 +57,9 @@ export const mapTenantIdentityDocuments = (rows: TenantIdentityDocumentRow[]): T
 
 const listIdentityDocuments = async (client: PoolClient, tenantId: string): Promise<TenantIdentityDocumentRow[]> => (
   await client.query<TenantIdentityDocumentRow>(
-    `SELECT id, tenant_id, doc_type, file_name, file_url, mime_type, file_size, uploaded_at
+    `SELECT id, tenant_id, doc_type, file_name, file_url, mime_type, file_size, uploaded_at,
+            cloudinary_asset_id, cloudinary_public_id, cloudinary_resource_type,
+            cloudinary_version, cloudinary_format, cloudinary_delivery_type
      FROM tenant_document
      WHERE tenant_id=$1 AND doc_type IN ('IDENTITY_FRONT', 'IDENTITY_BACK')
      ORDER BY uploaded_at DESC, created_at DESC`,
@@ -59,53 +76,93 @@ export const updateTenantIdentityDocuments = async (
   const result = await withTransaction(async (client) => {
     await assertTenantBelongsToManager(client, tenantId, managerId);
     const existing = await client.query<TenantIdentityDocumentRow>(
-      `SELECT id, tenant_id, doc_type, file_name, file_url, mime_type, file_size, uploaded_at
+      `SELECT id, tenant_id, doc_type, file_name, file_url, mime_type, file_size, uploaded_at,
+              cloudinary_asset_id, cloudinary_public_id, cloudinary_resource_type,
+              cloudinary_version, cloudinary_format, cloudinary_delivery_type
        FROM tenant_document
        WHERE tenant_id=$1 AND doc_type IN ('IDENTITY_FRONT', 'IDENTITY_BACK')
        FOR UPDATE`,
       [tenantId]
     );
-    const replacedUrls: string[] = [];
-
     for (const { key, docType } of slots) {
       if (!Object.prototype.hasOwnProperty.call(updates, key)) continue;
 
       const nextDocument = updates[key];
       const currentDocuments = existing.rows.filter((document) => document.doc_type === docType);
+      const nextAsset = nextDocument ? resolveCloudinaryAsset(nextDocument) : null;
       const unchanged = currentDocuments.length === 1
-        && nextDocument
-        && currentDocuments[0].file_url === nextDocument.file_url;
+        && nextAsset
+        && resolveCloudinaryAsset({
+          file_url: currentDocuments[0].file_url,
+          public_id: currentDocuments[0].cloudinary_public_id,
+          resource_type: currentDocuments[0].cloudinary_resource_type,
+          version: currentDocuments[0].cloudinary_version,
+          format: currentDocuments[0].cloudinary_format,
+          delivery_type: currentDocuments[0].cloudinary_delivery_type
+        }).publicId === nextAsset.publicId;
 
-      if (unchanged) {
+      if (unchanged && nextDocument) {
         await client.query(
           `UPDATE tenant_document
-           SET file_name=$1, mime_type=$2, file_size=$3, uploaded_by_user_id=$4, uploaded_at=now()
-           WHERE id=$5`,
-          [nextDocument.file_name ?? null, nextDocument.mime_type, nextDocument.file_size, uploadedByUserId, currentDocuments[0].id]
+           SET file_name=$1, mime_type=$2, file_size=$3, uploaded_by_user_id=$4, uploaded_at=now(),
+               retention_until=$5
+           WHERE id=$6`,
+          [
+            nextDocument.file_name ?? null,
+            nextDocument.mime_type,
+            nextDocument.file_size,
+            uploadedByUserId,
+            getDocumentRetentionUntil('TENANT_DOCUMENT'),
+            currentDocuments[0].id
+          ]
         );
         continue;
       }
 
-      replacedUrls.push(...currentDocuments
-        .map((document) => document.file_url)
-        .filter((fileUrl) => fileUrl !== nextDocument?.file_url));
+      for (const document of currentDocuments) {
+        await enqueueCloudinaryDeletion(client, 'TENANT_DOCUMENT', document, 'TENANT_IDENTITY_DOCUMENT_REPLACED');
+        await writeAuditLog(client, {
+          actorUserId: uploadedByUserId,
+          action: 'TENANT_IDENTITY_DOCUMENT_DELETED',
+          entityType: 'tenant_document',
+          entityId: document.id,
+          metadata: { tenantId, documentType: document.doc_type, reason: 'REPLACED' }
+        });
+      }
       await client.query('DELETE FROM tenant_document WHERE tenant_id=$1 AND doc_type=$2', [tenantId, docType]);
 
-      if (nextDocument) {
+      if (nextDocument && nextAsset) {
         await client.query(
-          `INSERT INTO tenant_document(tenant_id, doc_type, file_name, file_url, mime_type, file_size, uploaded_by_user_id)
-           VALUES($1,$2,$3,$4,$5,$6,$7)`,
-          [tenantId, docType, nextDocument.file_name ?? null, nextDocument.file_url, nextDocument.mime_type, nextDocument.file_size, uploadedByUserId]
+          `INSERT INTO tenant_document(
+             tenant_id, doc_type, file_name, file_url, mime_type, file_size, uploaded_by_user_id,
+             cloudinary_asset_id, cloudinary_public_id, cloudinary_resource_type,
+             cloudinary_version, cloudinary_format, cloudinary_delivery_type, retention_until
+           )
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+          [
+            tenantId,
+            docType,
+            nextDocument.file_name ?? null,
+            null,
+            nextDocument.mime_type,
+            nextDocument.file_size,
+            uploadedByUserId,
+            nextAsset.assetId,
+            nextAsset.publicId,
+            nextAsset.resourceType,
+            nextAsset.version,
+            nextAsset.format,
+            nextAsset.deliveryType,
+            getDocumentRetentionUntil('TENANT_DOCUMENT')
+          ]
         );
       }
     }
 
-    return { documents: await listIdentityDocuments(client, tenantId), replacedUrls };
+    return { documents: await listIdentityDocuments(client, tenantId) };
   });
 
-  const retainedUrls = new Set(result.documents.map((document) => document.file_url));
-  const urlsToDelete = [...new Set(result.replacedUrls)].filter((fileUrl) => !retainedUrls.has(fileUrl));
-  await Promise.all(urlsToDelete.map((fileUrl) => deleteCloudinaryUpload({ file_url: fileUrl })));
+  void processCloudinaryAssetJobs();
 
   return mapTenantIdentityDocuments(result.documents);
 };
