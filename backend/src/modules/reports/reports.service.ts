@@ -1,5 +1,6 @@
 import { query } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
+import { createCsv, sanitizeCsvFilename } from '../../shared/utils/csv';
 
 type InvoiceStatus = 'DRAFT' | 'ISSUED' | 'PAID' | 'VOID' | 'OVERDUE';
 type ReportSection = 'revenue' | 'debt' | 'occupancy';
@@ -364,17 +365,6 @@ const getOccupancyByBuilding = async (managerId: string, filters: NormalizedRepo
   return rows.map(mapOccupancyRow);
 };
 
-const escapeCsv = (value: unknown): string => {
-  const text = value === null || value === undefined ? '' : String(value);
-  return `"${text.replace(/"/g, '""')}"`;
-};
-
-const toCsv = (headers: string[], rows: unknown[][]): string =>
-  [
-    headers.map(escapeCsv).join(','),
-    ...rows.map((row) => row.map(escapeCsv).join(','))
-  ].join('\n');
-
 export const getReportsData = async (managerId: string, filters: ReportsFilters) => {
   const normalizedFilters = normalizeFilters(filters);
   await ensureBuildingBelongsToManager(managerId, normalizedFilters.buildingId);
@@ -439,8 +429,8 @@ export const getReportsCsv = async (managerId: string, filters: ReportsFilters, 
 
   if (section === 'revenue') {
     return {
-      filename: `reports-revenue-${data.filters.monthFrom.slice(0, 7)}-${data.filters.monthTo.slice(0, 7)}.csv`,
-      content: toCsv(
+      filename: sanitizeCsvFilename(`reports-revenue-${data.filters.monthFrom.slice(0, 7)}-${data.filters.monthTo.slice(0, 7)}.csv`),
+      content: createCsv(
         ['Month', 'Invoice count', 'Billed', 'Collected', 'Unpaid'],
         data.revenueByMonth.map((item) => [item.month, item.invoiceCount, item.billed, item.collected, item.unpaid])
       )
@@ -449,8 +439,8 @@ export const getReportsCsv = async (managerId: string, filters: ReportsFilters, 
 
   if (section === 'debt') {
     return {
-      filename: `reports-debt-${data.filters.monthFrom.slice(0, 7)}-${data.filters.monthTo.slice(0, 7)}.csv`,
-      content: toCsv(
+      filename: sanitizeCsvFilename(`reports-debt-${data.filters.monthFrom.slice(0, 7)}-${data.filters.monthTo.slice(0, 7)}.csv`),
+      content: createCsv(
         ['Building', 'Room', 'Tenant', 'Month', 'Status', 'Due date', 'Total', 'Paid', 'Outstanding'],
         data.debtItems.map((item) => [
           item.buildingName,
@@ -468,8 +458,8 @@ export const getReportsCsv = async (managerId: string, filters: ReportsFilters, 
   }
 
   return {
-    filename: `reports-occupancy-${data.filters.monthTo.slice(0, 7)}.csv`,
-    content: toCsv(
+    filename: sanitizeCsvFilename(`reports-occupancy-${data.filters.monthTo.slice(0, 7)}.csv`),
+    content: createCsv(
       ['Building', 'Total rooms', 'Occupied', 'Vacant', 'Maintenance', 'Inactive', 'Active tenants', 'Occupancy rate'],
       data.occupancyByBuilding.map((item) => [
         item.buildingName,
