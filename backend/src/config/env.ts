@@ -1,7 +1,11 @@
 import dotenv from 'dotenv';
 import { z } from 'zod';
 
-dotenv.config();
+const initialAppEnvironment = process.env.APP_ENV
+  ?? (process.env.NODE_ENV === 'production' ? 'production' : 'development');
+if (initialAppEnvironment !== 'production' && initialAppEnvironment !== 'staging') {
+  dotenv.config();
+}
 
 const optionalString = z.string().optional().default('');
 const optionalEmail = z.union([z.string().email(), z.literal('')]).optional().default('');
@@ -16,6 +20,58 @@ const optionalProxyHops = z.preprocess(
 );
 
 export type AppEnvironment = 'development' | 'test' | 'staging' | 'production';
+export const JWT_SECRET_MIN_LENGTH = 32;
+const JWT_SECRET_PLACEHOLDER = /^(change-me|replace-with-|<)/i;
+
+export const assertSecureJwtSecrets = (accessSecret: string, refreshSecret: string): void => {
+  if (accessSecret.length < JWT_SECRET_MIN_LENGTH) {
+    throw new Error(`JWT_ACCESS_SECRET must contain at least ${JWT_SECRET_MIN_LENGTH} characters`);
+  }
+  if (refreshSecret.length < JWT_SECRET_MIN_LENGTH) {
+    throw new Error(`JWT_REFRESH_SECRET must contain at least ${JWT_SECRET_MIN_LENGTH} characters`);
+  }
+  if (JWT_SECRET_PLACEHOLDER.test(accessSecret)) {
+    throw new Error('JWT_ACCESS_SECRET must not use an example placeholder');
+  }
+  if (JWT_SECRET_PLACEHOLDER.test(refreshSecret)) {
+    throw new Error('JWT_REFRESH_SECRET must not use an example placeholder');
+  }
+  if (accessSecret === refreshSecret) {
+    throw new Error('JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be different');
+  }
+};
+
+export const resolveDatabaseTlsSettings = (
+  appEnvironment: AppEnvironment,
+  databaseUrl: string,
+  configuredSsl?: 'true' | 'false',
+  configuredRejectUnauthorized?: 'true' | 'false'
+): { dbSsl: 'true' | 'false'; rejectUnauthorized: 'true' | 'false' } => {
+  const isDeployed = appEnvironment === 'staging' || appEnvironment === 'production';
+  const isSupabaseHost = (() => {
+    try {
+      return new URL(databaseUrl).hostname.endsWith('.supabase.co');
+    } catch {
+      return false;
+    }
+  })();
+  const dbSsl = configuredSsl ?? (isDeployed || isSupabaseHost ? 'true' : 'false');
+  const rejectUnauthorized = configuredRejectUnauthorized ?? (dbSsl === 'true' ? 'true' : 'false');
+
+  if (isDeployed && dbSsl !== 'true') {
+    throw new Error(`DB_SSL must be true when APP_ENV=${appEnvironment}`);
+  }
+  if (isDeployed && rejectUnauthorized !== 'true') {
+    throw new Error(
+      `DB_SSL_REJECT_UNAUTHORIZED must be true when APP_ENV=${appEnvironment}`
+    );
+  }
+  if (dbSsl === 'false' && rejectUnauthorized === 'true') {
+    throw new Error('DB_SSL_REJECT_UNAUTHORIZED cannot be true when DB_SSL is false');
+  }
+
+  return { dbSsl, rejectUnauthorized };
+};
 
 export const resolveCorsAllowedOrigins = (
   appEnvironment: AppEnvironment,
@@ -58,12 +114,14 @@ const envSchema = z.object({
   APP_ENV: z.enum(['development', 'test', 'staging', 'production']).default(defaultAppEnv),
   PORT: z.coerce.number().int().positive().default(4000),
   DATABASE_URL: z.string().min(1),
-  DB_SSL: z.enum(['true', 'false']).default('true'),
-  DB_SSL_REJECT_UNAUTHORIZED: z.enum(['true', 'false']).default('false'),
+  DB_SSL: z.enum(['true', 'false']).optional(),
+  DB_SSL_REJECT_UNAUTHORIZED: z.enum(['true', 'false']).optional(),
+  DB_SSL_CA: optionalString,
   DB_CONNECTION_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
   DB_IDLE_TIMEOUT_MS: z.coerce.number().int().positive().default(30000),
   DB_POOL_MAX: z.coerce.number().int().positive().default(10),
   JWT_ACCESS_SECRET: z.string().min(1),
+  JWT_REFRESH_SECRET: z.string().min(1),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
   REFRESH_TOKEN_EXPIRES_DAYS: z.coerce.number().int().min(1).max(90).default(7),
   REFRESH_COOKIE_NAME: z.string().trim().min(1).default('rent_refresh_token'),
@@ -134,6 +192,15 @@ if (!parsed.success) {
   throw new Error(`Invalid environment variables: ${parsed.error.message}`);
 }
 
+assertSecureJwtSecrets(parsed.data.JWT_ACCESS_SECRET, parsed.data.JWT_REFRESH_SECRET);
+
+const databaseTls = resolveDatabaseTlsSettings(
+  parsed.data.APP_ENV,
+  parsed.data.DATABASE_URL,
+  parsed.data.DB_SSL,
+  parsed.data.DB_SSL_REJECT_UNAUTHORIZED
+);
+
 const corsAllowedOrigins = resolveCorsAllowedOrigins(
   parsed.data.APP_ENV,
   parsed.data.CORS_ALLOWED_ORIGINS
@@ -149,6 +216,9 @@ const documentDeliveryBaseUrl = resolveDocumentDeliveryBaseUrl(
 
 export const env = {
   ...parsed.data,
+  DB_SSL: databaseTls.dbSsl,
+  DB_SSL_REJECT_UNAUTHORIZED: databaseTls.rejectUnauthorized,
+  DB_SSL_CA: parsed.data.DB_SSL_CA.replace(/\\n/g, '\n').trim(),
   CORS_ALLOWED_ORIGINS: corsAllowedOrigins,
   TRUST_PROXY_HOPS: trustProxyHops,
   DOCUMENT_DELIVERY_BASE_URL: documentDeliveryBaseUrl

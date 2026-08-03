@@ -3,7 +3,10 @@ process.env.APP_ENV = 'test';
 process.env.PORT = process.env.PORT ?? '4000';
 process.env.DATABASE_URL = process.env.DATABASE_URL ?? 'postgres://test:test@localhost:5432/rentmate_test';
 process.env.DB_SSL = process.env.DB_SSL ?? 'false';
-process.env.JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET ?? 'test-access-secret';
+process.env.JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET
+  ?? 'test-access-secret-with-at-least-32-characters';
+process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET
+  ?? 'test-refresh-secret-with-at-least-32-characters';
 process.env.JWT_ACCESS_EXPIRES_IN = '15m';
 process.env.TRUST_PROXY_HOPS = process.env.TRUST_PROXY_HOPS ?? '0';
 process.env.RATE_LIMIT_GLOBAL_MAX = process.env.RATE_LIMIT_GLOBAL_MAX ?? '10000';

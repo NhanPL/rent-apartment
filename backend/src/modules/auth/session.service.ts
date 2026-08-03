@@ -47,7 +47,7 @@ type RotationResult =
   | { status: 'INVALID' | 'REUSED' };
 
 const hashRefreshToken = (token: string): string => (
-  crypto.createHash('sha256').update(token, 'utf8').digest('hex')
+  crypto.createHmac('sha256', env.JWT_REFRESH_SECRET).update(token, 'utf8').digest('hex')
 );
 
 const hashIp = (ip: string): string => (

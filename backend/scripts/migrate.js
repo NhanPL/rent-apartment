@@ -7,9 +7,13 @@ const dotenv = require('dotenv');
 const repoRoot = path.resolve(__dirname, '..', '..');
 const backendRoot = path.resolve(__dirname, '..');
 
-dotenv.config({ path: path.join(repoRoot, '.env') });
-dotenv.config({ path: path.join(backendRoot, '.env'), override: true });
-dotenv.config();
+const initialAppEnvironment = process.env.APP_ENV
+  || (process.env.NODE_ENV === 'production' ? 'production' : 'development');
+if (initialAppEnvironment !== 'production' && initialAppEnvironment !== 'staging') {
+  dotenv.config({ path: path.join(repoRoot, '.env') });
+  dotenv.config({ path: path.join(backendRoot, '.env'), override: true });
+  dotenv.config();
+}
 
 const args = new Set(process.argv.slice(2));
 const includeSeeds = args.has('--seed');
@@ -33,16 +37,35 @@ if (!databaseUrl) {
 }
 
 const getSslConfig = () => {
-  const isSupabaseHost = databaseUrl.includes('.supabase.co');
-  const dbSsl = process.env.DB_SSL;
-  const shouldUseSsl = dbSsl === 'true' || (dbSsl !== 'false' && isSupabaseHost);
+  const appEnvironment = process.env.APP_ENV
+    || (process.env.NODE_ENV === 'production' ? 'production' : 'development');
+  const isDeployed = appEnvironment === 'staging' || appEnvironment === 'production';
+  const isSupabaseHost = new URL(databaseUrl).hostname.endsWith('.supabase.co');
+  const dbSsl = process.env.DB_SSL || (isDeployed || isSupabaseHost ? 'true' : 'false');
+  const rejectUnauthorized = process.env.DB_SSL_REJECT_UNAUTHORIZED
+    || (dbSsl === 'true' ? 'true' : 'false');
 
-  if (!shouldUseSsl) {
+  if (isDeployed && dbSsl !== 'true') {
+    throw new Error(`DB_SSL must be true when APP_ENV=${appEnvironment}.`);
+  }
+  if (isDeployed && rejectUnauthorized !== 'true') {
+    throw new Error(
+      `DB_SSL_REJECT_UNAUTHORIZED must be true when APP_ENV=${appEnvironment}.`
+    );
+  }
+  if (dbSsl === 'false' && rejectUnauthorized === 'true') {
+    throw new Error('DB_SSL_REJECT_UNAUTHORIZED cannot be true when DB_SSL is false.');
+  }
+
+  if (dbSsl !== 'true') {
     return undefined;
   }
 
   return {
-    rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true'
+    rejectUnauthorized: rejectUnauthorized === 'true',
+    ...(process.env.DB_SSL_CA
+      ? { ca: process.env.DB_SSL_CA.replace(/\\n/g, '\n').trim() }
+      : {})
   };
 };
 

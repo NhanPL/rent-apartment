@@ -12,6 +12,11 @@ Schema changes are versioned in `migrations/`. Demo data is kept separately in `
 npm run db:migrate
 ```
 
+For staging and production, inject `DATABASE_URL` and `DB_SSL_CA` through the
+deployment secret manager. The migration runner does not load `.env` files in
+those environments and requires both `DB_SSL=true` and
+`DB_SSL_REJECT_UNAUTHORIZED=true`.
+
 To load optional demo data after schema migrations:
 
 ```sh

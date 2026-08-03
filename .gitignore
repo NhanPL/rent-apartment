@@ -1,0 +1,11 @@
+# Runtime secrets must be injected by the local environment or deployment platform.
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Private keys must never be stored in the repository.
+*.key
+*.pem
