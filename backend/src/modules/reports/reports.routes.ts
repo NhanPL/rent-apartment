@@ -4,6 +4,7 @@ import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { parseQuery } from '../../shared/utils/validation';
 import { getReportsCsv, getReportsData } from './reports.service';
+import { buildCsvContentDisposition } from '../../shared/utils/csv';
 
 const router = Router();
 
@@ -40,8 +41,12 @@ router.get('/export.csv', requireRole('MANAGER'), asyncHandler(async (req, res) 
   const query = parseQuery(reportsExportQuerySchema, req.query);
   const csv = await getReportsCsv(req.auth!.userId, toFilters(query), query.section);
 
-  res.header('Content-Type', 'text/csv; charset=utf-8');
-  res.header('Content-Disposition', `attachment; filename="${csv.filename}"`);
+  res.set({
+    'Content-Type': 'text/csv; charset=utf-8',
+    'Content-Disposition': buildCsvContentDisposition(csv.filename),
+    'Cache-Control': 'private, no-store, max-age=0',
+    'X-Content-Type-Options': 'nosniff'
+  });
   res.send(csv.content);
 }));
 
