@@ -1190,7 +1190,16 @@ class FakeDb {
     }
 
     if (sql.startsWith('select id from invoice where contract_id=$1 and month=$2')) {
-      const invoice = this.invoices.find((item) => item.contract_id === params[0] && item.month === params[1] && (!params[2] || item.id !== params[2]));
+      const invoice = this.invoices.find((item) => item.contract_id === params[0]
+        && item.month === params[1]
+        && (!sql.includes("status <> 'void'") || item.status !== 'VOID')
+        && (!params[2] || item.id !== params[2]));
+      return result<T>(invoice ? [{ id: invoice.id } as T] : []);
+    }
+
+    if (sql.startsWith('select id from invoice where replaces_invoice_id=$1')) {
+      const invoice = this.invoices.find((item) => item.replaces_invoice_id === params[0]
+        || (item.contract_id === params[1] && item.month === params[2] && item.status !== 'VOID'));
       return result<T>(invoice ? [{ id: invoice.id } as T] : []);
     }
 
@@ -1206,7 +1215,8 @@ class FakeDb {
       return result<T>(rate ? [rate as T] : []);
     }
 
-    if (sql.startsWith('insert into invoice(contract_id, room_id, utility_reading_id')) {
+    if (sql.startsWith('insert into invoice(')) {
+      const isReplacement = sql.includes('replaces_invoice_id');
       const row = {
         id: this.newId(),
         contract_id: params[0],
@@ -1218,10 +1228,11 @@ class FakeDb {
         due_date: params[4],
         note: params[5] ?? null,
         subtotal: params[6],
-        discount: 0,
-        total: params[6],
+        discount: isReplacement ? params[7] : 0,
+        total: isReplacement ? params[8] : params[6],
         approved_by_user_id: sql.includes("'draft'") ? null : params[7],
         approved_at: sql.includes("'draft'") ? null : now,
+        replaces_invoice_id: isReplacement ? params[9] : null,
         created_at: now,
         updated_at: now
       };
@@ -1230,6 +1241,16 @@ class FakeDb {
     }
 
     if (sql.startsWith('insert into invoice_item(')) {
+      if (sql.includes('select $1,code,name,quantity,unit_price,amount')) {
+        const sourceItems = this.invoiceItems.filter((item) => item.invoice_id === params[1]);
+        sourceItems.forEach((item) => this.invoiceItems.push({
+          ...item,
+          id: this.newId(),
+          invoice_id: params[0],
+          meta: { ...(item.meta ?? {}), replacement_source_invoice_id: params[1] }
+        }));
+        return result<T>([]);
+      }
       this.invoiceItems.push({
         id: this.newId(),
         invoice_id: params[0],
@@ -1282,8 +1303,25 @@ class FakeDb {
       return result<T>(this.invoiceAdjustments.filter((item) => item.invoice_id === params[0]) as T[]);
     }
 
+    if (sql.startsWith('select ( exists (select 1 from payment where invoice_id=$1)')) {
+      const hasHistory = this.payments.some((item) => item.invoice_id === params[0])
+        || this.paymentRequests.some((item) => item.invoice_id === params[0]);
+      return result<T>([{ has_history: hasHistory } as T]);
+    }
+
     if (sql.startsWith('delete from payment where invoice_id=$1')) {
       this.payments = this.payments.filter((item) => item.invoice_id !== params[0]);
+      return result<T>([]);
+    }
+
+    if (sql.startsWith("update invoice set status='void'")) {
+      const invoice = this.invoices.find((item) => item.id === params[0]);
+      if (invoice) {
+        invoice.status = 'VOID';
+        invoice.void_reason = params[1];
+        invoice.voided_by_user_id = params[2];
+        invoice.voided_at = now;
+      }
       return result<T>([]);
     }
 
@@ -1301,6 +1339,36 @@ class FakeDb {
       this.invoices = this.invoices.filter((item) => item.id !== invoiceId);
       this.invoiceItems = this.invoiceItems.filter((item) => item.invoice_id !== invoiceId);
       this.invoiceAdjustments = this.invoiceAdjustments.filter((item) => item.invoice_id !== invoiceId);
+      return result<T>([]);
+    }
+
+    if (sql.startsWith("update utility_reading ur set status='approved'")) {
+      const reading = this.utilityReadings.find((item) => item.id === params[0]);
+      const stillReferenced = this.invoices.some((item) => item.utility_reading_id === params[0]);
+      if (reading?.status === 'INVOICED' && !stillReferenced) reading.status = 'APPROVED';
+      return result<T>([]);
+    }
+
+    if (sql.startsWith("update payment_proof proof set status='rejected'")) {
+      const requestIds = this.paymentRequests.filter((item) => item.invoice_id === params[0]).map((item) => item.id);
+      this.paymentProofs
+        .filter((item) => requestIds.includes(item.payment_request_id) && item.status === 'PENDING')
+        .forEach((proof) => {
+          proof.status = 'REJECTED';
+          proof.rejected_by_user_id = params[1];
+          proof.rejected_at = now;
+          proof.rejection_reason = params[2];
+        });
+      return result<T>([]);
+    }
+
+    if (sql.startsWith("update payment_request set status='cancelled'")) {
+      this.paymentRequests
+        .filter((item) => item.invoice_id === params[0] && !['VERIFIED', 'CANCELLED', 'EXPIRED'].includes(item.status))
+        .forEach((request) => {
+          request.status = 'CANCELLED';
+          request.note = [request.note, params[1]].filter(Boolean).join('\n');
+        });
       return result<T>([]);
     }
 
@@ -1434,9 +1502,9 @@ class FakeDb {
       return result<T>([]);
     }
 
-    if (sql.startsWith("update invoice set status='paid'")) {
+    if (sql.startsWith('update invoice set status=$2')) {
       const invoice = this.invoices.find((item) => item.id === params[0]);
-      if (invoice) invoice.status = 'PAID';
+      if (invoice) invoice.status = params[1];
       return result<T>([]);
     }
 
@@ -1660,7 +1728,7 @@ class FakeDb {
     const invoice = this.invoices.find((item) => item.id === request.invoice_id);
     if (!invoice) return null;
     const belongs = this.contractTenants.some((ct) => ct.contract_id === invoice.contract_id && !ct.left_at && this.tenants.some((tenant) => tenant.id === ct.tenant_id && tenant.user_id === tenantUserId));
-    return belongs ? { ...request, invoice_total: invoice.total, tenant_user_id: tenantUserId } : null;
+    return belongs ? { ...request, invoice_total: invoice.total, invoice_status: invoice.status, tenant_user_id: tenantUserId } : null;
   }
 
   private getPaymentProofForManager(proofId: string, managerId: string) {

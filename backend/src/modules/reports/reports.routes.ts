@@ -8,7 +8,7 @@ import { buildCsvContentDisposition } from '../../shared/utils/csv';
 
 const router = Router();
 
-const invoiceStatusSchema = z.enum(['DRAFT', 'ISSUED', 'PAID', 'VOID', 'OVERDUE']);
+const invoiceStatusSchema = z.enum(['DRAFT', 'ISSUED', 'PARTIALLY_PAID', 'PAID', 'VOID']);
 const reportSectionSchema = z.enum(['revenue', 'debt', 'occupancy']);
 
 const reportsQuerySchema = z.object({

@@ -2,7 +2,7 @@ import { query } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
 import { createCsv, sanitizeCsvFilename } from '../../shared/utils/csv';
 
-type InvoiceStatus = 'DRAFT' | 'ISSUED' | 'PAID' | 'VOID' | 'OVERDUE';
+type InvoiceStatus = 'DRAFT' | 'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'VOID';
 type ReportSection = 'revenue' | 'debt' | 'occupancy';
 
 export interface ReportsFilters {
@@ -54,6 +54,7 @@ interface DebtRow {
   total: number | string | null;
   paid_amount: number | string | null;
   outstanding_amount: number | string | null;
+  is_overdue: boolean;
 }
 
 interface OccupancyRow {
@@ -235,7 +236,8 @@ const mapDebtRow = (row: DebtRow) => ({
   dueDate: row.due_date,
   total: toNumber(row.total),
   paidAmount: toNumber(row.paid_amount),
-  outstandingAmount: toNumber(row.outstanding_amount)
+  outstandingAmount: toNumber(row.outstanding_amount),
+  isOverdue: row.is_overdue
 });
 
 const mapOccupancyRow = (row: OccupancyRow) => {
@@ -265,10 +267,10 @@ const getRevenueByMonth = async (managerId: string, filters: NormalizedReportsFi
      ${invoiceBalanceCte}
      SELECT
        to_char(ms.month_start, 'YYYY-MM') AS month,
-       COUNT(ib.id)::int AS invoice_count,
+       COUNT(ib.id) FILTER (WHERE ib.status <> 'VOID')::int AS invoice_count,
        COALESCE(SUM(ib.total) FILTER (WHERE ib.status <> 'VOID'), 0)::float AS billed,
        COALESCE(SUM(ib.paid_amount), 0)::float AS collected,
-       COALESCE(SUM(ib.outstanding_amount) FILTER (WHERE ib.status IN ('ISSUED', 'OVERDUE')), 0)::float AS unpaid
+       COALESCE(SUM(ib.outstanding_amount) FILTER (WHERE ib.status IN ('ISSUED', 'PARTIALLY_PAID')), 0)::float AS unpaid
      FROM month_series ms
      LEFT JOIN invoice_balances ib ON ib.month=ms.month_start
      GROUP BY ms.month_start
@@ -293,10 +295,10 @@ const getRevenueByBuilding = async (managerId: string, filters: NormalizedReport
      SELECT
        sb.id AS building_id,
        sb.name AS building_name,
-       COUNT(ib.id)::int AS invoice_count,
+       COUNT(ib.id) FILTER (WHERE ib.status <> 'VOID')::int AS invoice_count,
        COALESCE(SUM(ib.total) FILTER (WHERE ib.status <> 'VOID'), 0)::float AS billed,
        COALESCE(SUM(ib.paid_amount), 0)::float AS collected,
-       COALESCE(SUM(ib.outstanding_amount) FILTER (WHERE ib.status IN ('ISSUED', 'OVERDUE')), 0)::float AS unpaid
+       COALESCE(SUM(ib.outstanding_amount) FILTER (WHERE ib.status IN ('ISSUED', 'PARTIALLY_PAID')), 0)::float AS unpaid
      FROM scoped_buildings sb
      LEFT JOIN invoice_balances ib ON ib.building_id=sb.id
      GROUP BY sb.id, sb.name
@@ -324,11 +326,12 @@ const getDebtItems = async (managerId: string, filters: NormalizedReportsFilters
        due_date,
        total::float,
        paid_amount::float,
-       outstanding_amount::float
+       outstanding_amount::float,
+       (due_date IS NOT NULL AND due_date < CURRENT_DATE) AS is_overdue
      FROM invoice_balances
-     WHERE status IN ('ISSUED', 'OVERDUE')
+     WHERE status IN ('ISSUED', 'PARTIALLY_PAID')
        AND outstanding_amount > 0
-     ORDER BY status='OVERDUE' DESC, due_date NULLS LAST, month DESC, building_name, room_code`,
+     ORDER BY is_overdue DESC, due_date NULLS LAST, month DESC, building_name, room_code`,
     scope.params
   );
 
@@ -390,8 +393,8 @@ export const getReportsData = async (managerId: string, filters: ReportsFilters)
     (acc, item) => ({
       unpaidInvoices: acc.unpaidInvoices + 1,
       unpaidAmount: acc.unpaidAmount + item.outstandingAmount,
-      overdueInvoices: acc.overdueInvoices + (item.status === 'OVERDUE' ? 1 : 0),
-      overdueAmount: acc.overdueAmount + (item.status === 'OVERDUE' ? item.outstandingAmount : 0)
+      overdueInvoices: acc.overdueInvoices + (item.isOverdue ? 1 : 0),
+      overdueAmount: acc.overdueAmount + (item.isOverdue ? item.outstandingAmount : 0)
     }),
     { unpaidInvoices: 0, unpaidAmount: 0, overdueInvoices: 0, overdueAmount: 0 }
   );
@@ -441,13 +444,14 @@ export const getReportsCsv = async (managerId: string, filters: ReportsFilters, 
     return {
       filename: sanitizeCsvFilename(`reports-debt-${data.filters.monthFrom.slice(0, 7)}-${data.filters.monthTo.slice(0, 7)}.csv`),
       content: createCsv(
-        ['Building', 'Room', 'Tenant', 'Month', 'Status', 'Due date', 'Total', 'Paid', 'Outstanding'],
+        ['Building', 'Room', 'Tenant', 'Month', 'Status', 'Overdue', 'Due date', 'Total', 'Paid', 'Outstanding'],
         data.debtItems.map((item) => [
           item.buildingName,
           item.roomCode,
           item.tenantName,
           item.month.slice(0, 7),
           item.status,
+          item.isOverdue ? 'Yes' : 'No',
           item.dueDate ?? '',
           item.total,
           item.paidAmount,

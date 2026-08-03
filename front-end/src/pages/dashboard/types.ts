@@ -1,7 +1,7 @@
 export type RoomStatus = 'ACTIVE' | 'MAINTENANCE' | 'INACTIVE'
 export type ContractStatus = 'DRAFT' | 'ACTIVE' | 'ENDED' | 'CANCELLED'
 export type TenantStatus = 'ACTIVE' | 'MOVED_OUT' | 'BLACKLIST'
-export type InvoiceStatus = 'DRAFT' | 'ISSUED' | 'PAID' | 'VOID' | 'OVERDUE'
+export type InvoiceStatus = 'DRAFT' | 'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'VOID'
 export type PaymentStatus = 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED' | 'CANCELLED'
 
 export interface DashboardSummary {
@@ -53,7 +53,7 @@ export interface DashboardUnpaidInvoiceItem {
   roomCode: string
   buildingName: string
   month: string
-  status: Extract<InvoiceStatus, 'ISSUED' | 'OVERDUE'>
+  status: Extract<InvoiceStatus, 'ISSUED' | 'PARTIALLY_PAID'>
   total: number
 }
 

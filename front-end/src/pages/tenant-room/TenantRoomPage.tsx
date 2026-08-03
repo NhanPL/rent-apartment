@@ -58,9 +58,9 @@ const notifyFormFailure = (error: unknown) => {
 const invoiceStatusColor: Record<InvoiceSummary['status'], string> = {
   DRAFT: 'default',
   ISSUED: 'processing',
+  PARTIALLY_PAID: 'gold',
   PAID: 'green',
   VOID: 'red',
-  OVERDUE: 'orange',
 }
 
 const paymentStatusColor: Record<NonNullable<InvoiceSummary['payment_status']>, string> = {
@@ -188,7 +188,7 @@ export function TenantRoomPage() {
     billDetail
     && billDetailPaymentRequest
     && dayjs(billDetail.month).isBefore(dayjs(), 'month')
-    && ['ISSUED', 'OVERDUE'].includes(billDetail.status)
+    && ['ISSUED', 'PARTIALLY_PAID'].includes(billDetail.status)
     && billDetailRemainingAmount > 0
     && ['WAITING_TRANSFER', 'REJECTED'].includes(billDetailPaymentRequest.status),
   )

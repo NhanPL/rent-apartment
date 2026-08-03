@@ -1,4 +1,4 @@
-export type ReportInvoiceStatus = 'DRAFT' | 'ISSUED' | 'PAID' | 'VOID' | 'OVERDUE'
+export type ReportInvoiceStatus = 'DRAFT' | 'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'VOID'
 export type ReportSection = 'revenue' | 'debt' | 'occupancy'
 
 export interface ReportFilters {
@@ -38,7 +38,8 @@ export interface DebtReportRow {
   roomCode: string
   tenantName: string
   month: string
-  status: Extract<ReportInvoiceStatus, 'ISSUED' | 'OVERDUE'>
+  status: Extract<ReportInvoiceStatus, 'ISSUED' | 'PARTIALLY_PAID'>
+  isOverdue: boolean
   dueDate: string | null
   total: number
   paidAmount: number

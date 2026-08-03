@@ -1,5 +1,5 @@
 export type ContractStatus = 'DRAFT' | 'ACTIVE' | 'ENDED' | 'CANCELLED'
-export type InvoiceStatus = 'DRAFT' | 'ISSUED' | 'PAID' | 'VOID' | 'OVERDUE'
+export type InvoiceStatus = 'DRAFT' | 'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'VOID'
 export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'VNPAY' | 'MOMO'
 export type PaymentStatus = 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED' | 'CANCELLED'
 
@@ -70,6 +70,11 @@ export interface Invoice {
   total: number
   created_at: string
   updated_at: string
+  void_reason: string | null
+  voided_by_user_id: string | null
+  voided_at: string | null
+  replaces_invoice_id: string | null
+  replacement_invoice_id: string | null
 }
 
 export interface InvoiceItem {

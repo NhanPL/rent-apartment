@@ -115,6 +115,7 @@ const toDebtRow = (row: DebtApiRow): DebtReportRow => ({
   total: toNumber(row.total),
   paidAmount: toNumber(row.paidAmount),
   outstandingAmount: toNumber(row.outstandingAmount),
+  isOverdue: row.isOverdue,
 })
 
 const toDebtSummary = (row: DebtSummaryApi): DebtSummary => ({

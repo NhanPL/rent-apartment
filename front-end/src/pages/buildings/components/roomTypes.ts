@@ -1,5 +1,5 @@
 export type RoomStatus = 'ACTIVE' | 'MAINTENANCE' | 'INACTIVE'
-export type RoomInvoiceStatus = 'DRAFT' | 'ISSUED' | 'PAID' | 'VOID' | 'OVERDUE'
+export type RoomInvoiceStatus = 'DRAFT' | 'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'VOID'
 export type RoomUtilityReadingStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'INVOICED'
 
 export interface Room {
@@ -67,7 +67,7 @@ export interface MonthlyBill {
   electric_amount: number
   water_amount: number
   total_bill_amount: number
-  invoice_status: 'DRAFT' | 'ISSUED' | 'PAID' | 'VOID' | 'OVERDUE'
+  invoice_status: RoomInvoiceStatus
   issued_at: string | null
   due_date: string | null
   note: string | null
@@ -86,7 +86,7 @@ export interface MonthlyBillUpsertPayload {
   rent_amount: number
   other_fees: number
   discount: number
-  invoice_status: 'DRAFT' | 'ISSUED' | 'PAID' | 'VOID' | 'OVERDUE'
+  invoice_status: RoomInvoiceStatus
   issued_at: string | null
   due_date: string | null
   note: string | null

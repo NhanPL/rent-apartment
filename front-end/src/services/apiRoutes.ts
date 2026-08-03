@@ -59,7 +59,7 @@ export const API_ROUTES = {
     generateAll: '/invoices/generate/all',
     issue: (id: string) => `/invoices/${id}/issue`,
     void: (id: string) => `/invoices/${id}/void`,
-    markOverdue: (id: string) => `/invoices/${id}/mark-overdue`,
+    replacement: (id: string) => `/invoices/${id}/replacement`,
     adjustments: (id: string) => `/invoices/${id}/adjustments`,
   },
   payments: {

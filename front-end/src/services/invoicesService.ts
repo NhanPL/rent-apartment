@@ -234,13 +234,13 @@ export async function addInvoiceAdjustment(id: string, amount: number, reason: s
   return toInvoiceDetail(row)
 }
 
-export async function voidInvoice(id: string): Promise<InvoiceDetail> {
-  const row = await apiRequest<InvoiceDetailApiRow>(API_ROUTES.invoices.void(id), { method: 'POST' })
+export async function voidInvoice(id: string, reason: string): Promise<InvoiceDetail> {
+  const row = await apiRequest<InvoiceDetailApiRow>(API_ROUTES.invoices.void(id), { method: 'POST', body: { reason } })
   return toInvoiceDetail(row)
 }
 
-export async function markInvoiceOverdue(id: string): Promise<InvoiceDetail> {
-  const row = await apiRequest<InvoiceDetailApiRow>(API_ROUTES.invoices.markOverdue(id), { method: 'POST' })
+export async function createReplacementInvoice(id: string): Promise<InvoiceDetail> {
+  const row = await apiRequest<InvoiceDetailApiRow>(API_ROUTES.invoices.replacement(id), { method: 'POST' })
   return toInvoiceDetail(row)
 }
 

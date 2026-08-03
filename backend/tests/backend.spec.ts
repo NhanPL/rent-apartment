@@ -1573,7 +1573,28 @@ describe('backend API smoke tests', () => {
 
   });
 
-  it('deletes paid invoices together with their payment data', async () => {
+  it('only permanently deletes clean draft invoices', async () => {
+    const managerSession = await login('manager@example.com');
+
+    const generated = await request(app)
+      .post('/api/invoices/generate/room')
+      .set(auth(managerSession.accessToken))
+      .send({ month: '2026-06', room_id: ids.roomA })
+      .expect(201);
+
+    const invoiceId = generated.body.generated[0].id as string;
+
+    const deleted = await request(app)
+      .delete(`/api/invoices/${invoiceId}`)
+      .set(auth(managerSession.accessToken));
+    expect(deleted.status, JSON.stringify(deleted.body)).toBe(204);
+
+    expect(fakeDb.invoices.some((invoice) => invoice.id === invoiceId)).toBe(false);
+    expect(fakeDb.invoiceItems.some((item) => item.invoice_id === invoiceId)).toBe(false);
+    expect(fakeDb.utilityReadings.find((reading) => reading.id === ids.readingApproved)).toMatchObject({ status: 'APPROVED' });
+  });
+
+  it('voids paid invoices without deleting their financial history', async () => {
     const managerSession = await login('manager@example.com');
 
     const generated = await request(app)
@@ -1608,17 +1629,48 @@ describe('backend API smoke tests', () => {
     });
     fakeDb.invoices.find((invoice) => invoice.id === invoiceId)!.status = 'PAID';
 
-    const deleted = await request(app)
+    const blockedDelete = await request(app)
       .delete(`/api/invoices/${invoiceId}`)
       .set(auth(managerSession.accessToken));
-    expect(deleted.status, JSON.stringify(deleted.body)).toBe(204);
+    expect(blockedDelete.status, JSON.stringify(blockedDelete.body)).toBe(409);
+    expect(blockedDelete.body).toMatchObject({ code: 'INVOICE_DELETE_REQUIRES_VOID' });
 
-    expect(fakeDb.invoices.some((invoice) => invoice.id === invoiceId)).toBe(false);
-    expect(fakeDb.invoiceItems.some((item) => item.invoice_id === invoiceId)).toBe(false);
-    expect(fakeDb.paymentRequests.some((item) => item.invoice_id === invoiceId)).toBe(false);
-    expect(fakeDb.paymentProofs.some((item) => item.payment_request_id === paymentRequest.id)).toBe(false);
-    expect(fakeDb.payments.some((item) => item.invoice_id === invoiceId)).toBe(false);
-    expect(fakeDb.utilityReadings.find((reading) => reading.id === ids.readingApproved)).toMatchObject({ status: 'APPROVED' });
+    const missingReason = await request(app)
+      .post(`/api/invoices/${invoiceId}/void`)
+      .set(auth(managerSession.accessToken))
+      .send({});
+    expect(missingReason.status, JSON.stringify(missingReason.body)).toBe(400);
+
+    const voided = await request(app)
+      .post(`/api/invoices/${invoiceId}/void`)
+      .set(auth(managerSession.accessToken))
+      .send({ reason: 'Incorrect contracted rent amount' });
+    expect(voided.status, JSON.stringify(voided.body)).toBe(200);
+    expect(fakeDb.invoices.find((invoice) => invoice.id === invoiceId)).toMatchObject({
+      status: 'VOID',
+      void_reason: 'Incorrect contracted rent amount',
+      voided_by_user_id: ids.managerAUser,
+      voided_at: expect.any(String)
+    });
+    expect(fakeDb.invoiceItems.some((item) => item.invoice_id === invoiceId)).toBe(true);
+    expect(fakeDb.paymentRequests.some((item) => item.invoice_id === invoiceId)).toBe(true);
+    expect(fakeDb.paymentProofs.some((item) => item.payment_request_id === paymentRequest.id)).toBe(true);
+    expect(fakeDb.payments.some((item) => item.invoice_id === invoiceId)).toBe(true);
+    expect(fakeDb.utilityReadings.find((reading) => reading.id === ids.readingApproved)).toMatchObject({ status: 'INVOICED' });
+
+    const replacement = await request(app)
+      .post(`/api/invoices/${invoiceId}/replacement`)
+      .set(auth(managerSession.accessToken));
+    expect(replacement.status, JSON.stringify(replacement.body)).toBe(201);
+    expect(replacement.body).toMatchObject({
+      status: 'DRAFT',
+      utility_reading_id: ids.readingApproved,
+      replaces_invoice_id: invoiceId
+    });
+    expect(fakeDb.invoiceItems.filter((item) => item.invoice_id === replacement.body.id)).toHaveLength(
+      fakeDb.invoiceItems.filter((item) => item.invoice_id === invoiceId).length
+    );
+    expect(fakeDb.utilityReadings.find((reading) => reading.id === ids.readingApproved)).toMatchObject({ status: 'INVOICED' });
   });
 
   it('creates payment requests and reviews submitted payment proofs', async () => {

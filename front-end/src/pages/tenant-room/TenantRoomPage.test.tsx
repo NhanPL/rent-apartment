@@ -47,7 +47,7 @@ import { TenantRoomPage } from './TenantRoomPage'
 const oldInvoice = {
   id: '00000000-0000-4000-8000-000000000901',
   month: '2026-06-01',
-  status: 'OVERDUE',
+  status: 'PARTIALLY_PAID',
   payment_status: null,
   payment_request_id: '00000000-0000-4000-8000-000000000951',
   payment_request_status: 'WAITING_TRANSFER',

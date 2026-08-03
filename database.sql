@@ -41,7 +41,7 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
-  CREATE TYPE invoice_status AS ENUM ('DRAFT', 'ISSUED', 'PAID', 'VOID', 'OVERDUE');
+  CREATE TYPE invoice_status AS ENUM ('DRAFT', 'ISSUED', 'PARTIALLY_PAID', 'PAID', 'VOID');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
@@ -571,18 +571,34 @@ CREATE TABLE IF NOT EXISTS invoice (
   approved_by_user_id uuid REFERENCES app_user(id) ON DELETE SET NULL,
   approved_at         timestamptz,
   adjustment_note     text,
+  void_reason         text,
+  voided_by_user_id   uuid REFERENCES app_user(id) ON DELETE SET NULL,
+  voided_at           timestamptz,
+  replaces_invoice_id uuid REFERENCES invoice(id) ON DELETE RESTRICT,
 
   created_at          timestamptz NOT NULL DEFAULT now(),
   updated_at          timestamptz NOT NULL DEFAULT now(),
 
-  CONSTRAINT uq_invoice_contract_month UNIQUE (contract_id, month),
   CONSTRAINT ck_invoice_month_is_first_day CHECK (extract(day from month) = 1),
-  CONSTRAINT ck_invoice_money CHECK (subtotal >= 0 AND discount >= 0 AND total >= 0)
+  CONSTRAINT ck_invoice_money CHECK (subtotal >= 0 AND discount >= 0 AND total >= 0),
+  CONSTRAINT ck_invoice_void_metadata CHECK (
+    status <> 'VOID'
+    OR (NULLIF(btrim(void_reason), '') IS NOT NULL AND voided_at IS NOT NULL)
+  ),
+  CONSTRAINT ck_invoice_not_self_replacement CHECK (
+    replaces_invoice_id IS NULL OR replaces_invoice_id <> id
+  )
 );
 
 CREATE INDEX IF NOT EXISTS idx_invoice_room_month ON invoice(room_id, month DESC);
 CREATE INDEX IF NOT EXISTS idx_invoice_status ON invoice(status);
 CREATE INDEX IF NOT EXISTS idx_invoice_utility_reading ON invoice(utility_reading_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_invoice_contract_month_active
+ON invoice(contract_id, month)
+WHERE status <> 'VOID';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_invoice_replaces_invoice
+ON invoice(replaces_invoice_id)
+WHERE replaces_invoice_id IS NOT NULL;
 
 DROP TRIGGER IF EXISTS trg_invoice_updated_at ON invoice;
 CREATE TRIGGER trg_invoice_updated_at

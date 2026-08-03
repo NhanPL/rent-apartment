@@ -28,10 +28,6 @@ interface BillUpsertDrawerProps {
 
 const statusOptions: { label: string; value: InvoiceStatus }[] = [
   { label: 'Draft', value: 'DRAFT' },
-  { label: 'Issued', value: 'ISSUED' },
-  { label: 'Paid', value: 'PAID' },
-  { label: 'Overdue', value: 'OVERDUE' },
-  { label: 'Void', value: 'VOID' },
 ]
 
 const currency = vndCurrency

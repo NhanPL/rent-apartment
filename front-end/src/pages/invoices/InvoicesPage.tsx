@@ -7,6 +7,7 @@ import {
   PlusOutlined,
   QrcodeOutlined,
   ReloadOutlined,
+  StopOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons'
 import {
@@ -38,6 +39,7 @@ import dayjs from 'dayjs'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   createInvoice,
+  createReplacementInvoice,
   addInvoiceAdjustment,
   deleteInvoice,
   getInvoice,
@@ -50,7 +52,6 @@ import {
   listInvoices,
   listRooms,
   listTenants,
-  markInvoiceOverdue,
   updateInvoice,
   voidInvoice,
 } from '../../services/invoicesService'
@@ -88,8 +89,8 @@ import './InvoicesPage.css'
 const invoiceStatusOptions: { label: string; value: InvoiceStatus; color: string }[] = [
   { label: 'Draft', value: 'DRAFT', color: 'default' },
   { label: 'Issued', value: 'ISSUED', color: 'blue' },
+  { label: 'Partially paid', value: 'PARTIALLY_PAID', color: 'gold' },
   { label: 'Paid', value: 'PAID', color: 'green' },
-  { label: 'Overdue', value: 'OVERDUE', color: 'red' },
   { label: 'Void', value: 'VOID', color: 'default' },
 ]
 
@@ -120,6 +121,10 @@ interface PaymentRequestFormValues {
   bank_account_name?: string
   transfer_note?: string
   expires_at?: string
+}
+
+interface VoidInvoiceFormValues {
+  reason: string
 }
 
 interface AdjustmentFormValues { amount: number; reason: string }
@@ -185,6 +190,7 @@ export function InvoicesPage() {
   const [paymentRequestForm] = Form.useForm<PaymentRequestFormValues>()
   const [adjustmentForm] = Form.useForm<AdjustmentFormValues>()
   const [issueForm] = Form.useForm<IssueInvoiceFormValues>()
+  const [voidForm] = Form.useForm<VoidInvoiceFormValues>()
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -220,7 +226,9 @@ export function InvoicesPage() {
   const [generateOpen, setGenerateOpen] = useState(false)
   const [generateLoading, setGenerateLoading] = useState(false)
   const [generateResult, setGenerateResult] = useState<{ generated: number; skipped: number; total: number } | null>(null)
-  const [statusActionLoading, setStatusActionLoading] = useState<string | null>(null)
+  const [voidingInvoiceId, setVoidingInvoiceId] = useState<string | null>(null)
+  const [voidLoading, setVoidLoading] = useState(false)
+  const [replacementLoading, setReplacementLoading] = useState(false)
   const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [paymentRequestOpen, setPaymentRequestOpen] = useState(false)
@@ -532,6 +540,7 @@ export function InvoicesPage() {
     setDeleteLoading(true)
     try {
       await deleteInvoice(deletingInvoiceId)
+      if (detailItem?.id === deletingInvoiceId) closeDetail()
       setDeletingInvoiceId(null)
       message.success('Invoice deleted.')
       await loadData()
@@ -540,7 +549,7 @@ export function InvoicesPage() {
     } finally {
       setDeleteLoading(false)
     }
-  }, [deletingInvoiceId, loadData])
+  }, [closeDetail, deletingInvoiceId, detailItem?.id, loadData])
 
   const openGenerate = useCallback(() => {
     setGenerateResult(null)
@@ -571,23 +580,43 @@ export function InvoicesPage() {
     }
   }, [generateForm, loadData])
 
-  const runStatusAction = useCallback(async (action: 'void' | 'overdue') => {
-    if (!detailItem) return
-    setStatusActionLoading(action)
+  const openVoidModal = useCallback((invoiceId: string) => {
+    voidForm.resetFields()
+    setVoidingInvoiceId(invoiceId)
+  }, [voidForm])
+
+  const confirmVoid = useCallback(async () => {
+    if (!voidingInvoiceId) return
+    setVoidLoading(true)
     try {
-      const updated =
-        action === 'void'
-          ? await voidInvoice(detailItem.id)
-          : await markInvoiceOverdue(detailItem.id)
-      setDetailItem(updated)
+      const values = await voidForm.validateFields()
+      const updated = await voidInvoice(voidingInvoiceId, values.reason.trim())
+      if (detailItem?.id === voidingInvoiceId) setDetailItem(updated)
+      setVoidingInvoiceId(null)
+      voidForm.resetFields()
       await loadData()
-      message.success('Invoice status updated.')
+      message.success('Invoice voided. Financial history has been retained.')
     } catch (error) {
-      message.error(getUserErrorMessage(error, 'Khong the cap nhat trang thai hoa don.'))
+      message.error(getFormErrorMessage(error, 'Unable to void the invoice.'))
     } finally {
-      setStatusActionLoading(null)
+      setVoidLoading(false)
     }
-  }, [detailItem, loadData])
+  }, [detailItem?.id, loadData, voidForm, voidingInvoiceId])
+
+  const createReplacement = useCallback(async () => {
+    if (!detailItem) return
+    setReplacementLoading(true)
+    try {
+      const replacement = await createReplacementInvoice(detailItem.id)
+      await loadData()
+      message.success('Replacement draft created.')
+      await openDetail(replacement.id)
+    } catch (error) {
+      message.error(getUserErrorMessage(error, 'Unable to create a replacement invoice.'))
+    } finally {
+      setReplacementLoading(false)
+    }
+  }, [detailItem, loadData, openDetail])
 
   const submitAdjustment = useCallback(async () => {
     if (!detailItem) return
@@ -769,14 +798,24 @@ export function InvoicesPage() {
       title: 'Actions',
       key: 'actions',
       fixed: 'right',
-      width: 130,
+      width: 170,
       render: (_, row) => (
         <Space size={4}>
           <Button size="small" icon={<EyeOutlined />} aria-label="View invoice" onClick={() => void openDetail(row.id)} />
-          <Button size="small" icon={<EditOutlined />} onClick={() => void openEdit(row.id)} />
-          <Tooltip title="Delete invoice">
-            <Button size="small" danger icon={<DeleteOutlined />} aria-label="Delete invoice" onClick={() => setDeletingInvoiceId(row.id)} />
-          </Tooltip>
+          {row.status === 'DRAFT' ? (
+            <>
+              <Tooltip title="Edit draft">
+                <Button size="small" icon={<EditOutlined />} aria-label="Edit draft invoice" onClick={() => void openEdit(row.id)} />
+              </Tooltip>
+              <Tooltip title="Delete draft permanently">
+                <Button size="small" danger icon={<DeleteOutlined />} aria-label="Delete draft invoice" onClick={() => setDeletingInvoiceId(row.id)} />
+              </Tooltip>
+            </>
+          ) : ['ISSUED', 'PARTIALLY_PAID', 'PAID'].includes(row.status) ? (
+            <Tooltip title="Void invoice and retain financial history">
+              <Button size="small" danger icon={<StopOutlined />} aria-label="Void invoice" onClick={() => openVoidModal(row.id)} />
+            </Tooltip>
+          ) : null}
         </Space>
       ),
     },
@@ -851,7 +890,7 @@ export function InvoicesPage() {
               rooms={rooms}
               contracts={contracts}
               tenantName={selectedTenantName ?? undefined}
-              invoiceStatusOptions={invoiceStatusOptions.map((item) => ({ label: item.label, value: item.value }))}
+              invoiceStatusOptions={[{ label: 'Draft', value: 'DRAFT' }]}
               currencyFormatter={(value) => currency.format(value)}
               sourceLocked={Boolean(utilitySourceId)}
               autoFillFromLatest={drawerMode === 'create' && !utilitySourceId}
@@ -888,8 +927,15 @@ export function InvoicesPage() {
                 ) : null}
                 {detailItem.status === 'DRAFT' ? <Button type="primary" icon={<QrcodeOutlined />} onClick={openIssueModal}>Issue and create QR</Button> : null}
                 {detailItem.status === 'DRAFT' ? <Button icon={<PlusOutlined />} onClick={() => setAdjustmentOpen(true)}>Adjustment</Button> : null}
-                <Button loading={statusActionLoading === 'overdue'} disabled={detailItem.status !== 'ISSUED'} onClick={() => void runStatusAction('overdue')}>Mark overdue</Button>
-                <Button danger loading={statusActionLoading === 'void'} disabled={detailItem.status === 'PAID' || detailItem.status === 'VOID'} onClick={() => void runStatusAction('void')}>Void</Button>
+                {detailItem.status === 'DRAFT' ? (
+                  <Button danger icon={<DeleteOutlined />} onClick={() => setDeletingInvoiceId(detailItem.id)}>Delete draft</Button>
+                ) : null}
+                {['ISSUED', 'PARTIALLY_PAID', 'PAID'].includes(detailItem.status) ? (
+                  <Button danger icon={<StopOutlined />} onClick={() => openVoidModal(detailItem.id)}>Void invoice</Button>
+                ) : null}
+                {detailItem.status === 'VOID' && !detailItem.replacement_invoice_id ? (
+                  <Button type="primary" icon={<PlusOutlined />} loading={replacementLoading} onClick={() => void createReplacement()}>Create replacement</Button>
+                ) : null}
               </Space>
             </Space>
             <Descriptions column={isMobile ? 1 : 2} size="small" bordered>
@@ -902,6 +948,20 @@ export function InvoicesPage() {
               <Descriptions.Item label="Paid">{currency.format(detailItem.paid_amount)}</Descriptions.Item>
               <Descriptions.Item label="Total">{currency.format(detailItem.total)}</Descriptions.Item>
               <Descriptions.Item label="Note" span={isMobile ? 1 : 2}>{detailItem.note ?? '-'}</Descriptions.Item>
+              {detailItem.status === 'VOID' ? (
+                <>
+                  <Descriptions.Item label="Void reason" span={isMobile ? 1 : 2}>{detailItem.void_reason}</Descriptions.Item>
+                  <Descriptions.Item label="Voided at">{detailItem.voided_at ? dayjs(detailItem.voided_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
+                  <Descriptions.Item label="Replacement">
+                    {detailItem.replacement_invoice_id ? <Button type="link" onClick={() => void openDetail(detailItem.replacement_invoice_id!)}>Open replacement</Button> : 'Not created'}
+                  </Descriptions.Item>
+                </>
+              ) : null}
+              {detailItem.replaces_invoice_id ? (
+                <Descriptions.Item label="Replaces invoice" span={isMobile ? 1 : 2}>
+                  <Button type="link" onClick={() => void openDetail(detailItem.replaces_invoice_id!)}>Open original void invoice</Button>
+                </Descriptions.Item>
+              ) : null}
             </Descriptions>
             <Table
               rowKey="id"
@@ -935,7 +995,7 @@ export function InvoicesPage() {
               size="small"
               title="Bank transfer payment"
               extra={
-                paymentRequestIsClosed && ['ISSUED', 'OVERDUE'].includes(detailItem.status) ? (
+                paymentRequestIsClosed && ['ISSUED', 'PARTIALLY_PAID'].includes(detailItem.status) ? (
                   <Button size="small" type="primary" icon={<BankOutlined />} onClick={openPaymentRequestModal}>
                     Create payment request
                   </Button>
@@ -1034,9 +1094,50 @@ export function InvoicesPage() {
         onOk={() => void confirmDelete()}
         onCancel={() => setDeletingInvoiceId(null)}
       >
-        <Typography.Text>
-          This permanently removes the invoice, its line items, and all related payment records. This action cannot be undone.
-        </Typography.Text>
+        <Alert
+          showIcon
+          type="warning"
+          message="Only a draft with no payment history can be deleted."
+          description="This permanently removes the draft and its line items. Its utility reading becomes reusable only when no other invoice references it. Issued invoices must be voided instead."
+        />
+      </Modal>
+
+      <Modal
+        open={Boolean(voidingInvoiceId)}
+        title="Void this invoice?"
+        okText="Void invoice"
+        okButtonProps={{ danger: true }}
+        confirmLoading={voidLoading}
+        cancelButtonProps={{ disabled: voidLoading }}
+        closable={!voidLoading}
+        maskClosable={!voidLoading}
+        onOk={() => void confirmVoid()}
+        onCancel={() => {
+          setVoidingInvoiceId(null)
+          voidForm.resetFields()
+        }}
+        destroyOnHidden
+      >
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <Alert
+            showIcon
+            type="warning"
+            message="Voiding is permanent and preserves the financial audit trail."
+            description="Payments, payment requests, and proofs will not be deleted. Any open request will be closed, and the utility reading will remain invoiced until you explicitly create a replacement invoice."
+          />
+          <Form form={voidForm} layout="vertical">
+            <Form.Item
+              name="reason"
+              label="Void reason"
+              rules={[
+                { required: true, whitespace: true, message: 'Please explain why this invoice is being voided.' },
+                { min: 3, max: 500, message: 'The reason must contain 3 to 500 characters.' },
+              ]}
+            >
+              <Input.TextArea rows={4} maxLength={500} showCount />
+            </Form.Item>
+          </Form>
+        </Space>
       </Modal>
 
       <Modal
