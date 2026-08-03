@@ -15,7 +15,7 @@ function explainConnectionError(error: NodeJS.ErrnoException): string {
 
   const message = error.message.toLowerCase();
   if (message.includes('self signed certificate') || message.includes('ssl')) {
-    return 'SSL handshake failed. For Supabase, enable SSL and set DB_SSL_REJECT_UNAUTHORIZED=false when needed.';
+    return 'SSL certificate verification failed. Verify the database hostname and provide the trusted CA certificate through DB_SSL_CA when required.';
   }
 
   if (message.includes('password authentication failed')) {

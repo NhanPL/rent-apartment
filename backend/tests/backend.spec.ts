@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -182,6 +183,16 @@ describe('backend API smoke tests', () => {
     });
     expect(rotatedToken?.token_hash).toMatch(/^[0-9a-f]{64}$/);
     expect(refreshCookie).not.toContain(rotatedToken?.token_hash);
+    const rawRefreshToken = decodeURIComponent(refreshCookie.slice(refreshCookie.indexOf('=') + 1));
+    expect(rotatedToken?.token_hash).toBe(
+      crypto
+        .createHmac('sha256', process.env.JWT_REFRESH_SECRET!)
+        .update(rawRefreshToken, 'utf8')
+        .digest('hex')
+    );
+    expect(rotatedToken?.token_hash).not.toBe(
+      crypto.createHash('sha256').update(rawRefreshToken, 'utf8').digest('hex')
+    );
 
     const me = await request(app)
       .get('/api/auth/me')

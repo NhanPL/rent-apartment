@@ -51,10 +51,30 @@ ACCOUNT_ACTIVATION_EXPIRES_HOURS=48
 Set strong values for:
 
 ```env
-JWT_ACCESS_SECRET=change-me
+JWT_ACCESS_SECRET=<random_access_secret_at_least_32_characters>
+JWT_REFRESH_SECRET=<different_random_refresh_secret_at_least_32_characters>
 JWT_ACCESS_EXPIRES_IN=15m
 REFRESH_TOKEN_EXPIRES_DAYS=7
 ```
+
+The access and refresh secrets are both required, must contain at least 32
+characters, and must be different. The refresh secret keys the HMAC stored for
+opaque refresh tokens; changing it invalidates all existing refresh sessions.
+Staging and production do not load `.env` files. Inject secrets with the deploy
+platform's secret manager as described in
+[`docs/security-operations.md`](docs/security-operations.md).
+
+Staging and production also require certificate-verified PostgreSQL TLS:
+
+```env
+DB_SSL=true
+DB_SSL_REJECT_UNAUTHORIZED=true
+DB_SSL_CA=<trusted_ca_pem_only_when_the_provider_requires_it>
+```
+
+`DB_SSL_CA` accepts either a multiline PEM value or a secret-manager value with
+encoded `\n` newlines. Never disable certificate verification to work around a
+CA or hostname problem.
 
 Refresh tokens are opaque values stored only in an `HttpOnly` cookie. Configure
 the cookie and reverse-proxy behavior for each environment:

@@ -4,22 +4,23 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "check": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",
+    "audit": "npm audit --audit-level=high",
     "db:migrate": "node scripts/migrate.js",
     "db:seed": "node scripts/migrate.js --seed"
   },
   "dependencies": {
-    "bcrypt": "^5.1.1",
+    "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-rate-limit": "^8.6.1",
     "helmet": "^8.3.0",
-    "nodemailer": "^6.9.16",
+    "nodemailer": "^9.0.3",
     "pg": "^8.12.0",
     "zod": "^3.23.8"
   },
@@ -27,10 +28,10 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^4.17.21",
     "@types/node": "^20.14.10",
-    "@types/nodemailer": "^6.4.16",
+    "@types/nodemailer": "^8.0.1",
     "@types/supertest": "^7.2.0",
     "supertest": "^7.2.2",
-    "ts-node-dev": "^2.0.0",
+    "tsx": "^4.23.5",
     "typescript": "^5.5.4",
     "vitest": "^4.1.8"
   }

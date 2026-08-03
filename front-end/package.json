@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "audit": "npm audit --audit-level=high"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
