@@ -4,6 +4,7 @@ import { API_ROUTES } from './apiRoutes'
 export type PaymentRequestStatus = 'DRAFT' | 'WAITING_TRANSFER' | 'TRANSFER_SUBMITTED' | 'VERIFIED' | 'REJECTED' | 'CANCELLED' | 'EXPIRED'
 export type PaymentProofStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
 export type PaymentStatus = 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED' | 'CANCELLED'
+export type PaymentEntryType = 'PAYMENT' | 'REVERSAL'
 export type LatestProofFilter = PaymentProofStatus | 'NONE'
 
 export interface PaymentProof {
@@ -29,10 +30,15 @@ export interface PaymentRecord {
   payment_request_id: string | null
   payment_proof_id: string | null
   status: PaymentStatus
+  entry_type: PaymentEntryType
+  original_payment_id: string | null
+  reversal_payment_id: string | null
   method: string
   amount: number
+  signed_amount: number
   paid_at: string | null
   note: string | null
+  reversal_reason: string | null
 }
 
 export interface PaymentRequest {
@@ -56,6 +62,8 @@ export interface PaymentRequest {
   invoice_total?: number
   due_date?: string | null
   paid_amount?: number
+  gross_payment_amount?: number
+  reversal_amount?: number
   remaining_amount?: number
   building_id?: string
   building_name?: string
@@ -109,7 +117,7 @@ export interface PaymentProofReviewResult {
   invoice_status: string
 }
 
-type NumericPaymentRequestFields = 'amount' | 'invoice_total' | 'paid_amount' | 'remaining_amount'
+type NumericPaymentRequestFields = 'amount' | 'invoice_total' | 'paid_amount' | 'gross_payment_amount' | 'reversal_amount' | 'remaining_amount'
 type PaymentRequestApiRow = Omit<PaymentRequest, NumericPaymentRequestFields | 'proofs' | 'payments' | 'payment'> &
   Record<NumericPaymentRequestFields, number | string | null> & {
     proofs?: PaymentProofApiRow[]
@@ -120,7 +128,10 @@ type PaymentProofApiRow = Omit<PaymentProof, 'transfer_amount' | 'file_size'> & 
   transfer_amount: number | string | null
   file_size: number | string | null
 }
-type PaymentRecordApiRow = Omit<PaymentRecord, 'amount'> & { amount: number | string | null }
+type PaymentRecordApiRow = Omit<PaymentRecord, 'amount' | 'signed_amount'> & {
+  amount: number | string | null
+  signed_amount: number | string | null
+}
 
 const toNumber = (value: unknown): number => Number(value ?? 0)
 
@@ -133,9 +144,18 @@ function toPaymentProof(row: PaymentProofApiRow): PaymentProof {
 }
 
 function toPaymentRecord(row: PaymentRecordApiRow): PaymentRecord {
+  const amount = toNumber(row.amount)
+  const entryType = row.entry_type ?? 'PAYMENT'
   return {
     ...row,
-    amount: toNumber(row.amount),
+    entry_type: entryType,
+    original_payment_id: row.original_payment_id ?? null,
+    reversal_payment_id: row.reversal_payment_id ?? null,
+    reversal_reason: row.reversal_reason ?? null,
+    amount,
+    signed_amount: row.signed_amount === null || row.signed_amount === undefined
+      ? (entryType === 'REVERSAL' ? -amount : amount)
+      : toNumber(row.signed_amount),
   }
 }
 
@@ -145,6 +165,8 @@ function toPaymentRequest(row: PaymentRequestApiRow): PaymentRequest {
     amount: toNumber(row.amount),
     invoice_total: toNumber(row.invoice_total),
     paid_amount: toNumber(row.paid_amount),
+    gross_payment_amount: toNumber(row.gross_payment_amount),
+    reversal_amount: toNumber(row.reversal_amount),
     remaining_amount: toNumber(row.remaining_amount),
     proofs: row.proofs?.map(toPaymentProof) ?? [],
     payments: row.payments?.map(toPaymentRecord) ?? [],
@@ -198,4 +220,8 @@ export function approvePaymentProof(id: string): Promise<PaymentProofReviewResul
 
 export function rejectPaymentProof(id: string, reason: string) {
   return apiRequest(API_ROUTES.payments.rejectProof(id), { method: 'POST', body: { reason } })
+}
+
+export function reversePayment(id: string, reason: string) {
+  return apiRequest(API_ROUTES.payments.reversePayment(id), { method: 'POST', body: { reason } })
 }

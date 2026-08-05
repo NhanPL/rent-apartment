@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const paymentServiceMocks = vi.hoisted(() => ({
   getPaymentRequest: vi.fn(),
   listPaymentRequests: vi.fn(),
+  reversePayment: vi.fn(),
 }))
 
 vi.mock('../../services/paymentsService', () => ({
@@ -12,6 +13,7 @@ vi.mock('../../services/paymentsService', () => ({
   getPaymentRequest: paymentServiceMocks.getPaymentRequest,
   listPaymentRequests: paymentServiceMocks.listPaymentRequests,
   rejectPaymentProof: vi.fn(),
+  reversePayment: paymentServiceMocks.reversePayment,
 }))
 
 import { PaymentsPage } from './PaymentsPage'
@@ -47,7 +49,9 @@ const paymentRequest = {
 
 describe('PaymentsPage filters', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     paymentServiceMocks.listPaymentRequests.mockResolvedValue([paymentRequest])
+    paymentServiceMocks.reversePayment.mockResolvedValue({ idempotent: false })
   })
 
   it('renders every filter and reloads data for the selected request status', async () => {
@@ -72,6 +76,49 @@ describe('PaymentsPage filters', () => {
       expect(paymentServiceMocks.listPaymentRequests).toHaveBeenCalledWith({
         request_status: 'WAITING_TRANSFER',
       })
+    })
+  })
+
+  it('creates a reversal instead of editing an approved payment', async () => {
+    const ledgerPayment = {
+      id: '00000000-0000-4000-8000-000000000961',
+      invoice_id: paymentRequest.invoice_id,
+      payment_request_id: paymentRequest.id,
+      payment_proof_id: '00000000-0000-4000-8000-000000000971',
+      entry_type: 'PAYMENT',
+      original_payment_id: null,
+      reversal_payment_id: null,
+      status: 'SUCCEEDED',
+      method: 'BANK_TRANSFER',
+      amount: 4_000_000,
+      signed_amount: 4_000_000,
+      paid_at: '2026-07-02T00:00:00.000Z',
+      note: 'Verified from transfer proof',
+      reversal_reason: null,
+    }
+    paymentServiceMocks.getPaymentRequest.mockResolvedValue({
+      ...paymentRequest,
+      status: 'VERIFIED',
+      paid_amount: 4_000_000,
+      gross_payment_amount: 4_000_000,
+      reversal_amount: 0,
+      remaining_amount: 0,
+      latest_proof_status: 'APPROVED',
+      proofs: [],
+      payments: [ledgerPayment],
+    })
+
+    const user = userEvent.setup()
+    render(<PaymentsPage />)
+    await screen.findByText('Tenant One')
+    await user.click(screen.getByRole('button', { name: 'eye' }))
+    await user.click(await screen.findByRole('button', { name: /reverse/i }))
+
+    await user.type(screen.getByLabelText('Reversal reason'), 'Matched the wrong transfer')
+    await user.click(screen.getByRole('button', { name: 'Create reversal' }))
+
+    await waitFor(() => {
+      expect(paymentServiceMocks.reversePayment).toHaveBeenCalledWith(ledgerPayment.id, 'Matched the wrong transfer')
     })
   })
 })

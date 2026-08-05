@@ -14,7 +14,7 @@ import type {
 } from '../pages/reports/types'
 
 type NumericSummaryField = keyof ReportsSummary
-type NumericRevenueField = 'invoiceCount' | 'billed' | 'collected' | 'unpaid'
+type NumericRevenueField = 'invoiceCount' | 'billed' | 'grossPayments' | 'reversals' | 'collected' | 'unpaid'
 type NumericDebtField = 'total' | 'paidAmount' | 'outstandingAmount'
 type NumericDebtSummaryField = keyof DebtSummary
 type NumericOccupancyField =
@@ -72,6 +72,8 @@ const buildReportsParams = (filters: ReportFilters, section?: ReportSection) => 
 const toReportsSummary = (row: ReportsApiSummary): ReportsSummary => ({
   billed: toNumber(row.billed),
   collected: toNumber(row.collected),
+  grossPayments: toNumber(row.grossPayments),
+  reversals: toNumber(row.reversals),
   unpaid: toNumber(row.unpaid),
   invoiceCount: toNumber(row.invoiceCount),
   unpaidInvoices: toNumber(row.unpaidInvoices),
@@ -90,6 +92,8 @@ const toRevenueMonth = (row: RevenueMonthApiRow): RevenueMonthRow => ({
   invoiceCount: toNumber(row.invoiceCount),
   billed: toNumber(row.billed),
   collected: toNumber(row.collected),
+  grossPayments: toNumber(row.grossPayments),
+  reversals: toNumber(row.reversals),
   unpaid: toNumber(row.unpaid),
 })
 
@@ -99,6 +103,8 @@ const toRevenueBuilding = (row: RevenueBuildingApiRow): RevenueBuildingRow => ({
   invoiceCount: toNumber(row.invoiceCount),
   billed: toNumber(row.billed),
   collected: toNumber(row.collected),
+  grossPayments: toNumber(row.grossPayments),
+  reversals: toNumber(row.reversals),
   unpaid: toNumber(row.unpaid),
 })
 

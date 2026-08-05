@@ -15,13 +15,14 @@ import {
   getPaymentRequestForInvoice,
   getPaymentRequestDetail,
   listPaymentRequests,
+  reversePayment,
   reviewPaymentProof,
   submitPaymentProof,
   updatePaymentRequestStatus
 } from './payments.service';
 
 const router = Router();
-registerUuidParams(router, ['id', 'invoiceId']);
+registerUuidParams(router, ['id', 'invoiceId', 'paymentId']);
 
 const paymentRequestSchema = z.object({
   invoice_id: z.string().uuid(),
@@ -53,6 +54,16 @@ const paymentProofSchema = z.object({
 const paymentRejectSchema = z.object({
   reason: z.string().trim().min(1).optional()
 });
+
+const paymentReverseSchema = z.object({
+  reason: z.string().trim().min(3).max(500)
+});
+
+const idempotencyKeySchema = z.string()
+  .trim()
+  .min(8)
+  .max(200)
+  .regex(/^[A-Za-z0-9._:-]+$/);
 
 const paymentRequestFiltersSchema = z.object({
   month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional(),
@@ -111,6 +122,12 @@ router.post('/requests/:id/expire', requireRole('MANAGER'), asyncHandler(async (
 router.post('/requests/:id/proofs', paymentProofRateLimit, requireRole('TENANT'), asyncHandler(async (req, res) => {
   const body = parseBody(paymentProofSchema, req.body);
   const asset = normalizeStoredUpload('PAYMENT_PROOF', body, req.auth!.role, req.auth!.userId);
+  const suppliedIdempotencyKey = req.get('Idempotency-Key');
+  const idempotencyKey = suppliedIdempotencyKey
+    ? parseBody(z.object({ idempotency_key: idempotencyKeySchema }), {
+        idempotency_key: suppliedIdempotencyKey
+      }).idempotency_key
+    : `submit-proof:${req.params.id}:${asset.publicId}`;
   const proof = await submitPaymentProof(req.params.id, {
     ...body,
     public_id: asset.publicId,
@@ -119,7 +136,7 @@ router.post('/requests/:id/proofs', paymentProofRateLimit, requireRole('TENANT')
     version: asset.version ?? undefined,
     format: asset.format ?? undefined,
     delivery_type: asset.deliveryType
-  }, req.auth!.userId);
+  }, req.auth!.userId, idempotencyKey);
   res.status(201).json(await presentDocumentAsset(
     req,
     'PAYMENT_PROOF',
@@ -140,6 +157,11 @@ router.post('/proofs/:id/reject', requireRole('MANAGER'), asyncHandler(async (re
   const { reason } = parseBody(paymentRejectSchema, req.body);
   const result = await reviewPaymentProof(req.params.id, false, req.auth!.userId, reason);
   res.json(await presentDocumentAsset(req, 'PAYMENT_PROOF', result as { id: string }, req.auth!));
+}));
+
+router.post('/ledger/:paymentId/reverse', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  const { reason } = parseBody(paymentReverseSchema, req.body);
+  res.status(201).json(await reversePayment(req.params.paymentId, req.auth!.userId, reason));
 }));
 
 export default router;

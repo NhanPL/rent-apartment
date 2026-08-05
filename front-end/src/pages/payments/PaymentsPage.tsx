@@ -1,4 +1,4 @@
-import { CheckOutlined, ClearOutlined, CloseOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons'
+import { CheckOutlined, ClearOutlined, CloseOutlined, EyeOutlined, ReloadOutlined, RollbackOutlined } from '@ant-design/icons'
 import { Alert, Button, Card, Col, DatePicker, Descriptions, Drawer, Empty, Form, Grid, Input, Modal, Row, Select, Skeleton, Space, Table, Tag, Typography, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
@@ -8,6 +8,7 @@ import {
   getPaymentRequest,
   listPaymentRequests,
   rejectPaymentProof,
+  reversePayment,
   type PaymentProof,
   type PaymentRequest,
   type LatestProofFilter,
@@ -34,6 +35,10 @@ interface RejectFormValues {
   reason: string
 }
 
+interface ReverseFormValues {
+  reason: string
+}
+
 const requestStatusOptions: Array<{ label: string; value: PaymentRequestStatus }> = (Object.keys(paymentRequestStatusColor) as PaymentRequestStatus[])
   .map((status) => ({ label: status, value: status }))
 const latestProofOptions: Array<{ label: string; value: LatestProofFilter }> = [
@@ -49,6 +54,7 @@ export function PaymentsPage() {
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
   const [rejectForm] = Form.useForm<RejectFormValues>()
+  const [reverseForm] = Form.useForm<ReverseFormValues>()
   const [items, setItems] = useState<PaymentRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [detailOpen, setDetailOpen] = useState(false)
@@ -56,6 +62,7 @@ export function PaymentsPage() {
   const [detailItem, setDetailItem] = useState<PaymentRequest | null>(null)
   const [reviewLoading, setReviewLoading] = useState<string | null>(null)
   const [rejectProofId, setRejectProofId] = useState<string | null>(null)
+  const [reversePaymentId, setReversePaymentId] = useState<string | null>(null)
   const [filters, setFilters] = useState<PaymentRequestListFilters>({})
   const [filterSourceItems, setFilterSourceItems] = useState<PaymentRequest[]>([])
 
@@ -150,6 +157,23 @@ export function PaymentsPage() {
       setReviewLoading(null)
     }
   }, [refreshDetail, rejectForm, rejectProofId])
+
+  const reverseApprovedPayment = useCallback(async () => {
+    if (!reversePaymentId) return
+    try {
+      const values = await reverseForm.validateFields()
+      setReviewLoading(reversePaymentId)
+      await reversePayment(reversePaymentId, values.reason.trim())
+      setReversePaymentId(null)
+      reverseForm.resetFields()
+      await refreshDetail()
+      message.success('Payment reversed. The original ledger entry was retained.')
+    } catch (error) {
+      message.error(getFormErrorMessage(error, 'Unable to reverse the payment.'))
+    } finally {
+      setReviewLoading(null)
+    }
+  }, [refreshDetail, reverseForm, reversePaymentId])
 
   const columns: ColumnsType<PaymentRequest> = [
     { title: 'Month', dataIndex: 'month', width: 110, render: (value: string) => (value ? dayjs(value).format('MM/YYYY') : '-') },
@@ -296,7 +320,9 @@ export function PaymentsPage() {
               <Descriptions.Item label="Tenant">{detailItem.tenant_name ?? '-'}</Descriptions.Item>
               <Descriptions.Item label="Status"><Tag color={paymentRequestStatusColor[detailItem.status]}>{detailItem.status}</Tag></Descriptions.Item>
               <Descriptions.Item label="Invoice total">{currency.format(detailItem.invoice_total ?? 0)}</Descriptions.Item>
-              <Descriptions.Item label="Paid">{currency.format(detailItem.paid_amount ?? 0)}</Descriptions.Item>
+              <Descriptions.Item label="Gross payments">{currency.format(detailItem.gross_payment_amount ?? 0)}</Descriptions.Item>
+              <Descriptions.Item label="Reversals">{currency.format(detailItem.reversal_amount ?? 0)}</Descriptions.Item>
+              <Descriptions.Item label="Net paid">{currency.format(detailItem.paid_amount ?? 0)}</Descriptions.Item>
               <Descriptions.Item label="Remaining">{currency.format(detailItem.remaining_amount ?? 0)}</Descriptions.Item>
               <Descriptions.Item label="Request amount">{currency.format(detailItem.amount)}</Descriptions.Item>
               <Descriptions.Item label="Bank">{detailItem.bank_code ?? '-'}</Descriptions.Item>
@@ -336,18 +362,39 @@ export function PaymentsPage() {
               />
             </Card>
 
-            <Card size="small" title="Approved payments">
+            <Card size="small" title="Payment ledger">
               <Table
                 rowKey="id"
                 size="small"
                 pagination={false}
                 dataSource={detailItem.payments ?? []}
-                locale={{ emptyText: <Empty description="No approved payment" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+                locale={{ emptyText: <Empty description="No payment ledger entries" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
                 columns={[
                   { title: 'Paid at', dataIndex: 'paid_at', render: (value: string | null) => (value ? dayjs(value).format('DD/MM/YYYY HH:mm') : '-') },
-                  { title: 'Amount', dataIndex: 'amount', align: 'right', render: (value: number) => currency.format(value) },
+                  { title: 'Entry', dataIndex: 'entry_type', render: (value: string) => <Tag color={value === 'REVERSAL' ? 'red' : 'green'}>{value}</Tag> },
+                  {
+                    title: 'Amount',
+                    dataIndex: 'signed_amount',
+                    align: 'right',
+                    render: (value: number) => <Typography.Text type={value < 0 ? 'danger' : undefined}>{currency.format(value)}</Typography.Text>,
+                  },
                   { title: 'Status', dataIndex: 'status', render: (value: string) => <Tag>{value}</Tag> },
-                  { title: 'Note', dataIndex: 'note', render: (value: string | null) => value ?? '-' },
+                  { title: 'Reason / note', render: (_: unknown, row) => row.reversal_reason ?? row.note ?? '-' },
+                  {
+                    title: 'Action',
+                    key: 'action',
+                    render: (_: unknown, row) => row.entry_type === 'PAYMENT' && row.status === 'SUCCEEDED' && !row.reversal_payment_id ? (
+                      <Button
+                        size="small"
+                        danger
+                        icon={<RollbackOutlined />}
+                        loading={reviewLoading === row.id}
+                        onClick={() => setReversePaymentId(row.id)}
+                      >
+                        Reverse
+                      </Button>
+                    ) : null,
+                  },
                 ]}
               />
             </Card>
@@ -373,6 +420,41 @@ export function PaymentsPage() {
             <Input.TextArea rows={3} maxLength={500} showCount />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        open={Boolean(reversePaymentId)}
+        title="Reverse approved payment?"
+        okText="Create reversal"
+        okButtonProps={{ danger: true }}
+        confirmLoading={Boolean(reviewLoading)}
+        onOk={() => void reverseApprovedPayment()}
+        onCancel={() => {
+          setReversePaymentId(null)
+          reverseForm.resetFields()
+        }}
+        destroyOnHidden
+      >
+        <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <Alert
+            showIcon
+            type="warning"
+            message="The approved payment will remain unchanged."
+            description="A separate reversal entry will be added to the ledger and the invoice balance will be recalculated."
+          />
+          <Form form={reverseForm} layout="vertical">
+            <Form.Item
+              name="reason"
+              label="Reversal reason"
+              rules={[
+                { required: true, whitespace: true, message: 'Please enter a reversal reason.' },
+                { min: 3, max: 500, message: 'The reason must contain 3 to 500 characters.' },
+              ]}
+            >
+              <Input.TextArea rows={3} maxLength={500} showCount />
+            </Form.Item>
+          </Form>
+        </Space>
       </Modal>
     </Space>
     </Localized>

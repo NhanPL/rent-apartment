@@ -199,7 +199,7 @@ const getMonthlyRevenue = async (managerId: string, month: string, buildingId?: 
   const monthParam = params.length;
 
   const { rows } = await query<MonthlyRevenueRow>(
-    `SELECT COALESCE(SUM(p.amount), 0)::float AS monthly_revenue
+    `SELECT COALESCE(SUM(CASE WHEN p.entry_type='REVERSAL' THEN -p.amount ELSE p.amount END), 0)::float AS monthly_revenue
      FROM payment p
      JOIN invoice i ON i.id=p.invoice_id
      JOIN room r ON r.id=i.room_id
@@ -229,7 +229,7 @@ const getInvoiceBalances = async (managerId: string, month: string, buildingId?:
          AND i.month=$${monthParam}::date
      ),
      paid AS (
-       SELECT p.invoice_id, COALESCE(SUM(p.amount), 0) AS amount
+       SELECT p.invoice_id, COALESCE(SUM(CASE WHEN p.entry_type='REVERSAL' THEN -p.amount ELSE p.amount END), 0) AS amount
        FROM payment p
        JOIN scoped_invoices si ON si.id=p.invoice_id
        WHERE p.status='SUCCEEDED'
@@ -283,7 +283,7 @@ const getMonthlyRevenueChart = async (
          AND i.month <= $${monthParam}::date
      ),
      paid AS (
-       SELECT p.invoice_id, COALESCE(SUM(p.amount), 0) AS amount
+       SELECT p.invoice_id, COALESCE(SUM(CASE WHEN p.entry_type='REVERSAL' THEN -p.amount ELSE p.amount END), 0) AS amount
        FROM payment p
        JOIN scoped_invoices si ON si.id=p.invoice_id
        WHERE p.status='SUCCEEDED'
@@ -417,7 +417,7 @@ const getRecentUnpaidInvoices = async (
      JOIN room r ON r.id=i.room_id
      JOIN building b ON b.id=r.building_id
      LEFT JOIN LATERAL (
-       SELECT COALESCE(SUM(p.amount), 0) AS amount
+       SELECT COALESCE(SUM(CASE WHEN p.entry_type='REVERSAL' THEN -p.amount ELSE p.amount END), 0) AS amount
        FROM payment p
        WHERE p.invoice_id=i.id AND p.status='SUCCEEDED'
      ) paid ON true

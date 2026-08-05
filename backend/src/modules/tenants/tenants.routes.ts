@@ -665,7 +665,9 @@ router.get('/:id/invoices', requireRole('MANAGER'), asyncHandler(async (req, res
 router.get('/:id/payments', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   await assertTenantBelongsToManager(db, req.params.id, req.auth!.userId);
   const rs = await query(
-    `SELECT p.*, i.month, i.total AS invoice_total, i.status AS invoice_status, i.due_date, i.id AS invoice_id
+    `SELECT p.*,
+            CASE WHEN p.entry_type='REVERSAL' THEN -p.amount ELSE p.amount END::float AS signed_amount,
+            i.month, i.total AS invoice_total, i.status AS invoice_status, i.due_date, i.id AS invoice_id
      FROM contract_tenant ct
      JOIN contract c ON c.id=ct.contract_id
      JOIN invoice i ON i.contract_id=c.id

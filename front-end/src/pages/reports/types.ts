@@ -18,6 +18,8 @@ export interface RevenueMonthRow {
   invoiceCount: number
   billed: number
   collected: number
+  grossPayments: number
+  reversals: number
   unpaid: number
 }
 
@@ -27,6 +29,8 @@ export interface RevenueBuildingRow {
   invoiceCount: number
   billed: number
   collected: number
+  grossPayments: number
+  reversals: number
   unpaid: number
 }
 
@@ -68,6 +72,8 @@ export interface OccupancyReportRow {
 export interface ReportsSummary {
   billed: number
   collected: number
+  grossPayments: number
+  reversals: number
   unpaid: number
   invoiceCount: number
   unpaidInvoices: number

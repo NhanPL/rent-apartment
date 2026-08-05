@@ -122,12 +122,12 @@ const invoiceListJoins = `
   LEFT JOIN LATERAL (
     SELECT p.status, p.paid_at
     FROM payment p
-    WHERE p.invoice_id=i.id
+    WHERE p.invoice_id=i.id AND p.entry_type='PAYMENT'
     ORDER BY p.paid_at DESC NULLS LAST, p.created_at DESC
     LIMIT 1
   ) latest_payment ON true
   LEFT JOIN LATERAL (
-    SELECT COALESCE(SUM(p.amount), 0) AS amount
+    SELECT COALESCE(SUM(CASE WHEN p.entry_type='REVERSAL' THEN -p.amount ELSE p.amount END), 0) AS amount
     FROM payment p
     WHERE p.invoice_id=i.id AND p.status='SUCCEEDED'
   ) paid_payment ON true
@@ -403,7 +403,8 @@ export const updateInvoiceStatus = async (
       );
       if (!existingRequest.rows[0]) {
         const paid = await client.query<{ paid_amount: string | number }>(
-          `SELECT COALESCE(SUM(amount), 0) AS paid_amount FROM payment WHERE invoice_id=$1 AND status='SUCCEEDED'`,
+          `SELECT COALESCE(SUM(CASE WHEN entry_type='REVERSAL' THEN -amount ELSE amount END), 0) AS paid_amount
+           FROM payment WHERE invoice_id=$1 AND status='SUCCEEDED'`,
           [invoiceId]
         );
         const amount = Math.max(0, toNumber(invoice.total) - toNumber(paid.rows[0]?.paid_amount));

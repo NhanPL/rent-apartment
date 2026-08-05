@@ -1058,7 +1058,7 @@ export function TenantRoomPage() {
                 rowKey="id"
                 size="small"
                 pagination={false}
-                dataSource={billDetail.payments}
+                dataSource={billDetail.payments.map((payment) => ({ ...payment, amount: payment.signed_amount }))}
                 locale={{ emptyText: <Empty description="Chưa có thanh toán" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
                 columns={[
                   { title: 'Ngày', dataIndex: 'paid_at', render: (value: string | null) => (value ? dayjs(value).format('DD/MM/YYYY HH:mm') : '-') },

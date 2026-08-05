@@ -138,7 +138,9 @@ export function ReportsPage() {
     { title: 'Month', dataIndex: 'month', width: 120, render: (value: string) => formatMonth(value) },
     { title: 'Invoices', dataIndex: 'invoiceCount', width: 110, align: 'right' },
     { title: 'Billed', dataIndex: 'billed', width: 160, align: 'right', render: formatCurrency },
-    { title: 'Collected', dataIndex: 'collected', width: 160, align: 'right', render: formatCurrency },
+    { title: 'Payments', dataIndex: 'grossPayments', width: 160, align: 'right', render: formatCurrency },
+    { title: 'Reversals', dataIndex: 'reversals', width: 160, align: 'right', render: formatCurrency },
+    { title: 'Net payments', dataIndex: 'collected', width: 160, align: 'right', render: formatCurrency },
     { title: 'Unpaid', dataIndex: 'unpaid', width: 160, align: 'right', render: formatCurrency },
   ]
 
@@ -146,7 +148,9 @@ export function ReportsPage() {
     { title: 'Building', dataIndex: 'buildingName', width: 220 },
     { title: 'Invoices', dataIndex: 'invoiceCount', width: 110, align: 'right' },
     { title: 'Billed', dataIndex: 'billed', width: 160, align: 'right', render: formatCurrency },
-    { title: 'Collected', dataIndex: 'collected', width: 160, align: 'right', render: formatCurrency },
+    { title: 'Payments', dataIndex: 'grossPayments', width: 160, align: 'right', render: formatCurrency },
+    { title: 'Reversals', dataIndex: 'reversals', width: 160, align: 'right', render: formatCurrency },
+    { title: 'Net payments', dataIndex: 'collected', width: 160, align: 'right', render: formatCurrency },
     { title: 'Unpaid', dataIndex: 'unpaid', width: 160, align: 'right', render: formatCurrency },
   ]
 
@@ -302,7 +306,7 @@ export function ReportsPage() {
 
       <div className="reports-summary-grid">
         <Card><Statistic title="Billed" value={data?.summary.billed ?? 0} formatter={(value) => formatCurrency(Number(value))} /></Card>
-        <Card><Statistic title="Collected" value={data?.summary.collected ?? 0} formatter={(value) => formatCurrency(Number(value))} /></Card>
+        <Card><Statistic title="Net payments" value={data?.summary.collected ?? 0} formatter={(value) => formatCurrency(Number(value))} /></Card>
         <Card><Statistic title="Unpaid" value={data?.summary.unpaidAmount ?? 0} formatter={(value) => formatCurrency(Number(value))} /></Card>
         <Card><Statistic title="Occupancy" value={data?.summary.occupancyRate ?? 0} suffix="%" /></Card>
       </div>

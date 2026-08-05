@@ -1279,8 +1279,10 @@ class FakeDb {
       return result<T>(invoice ? [invoice as T] : []);
     }
 
-    if (sql.startsWith('select coalesce(sum(amount), 0) as paid_amount')) {
-      const paid = this.payments.filter((item) => item.invoice_id === params[0] && item.status === 'SUCCEEDED').reduce((sum, item) => sum + Number(item.amount), 0);
+    if (sql.startsWith('select coalesce(sum(') && sql.includes('as paid_amount from payment where invoice_id=$1')) {
+      const paid = this.payments
+        .filter((item) => item.invoice_id === params[0] && item.status === 'SUCCEEDED')
+        .reduce((sum, item) => sum + (item.entry_type === 'REVERSAL' ? -Number(item.amount) : Number(item.amount)), 0);
       return result<T>([{ paid_amount: paid } as T]);
     }
 
@@ -1405,6 +1407,11 @@ class FakeDb {
       return result<T>(request ? [request as T] : []);
     }
 
+    if (sql.startsWith('select * from payment_proof where submitted_by_user_id=$1 and idempotency_key=$2')) {
+      const proof = this.paymentProofs.find((item) => item.submitted_by_user_id === params[0] && item.idempotency_key === params[1]);
+      return result<T>(proof ? [proof as T] : []);
+    }
+
     if (sql.startsWith('select id from payment_proof where payment_request_id=$1')) {
       const proof = this.paymentProofs.find((item) => item.payment_request_id === params[0] && item.status === 'PENDING');
       return result<T>(proof ? [{ id: proof.id } as T] : []);
@@ -1423,6 +1430,7 @@ class FakeDb {
         transfer_amount: params[6],
         transfer_time: params[7] ?? null,
         payer_note: params[8] ?? null,
+        idempotency_key: params[16] ?? null,
         submitted_at: now,
         created_at: now
       };
@@ -1467,29 +1475,78 @@ class FakeDb {
       return result<T>([proof as T]);
     }
 
-    if (sql.startsWith('insert into payment(invoice_id,payment_request_id,payment_proof_id')) {
-      let payment = this.payments.find((item) => item.payment_proof_id === params[2]);
-      if (!payment) {
-        payment = {
-          id: this.newId(),
-          invoice_id: params[0],
-          payment_request_id: params[1],
-          payment_proof_id: params[2],
-          method: 'BANK_TRANSFER',
-          status: 'SUCCEEDED',
-          amount: params[3],
-          paid_at: now,
-          created_by_user_id: params[4],
-          note: params[5],
-          created_at: now
-        };
-        this.payments.push(payment);
-      } else {
-        payment.status = 'SUCCEEDED';
-        payment.paid_at = now;
-        payment.amount = params[3];
-      }
+    if (sql.startsWith('select * from payment where payment_proof_id=$1')) {
+      const payment = this.payments.find((item) => item.payment_proof_id === params[0] && (item.entry_type ?? 'PAYMENT') === 'PAYMENT');
+      return result<T>(payment ? [payment as T] : []);
+    }
+
+    if (sql.startsWith('select p.*, i.total as invoice_total')) {
+      const payment = this.payments.find((item) => item.id === params[0]);
+      if (!payment) return result<T>([]);
+      const invoice = this.getInvoiceForManager(String(payment.invoice_id), String(params[1]));
+      return result<T>(invoice ? [{ ...payment, invoice_total: invoice.total, invoice_status: invoice.status } as T] : []);
+    }
+
+    if (sql.startsWith('select * from payment where original_payment_id=$1')) {
+      const reversal = this.payments.find((item) => item.original_payment_id === params[0] && item.entry_type === 'REVERSAL');
+      return result<T>(reversal ? [reversal as T] : []);
+    }
+
+    if (sql.startsWith('insert into payment(')) {
+      const reversal = sql.includes("'reversal'");
+      const payment = reversal ? {
+        id: this.newId(),
+        invoice_id: params[0],
+        payment_request_id: params[1],
+        payment_proof_id: null,
+        entry_type: 'REVERSAL',
+        original_payment_id: params[2],
+        method: params[3],
+        status: 'SUCCEEDED',
+        amount: params[4],
+        paid_at: now,
+        created_by_user_id: params[5],
+        note: params[6],
+        reversal_reason: params[6],
+        idempotency_key: params[7],
+        created_at: now
+      } : {
+        id: this.newId(),
+        invoice_id: params[0],
+        payment_request_id: params[1],
+        payment_proof_id: params[2],
+        entry_type: 'PAYMENT',
+        original_payment_id: null,
+        method: 'BANK_TRANSFER',
+        status: 'SUCCEEDED',
+        amount: params[3],
+        paid_at: now,
+        created_by_user_id: params[4],
+        note: params[5],
+        reversal_reason: null,
+        idempotency_key: params[6],
+        created_at: now
+      };
+      this.payments.push(payment);
       return result<T>([payment as T]);
+    }
+
+    if (sql.startsWith("update payment_request set status='waiting_transfer'")) {
+      const request = this.paymentRequests.find((item) => item.id === params[0] && item.status === 'VERIFIED');
+      if (request) request.status = 'WAITING_TRANSFER';
+      return result<T>([]);
+    }
+
+    if (sql.startsWith("select p.*, case when p.entry_type='reversal'")) {
+      const payments = this.payments
+        .filter((item) => item.payment_request_id === params[0])
+        .map((item) => ({
+          ...item,
+          entry_type: item.entry_type ?? 'PAYMENT',
+          signed_amount: item.entry_type === 'REVERSAL' ? -Number(item.amount) : Number(item.amount),
+          reversal_payment_id: this.payments.find((child) => child.original_payment_id === item.id)?.id ?? null
+        }));
+      return result<T>(payments as T[]);
     }
 
     if (sql.startsWith('update payment_request set status=$2')) {
