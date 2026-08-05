@@ -52,7 +52,7 @@ export function DashboardRecentActivity({
       dataIndex: 'status',
       key: 'status',
       width: 110,
-      render: (value: string) => <Tag color={value === 'OVERDUE' ? 'red' : 'gold'}>{value}</Tag>,
+      render: (value: string) => <Tag color={value === 'PARTIALLY_PAID' ? 'gold' : 'blue'}>{value}</Tag>,
     },
     {
       title: 'Total',

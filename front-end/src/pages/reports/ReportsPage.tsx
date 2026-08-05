@@ -41,8 +41,8 @@ import './ReportsPage.css'
 const invoiceStatusOptions: { label: string; value: ReportInvoiceStatus; color: string }[] = [
   { label: 'Draft', value: 'DRAFT', color: 'default' },
   { label: 'Issued', value: 'ISSUED', color: 'blue' },
+  { label: 'Partially paid', value: 'PARTIALLY_PAID', color: 'gold' },
   { label: 'Paid', value: 'PAID', color: 'green' },
-  { label: 'Overdue', value: 'OVERDUE', color: 'red' },
   { label: 'Void', value: 'VOID', color: 'default' },
 ]
 
@@ -155,7 +155,14 @@ export function ReportsPage() {
     { title: 'Room', dataIndex: 'roomCode', width: 100 },
     { title: 'Tenant', dataIndex: 'tenantName', width: 180 },
     { title: 'Month', dataIndex: 'month', width: 110, render: (value: string) => formatMonth(value) },
-    { title: 'Status', dataIndex: 'status', width: 110, render: (value: ReportInvoiceStatus) => statusTag(value) },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      width: 150,
+      render: (value: ReportInvoiceStatus, row) => (
+        <Space size={4}>{statusTag(value)}{row.isOverdue ? <Tag color="red">Overdue</Tag> : null}</Space>
+      ),
+    },
     { title: 'Due date', dataIndex: 'dueDate', width: 120, render: formatDate },
     { title: 'Total', dataIndex: 'total', width: 150, align: 'right', render: formatCurrency },
     { title: 'Paid', dataIndex: 'paidAmount', width: 150, align: 'right', render: formatCurrency },

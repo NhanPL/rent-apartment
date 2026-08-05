@@ -8,6 +8,7 @@ export type MonthlyBillingAction =
   | 'REVIEW_READING'
   | 'CORRECT_READING'
   | 'GENERATE_INVOICE'
+  | 'REPLACE_VOID_INVOICE'
   | 'REVIEW_DRAFT'
   | 'WAITING_PAYMENT'
   | 'RECONCILE_PAYMENT'
@@ -16,8 +17,9 @@ export type MonthlyBillingAction =
 export const getMonthlyBillingAction = (row: DbRow): MonthlyBillingAction => {
   if (row.invoice_status === 'PAID' || Number(row.outstanding_amount ?? 0) <= 0 && row.invoice_id) return 'PAID';
   if (row.payment_request_status === 'TRANSFER_SUBMITTED') return 'RECONCILE_PAYMENT';
-  if (row.invoice_status === 'ISSUED' || row.invoice_status === 'OVERDUE') return 'WAITING_PAYMENT';
+  if (row.invoice_status === 'ISSUED' || row.invoice_status === 'PARTIALLY_PAID') return 'WAITING_PAYMENT';
   if (row.invoice_status === 'DRAFT') return 'REVIEW_DRAFT';
+  if (row.voided_invoice_id) return 'REPLACE_VOID_INVOICE';
   if (row.reading_status === 'APPROVED') return 'GENERATE_INVOICE';
   if (row.reading_status === 'SUBMITTED') return 'REVIEW_READING';
   if (row.reading_status === 'REJECTED') return 'CORRECT_READING';
@@ -37,6 +39,7 @@ export const listMonthlyBilling = async (managerId: string, buildingId: string |
             tenant.id AS tenant_id, tenant.full_name AS primary_tenant,
             ur.id AS reading_id, ur.status AS reading_status,
             i.id AS invoice_id, i.status AS invoice_status, i.total::float AS invoice_total,
+            voided_invoice.id AS voided_invoice_id,
             pr.id AS payment_request_id, pr.status AS payment_request_status,
             COALESCE(paid.amount, 0)::float AS paid_amount,
             GREATEST(COALESCE(i.total, 0) - COALESCE(paid.amount, 0), 0)::float AS outstanding_amount
@@ -59,6 +62,11 @@ export const listMonthlyBilling = async (managerId: string, buildingId: string |
        WHERE contract_id=c.id AND month=$2 AND status<>'VOID'
        ORDER BY created_at DESC LIMIT 1
      ) i ON true
+     LEFT JOIN LATERAL (
+       SELECT id FROM invoice
+       WHERE contract_id=c.id AND month=$2 AND status='VOID'
+       ORDER BY voided_at DESC NULLS LAST, created_at DESC LIMIT 1
+     ) voided_invoice ON i.id IS NULL
      LEFT JOIN LATERAL (
        SELECT id, status FROM payment_request
        WHERE invoice_id=i.id AND status NOT IN ('CANCELLED','EXPIRED')

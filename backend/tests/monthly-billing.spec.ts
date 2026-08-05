@@ -9,7 +9,9 @@ describe('monthly billing next action', () => {
     [{ reading_status: 'APPROVED' }, 'GENERATE_INVOICE'],
     [{ invoice_id: 'invoice', invoice_status: 'DRAFT', outstanding_amount: 100 }, 'REVIEW_DRAFT'],
     [{ invoice_id: 'invoice', invoice_status: 'ISSUED', outstanding_amount: 100 }, 'WAITING_PAYMENT'],
+    [{ invoice_id: 'invoice', invoice_status: 'PARTIALLY_PAID', outstanding_amount: 50 }, 'WAITING_PAYMENT'],
     [{ invoice_id: 'invoice', invoice_status: 'ISSUED', payment_request_status: 'TRANSFER_SUBMITTED', outstanding_amount: 100 }, 'RECONCILE_PAYMENT'],
+    [{ voided_invoice_id: 'voided-invoice', reading_status: 'INVOICED' }, 'REPLACE_VOID_INVOICE'],
     [{ invoice_id: 'invoice', invoice_status: 'PAID', outstanding_amount: 0 }, 'PAID'],
   ])('maps %o to %s', (row, expected) => {
     expect(getMonthlyBillingAction(row)).toBe(expected);

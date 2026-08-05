@@ -6,6 +6,7 @@ import {
   addInvoiceAdjustment,
   createInvoiceFromReading,
   createManualInvoice,
+  createReplacementInvoice,
   deleteManualInvoice,
   generateInvoicesForScope,
   getInvoiceDetail,
@@ -19,7 +20,6 @@ import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/va
 const router = Router();
 registerUuidParams(router, ['id', 'utilityReadingId']);
 
-const invoiceStatusSchema = z.enum(['DRAFT', 'ISSUED', 'PAID', 'VOID', 'OVERDUE']);
 const invoicePrefillQuerySchema = z.object({
   room_id: z.string().uuid().optional(),
   roomId: z.string().uuid().optional(),
@@ -32,7 +32,7 @@ const invoiceUpsertSchema = z.object({
   contract_id: z.string().uuid(),
   room_id: z.string().uuid(),
   month: z.string().trim().min(1),
-  status: invoiceStatusSchema,
+  status: z.literal('DRAFT').default('DRAFT'),
   issued_at: z.string().trim().nullable().optional(),
   due_date: z.string().trim().nullable().optional(),
   note: z.string().trim().nullable().optional(),
@@ -63,6 +63,10 @@ const invoiceIssueSchema = z.object({
   bank_account_no: z.string().trim().regex(/^\d{6,19}$/).optional(),
   bank_account_name: z.string().trim().min(2).max(100).optional(),
   transfer_note: z.string().trim().min(1).max(25).optional()
+});
+
+const invoiceVoidSchema = z.object({
+  reason: z.string().trim().min(3).max(500)
 });
 
 router.get('/', asyncHandler(async (req, res) => {
@@ -117,11 +121,12 @@ router.post('/:id/issue', requireRole('MANAGER'), asyncHandler(async (req, res) 
 }));
 
 router.post('/:id/void', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  res.json(await updateInvoiceStatus(req.params.id, req.auth!.userId, 'void'));
+  const body = parseBody(invoiceVoidSchema, req.body);
+  res.json(await updateInvoiceStatus(req.params.id, req.auth!.userId, 'void', body));
 }));
 
-router.post('/:id/mark-overdue', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  res.json(await updateInvoiceStatus(req.params.id, req.auth!.userId, 'mark-overdue'));
+router.post('/:id/replacement', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  res.status(201).json(await createReplacementInvoice(req.params.id, req.auth!.userId));
 }));
 
 router.post('/:id/adjustments', requireRole('MANAGER'), asyncHandler(async (req, res) => {

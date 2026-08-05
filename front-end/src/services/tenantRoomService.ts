@@ -12,7 +12,7 @@ import {
 
 export type ContractStatus = 'DRAFT' | 'ACTIVE' | 'ENDED' | 'CANCELLED'
 export type RoomStatus = 'ACTIVE' | 'MAINTENANCE' | 'INACTIVE'
-export type InvoiceStatus = 'DRAFT' | 'ISSUED' | 'PAID' | 'VOID' | 'OVERDUE'
+export type InvoiceStatus = 'DRAFT' | 'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'VOID'
 export type PaymentStatus = 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED' | 'CANCELLED'
 export type UtilityReadingStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'INVOICED'
 export type UtilityEvidenceType = 'ELECTRIC' | 'WATER' | 'OTHER'

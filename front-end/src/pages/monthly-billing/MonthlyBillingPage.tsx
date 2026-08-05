@@ -12,7 +12,7 @@ import './MonthlyBillingPage.css'
 
 const currency = vndCurrency
 const actionLabels: Record<MonthlyBillingAction, string> = {
-  ENTER_READING: 'Enter reading', REVIEW_READING: 'Review reading', CORRECT_READING: 'Correct reading', GENERATE_INVOICE: 'Generate invoice', REVIEW_DRAFT: 'Review draft', WAITING_PAYMENT: 'Awaiting payment', RECONCILE_PAYMENT: 'Reconcile payment', PAID: 'Paid',
+  ENTER_READING: 'Enter reading', REVIEW_READING: 'Review reading', CORRECT_READING: 'Correct reading', GENERATE_INVOICE: 'Generate invoice', REPLACE_VOID_INVOICE: 'Create replacement', REVIEW_DRAFT: 'Review draft', WAITING_PAYMENT: 'Awaiting payment', RECONCILE_PAYMENT: 'Reconcile payment', PAID: 'Paid',
 }
 
 const navigate = (path: string) => {
@@ -44,6 +44,7 @@ export function MonthlyBillingPage() {
   const runAction = useCallback(async (row: MonthlyBillingItem) => {
     if (['ENTER_READING', 'REVIEW_READING', 'CORRECT_READING'].includes(row.next_action)) return navigate('/utilities')
     if (row.next_action === 'REVIEW_DRAFT') return navigate(`/invoices?invoiceId=${encodeURIComponent(row.invoice_id ?? '')}`)
+    if (row.next_action === 'REPLACE_VOID_INVOICE') return navigate(`/invoices?invoiceId=${encodeURIComponent(row.voided_invoice_id ?? '')}`)
     if (row.next_action === 'WAITING_PAYMENT' || row.next_action === 'RECONCILE_PAYMENT') return navigate('/payments')
     if (row.next_action === 'PAID') return navigate(`/invoices?invoiceId=${encodeURIComponent(row.invoice_id ?? '')}`)
     setActionId(row.room_id)

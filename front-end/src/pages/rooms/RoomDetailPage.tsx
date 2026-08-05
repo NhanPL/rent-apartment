@@ -30,9 +30,9 @@ const roomStatusColor = {
 const billStatusColor: Record<MonthlyBill['invoice_status'], string> = {
   DRAFT: 'default',
   ISSUED: 'processing',
+  PARTIALLY_PAID: 'gold',
   PAID: 'green',
   VOID: 'red',
-  OVERDUE: 'orange',
 }
 
 const currency = vndCurrency

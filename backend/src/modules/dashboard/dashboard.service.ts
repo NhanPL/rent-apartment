@@ -1,7 +1,7 @@
 import { query } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
 
-type InvoiceStatus = 'ISSUED' | 'OVERDUE';
+type InvoiceStatus = 'ISSUED' | 'PARTIALLY_PAID';
 
 interface DashboardFilters {
   month?: string;
@@ -221,7 +221,7 @@ const getInvoiceBalances = async (managerId: string, month: string, buildingId?:
 
   const { rows } = await query<InvoiceBalanceRow>(
     `WITH scoped_invoices AS (
-       SELECT i.id, i.status, i.total
+       SELECT i.id, i.status, i.total, i.due_date
        FROM invoice i
        JOIN room r ON r.id=i.room_id
        JOIN building b ON b.id=r.building_id
@@ -238,15 +238,16 @@ const getInvoiceBalances = async (managerId: string, month: string, buildingId?:
      balances AS (
        SELECT
          si.status,
+         si.due_date,
          GREATEST(si.total - LEAST(COALESCE(paid.amount, CASE WHEN si.status='PAID' THEN si.total ELSE 0 END), si.total), 0) AS outstanding
        FROM scoped_invoices si
        LEFT JOIN paid ON paid.invoice_id=si.id
      )
      SELECT
-       COUNT(*) FILTER (WHERE status IN ('ISSUED', 'OVERDUE') AND outstanding > 0)::int AS unpaid_invoices,
-       COALESCE(SUM(outstanding) FILTER (WHERE status IN ('ISSUED', 'OVERDUE') AND outstanding > 0), 0)::float AS unpaid_amount,
-       COUNT(*) FILTER (WHERE status='OVERDUE' AND outstanding > 0)::int AS overdue_invoices,
-       COALESCE(SUM(outstanding) FILTER (WHERE status='OVERDUE' AND outstanding > 0), 0)::float AS overdue_amount
+       COUNT(*) FILTER (WHERE status IN ('ISSUED', 'PARTIALLY_PAID') AND outstanding > 0)::int AS unpaid_invoices,
+       COALESCE(SUM(outstanding) FILTER (WHERE status IN ('ISSUED', 'PARTIALLY_PAID') AND outstanding > 0), 0)::float AS unpaid_amount,
+       COUNT(*) FILTER (WHERE status IN ('ISSUED', 'PARTIALLY_PAID') AND due_date < CURRENT_DATE AND outstanding > 0)::int AS overdue_invoices,
+       COALESCE(SUM(outstanding) FILTER (WHERE status IN ('ISSUED', 'PARTIALLY_PAID') AND due_date < CURRENT_DATE AND outstanding > 0), 0)::float AS overdue_amount
      FROM balances`,
     params
   );
@@ -290,7 +291,7 @@ const getMonthlyRevenueChart = async (
      )
      SELECT
        to_char(ms.month_start, 'YYYY-MM') AS month,
-       COALESCE(SUM(si.total), 0)::float AS billed,
+       COALESCE(SUM(si.total) FILTER (WHERE si.status <> 'VOID'), 0)::float AS billed,
        COALESCE(
          SUM(CASE WHEN si.status='PAID' THEN si.total ELSE LEAST(COALESCE(paid.amount, 0), si.total) END),
          0
@@ -298,7 +299,7 @@ const getMonthlyRevenueChart = async (
        COALESCE(
          SUM(
            CASE
-             WHEN si.status IN ('ISSUED', 'OVERDUE')
+             WHEN si.status IN ('ISSUED', 'PARTIALLY_PAID')
              THEN GREATEST(si.total - LEAST(COALESCE(paid.amount, 0), si.total), 0)
              ELSE 0
            END
@@ -422,7 +423,7 @@ const getRecentUnpaidInvoices = async (
      ) paid ON true
      WHERE ${scopedBuildingWhere(buildingId)}
        AND i.month=$${monthParam}::date
-       AND i.status IN ('ISSUED', 'OVERDUE')
+       AND i.status IN ('ISSUED', 'PARTIALLY_PAID')
        AND GREATEST(i.total - LEAST(COALESCE(paid.amount, 0), i.total), 0) > 0
      ORDER BY i.month DESC, i.created_at DESC
      LIMIT 5`,

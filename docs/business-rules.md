@@ -18,3 +18,16 @@
 - A room can have at most one `ACTIVE` contract at a time.
 - `max_occupants` is enforced when creating an active contract with tenants.
 - `max_occupants` cannot be lowered below the number of tenants currently attached to the room's active contract.
+
+## Invoice lifecycle and financial history
+
+- Invoice status is limited to `DRAFT`, `ISSUED`, `PARTIALLY_PAID`, `PAID`, and `VOID`.
+- Overdue is derived from an unpaid invoice's `due_date`; it is not a stored invoice status.
+- A `DRAFT` invoice can be permanently deleted only when it has no payment or payment-request history.
+- An `ISSUED`, `PARTIALLY_PAID`, or `PAID` invoice cannot be deleted. A manager must void it and provide a reason.
+- Voiding records `void_reason`, `voided_by_user_id`, and `voided_at`. It never deletes payments, payment requests, or payment proofs.
+- Voiding closes active payment requests and rejects pending proofs with the void reason. Completed payments and reviewed proofs remain unchanged for reconciliation.
+- A utility reading referenced by an issued or void invoice remains `INVOICED`; voiding never returns it to `APPROVED`.
+- A void invoice can be corrected only through an explicit replacement invoice. The replacement is a new `DRAFT`, references the original through `replaces_invoice_id`, and may reuse the original utility reading.
+- A clean draft deletion may return its utility reading to `APPROVED` only when no invoice still references that reading.
+- Dashboard billed totals and invoice counts exclude `VOID` invoices. Debt and outstanding totals exclude `VOID`, while successful payments remain in collected totals for historical reconciliation.

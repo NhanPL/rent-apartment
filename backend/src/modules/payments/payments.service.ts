@@ -87,7 +87,9 @@ export const createPaymentRequest = async (invoiceId: string, managerId: string,
     );
     const inv = invRs.rows[0];
     if (!inv) throw new AppError(404, 'Invoice not found');
-    if (!['ISSUED', 'OVERDUE'].includes(inv.status)) throw new AppError(409, 'Payment requests require an issued invoice', 'INVOICE_NOT_ISSUED');
+    if (!['ISSUED', 'PARTIALLY_PAID'].includes(inv.status)) {
+      throw new AppError(409, 'Payment requests require an issued invoice with an outstanding balance', 'INVOICE_NOT_ISSUED');
+    }
 
     const paidAmount = await getInvoicePaidAmount(client, invoiceId);
     const remainingAmount = toNumber(inv.total) - paidAmount;
@@ -143,7 +145,7 @@ export const createPaymentRequest = async (invoiceId: string, managerId: string,
 export const submitPaymentProof = async (paymentRequestId: string, payload: any, tenantUserId: string) =>
   withTransaction(async (client) => {
     const reqRs = await client.query<DbRow>(
-      `SELECT pr.*, i.total invoice_total, t.user_id tenant_user_id
+      `SELECT pr.*, i.total invoice_total, i.status invoice_status, t.user_id tenant_user_id
        FROM payment_request pr
        JOIN invoice i ON i.id=pr.invoice_id
        JOIN contract_tenant ct ON ct.contract_id=i.contract_id
@@ -153,6 +155,9 @@ export const submitPaymentProof = async (paymentRequestId: string, payload: any,
     );
     const data = reqRs.rows[0];
     if (!data) throw new AppError(404, 'Payment request not found');
+    if (!['ISSUED', 'PARTIALLY_PAID'].includes(data.invoice_status)) {
+      throw new AppError(409, 'This invoice is not accepting payment proofs', 'INVOICE_NOT_PAYABLE');
+    }
     if (!['WAITING_TRANSFER', 'REJECTED'].includes(data.status)) throw new AppError(409, 'Payment request not accepting proofs');
 
     const pending = await client.query(
@@ -228,6 +233,10 @@ export const reviewPaymentProof = async (proofId: string, approve: boolean, mana
       return rejected.rows[0];
     }
 
+    if (!['ISSUED', 'PARTIALLY_PAID'].includes(proof.invoice_status)) {
+      throw new AppError(409, 'This invoice is not accepting payments', 'INVOICE_NOT_PAYABLE');
+    }
+
     const approved = await client.query<DbRow>(
       `UPDATE payment_proof SET status='APPROVED',approved_by_user_id=$2,approved_at=now(),rejection_reason=NULL WHERE id=$1 RETURNING *`,
       [proofId, managerId]
@@ -251,16 +260,15 @@ export const reviewPaymentProof = async (proofId: string, approve: boolean, mana
       [proof.payment_request_id, nextRequestStatus, managerId, fullyPaid]
     );
 
-    if (fullyPaid) {
-      await client.query(`UPDATE invoice SET status='PAID' WHERE id=$1`, [proof.invoice_id]);
-    }
+    const invoiceStatus = fullyPaid ? 'PAID' : 'PARTIALLY_PAID';
+    await client.query(`UPDATE invoice SET status=$2 WHERE id=$1`, [proof.invoice_id, invoiceStatus]);
 
     return {
       proof: approved.rows[0],
       payment: payment.rows[0],
       paid_amount: paidAmount,
       remaining_amount: Math.max(0, toNumber(proof.invoice_total) - paidAmount),
-      invoice_status: fullyPaid ? 'PAID' : proof.invoice_status
+      invoice_status: invoiceStatus
     };
   });
 

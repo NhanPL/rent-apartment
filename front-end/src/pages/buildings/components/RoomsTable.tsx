@@ -22,9 +22,9 @@ const statusColors: Record<Room['status'], string> = {
 const invoiceStatusColors: Record<RoomInvoiceStatus, string> = {
   DRAFT: 'default',
   ISSUED: 'processing',
+  PARTIALLY_PAID: 'gold',
   PAID: 'green',
   VOID: 'red',
-  OVERDUE: 'orange',
 }
 
 const readingStatusColors: Record<RoomUtilityReadingStatus, string> = {

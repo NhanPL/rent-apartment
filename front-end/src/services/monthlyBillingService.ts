@@ -3,7 +3,7 @@ import { apiRequest } from './apiClient'
 import { API_ROUTES } from './apiRoutes'
 import { generateInvoices } from './invoicesService'
 
-export type MonthlyBillingAction = 'ENTER_READING' | 'REVIEW_READING' | 'CORRECT_READING' | 'GENERATE_INVOICE' | 'REVIEW_DRAFT' | 'WAITING_PAYMENT' | 'RECONCILE_PAYMENT' | 'PAID'
+export type MonthlyBillingAction = 'ENTER_READING' | 'REVIEW_READING' | 'CORRECT_READING' | 'GENERATE_INVOICE' | 'REPLACE_VOID_INVOICE' | 'REVIEW_DRAFT' | 'WAITING_PAYMENT' | 'RECONCILE_PAYMENT' | 'PAID'
 
 export interface MonthlyBillingItem {
   building_id: string
@@ -17,6 +17,7 @@ export interface MonthlyBillingItem {
   reading_id: string | null
   reading_status: string | null
   invoice_id: string | null
+  voided_invoice_id: string | null
   invoice_status: string | null
   invoice_total: number
   payment_request_id: string | null

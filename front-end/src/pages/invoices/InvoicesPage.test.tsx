@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const invoiceServiceMocks = vi.hoisted(() => ({
+  createReplacementInvoice: vi.fn(),
   deleteInvoice: vi.fn(),
   getEffectiveUtilityRate: vi.fn(),
   getInvoice: vi.fn(),
@@ -14,6 +15,7 @@ const invoiceServiceMocks = vi.hoisted(() => ({
   listRooms: vi.fn(),
   listTenants: vi.fn(),
   issueInvoice: vi.fn(),
+  voidInvoice: vi.fn(),
 }))
 
 const utilityServiceMocks = vi.hoisted(() => ({
@@ -28,6 +30,7 @@ const paymentServiceMocks = vi.hoisted(() => ({
 vi.mock('../../services/invoicesService', () => ({
   addInvoiceAdjustment: vi.fn(),
   createInvoice: vi.fn(),
+  createReplacementInvoice: invoiceServiceMocks.createReplacementInvoice,
   deleteInvoice: invoiceServiceMocks.deleteInvoice,
   generateInvoices: vi.fn(),
   getInvoice: invoiceServiceMocks.getInvoice,
@@ -40,9 +43,8 @@ vi.mock('../../services/invoicesService', () => ({
   listInvoices: invoiceServiceMocks.listInvoices,
   listRooms: invoiceServiceMocks.listRooms,
   listTenants: invoiceServiceMocks.listTenants,
-  markInvoiceOverdue: vi.fn(),
   updateInvoice: vi.fn(),
-  voidInvoice: vi.fn(),
+  voidInvoice: invoiceServiceMocks.voidInvoice,
 }))
 
 vi.mock('../../services/utilitiesService', () => ({
@@ -111,6 +113,12 @@ describe('InvoicesPage invoice deletion', () => {
       totalRevenue: 4_000_000,
     })
     invoiceServiceMocks.deleteInvoice.mockResolvedValue(undefined)
+    invoiceServiceMocks.voidInvoice.mockResolvedValue({
+      ...invoice,
+      status: 'VOID',
+      void_reason: 'Incorrect amount',
+      voided_at: '2026-07-04T00:00:00.000Z',
+    })
     paymentServiceMocks.getPaymentRequestByInvoice.mockResolvedValue(null)
     invoiceServiceMocks.getEffectiveUtilityRate.mockResolvedValue({
       electricity_unit_price: 3_500,
@@ -118,18 +126,41 @@ describe('InvoicesPage invoice deletion', () => {
     })
   })
 
-  it('confirms deletion for a paid invoice and reloads the table', async () => {
+  it('confirms permanent deletion for a draft invoice and reloads the table', async () => {
+    invoiceServiceMocks.listInvoices.mockResolvedValue([{
+      ...invoice,
+      status: 'DRAFT',
+      payment_status: null,
+      paid_amount: 0,
+      paid_at: null,
+    }])
     const user = userEvent.setup()
     render(<InvoicesPage />)
 
-    await user.click(await screen.findByRole('button', { name: 'Delete invoice' }))
+    await user.click(await screen.findByRole('button', { name: 'Delete draft invoice' }))
 
     const dialog = screen.getByRole('dialog', { name: 'Delete this invoice?' })
-    expect(within(dialog).getByText(/all related payment records/i)).toBeInTheDocument()
+    expect(within(dialog).getByText(/only a draft with no payment history/i)).toBeInTheDocument()
 
     await user.click(within(dialog).getByRole('button', { name: 'Delete' }))
 
     await waitFor(() => expect(invoiceServiceMocks.deleteInvoice).toHaveBeenCalledWith(invoice.id))
+    await waitFor(() => expect(invoiceServiceMocks.listInvoices).toHaveBeenCalledTimes(2))
+  })
+
+  it('requires a reason to void a paid invoice and retains the record', async () => {
+    const user = userEvent.setup()
+    render(<InvoicesPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'Void invoice' }))
+    const dialog = screen.getByRole('dialog', { name: 'Void this invoice?' })
+    expect(within(dialog).getByText(/preserves the financial audit trail/i)).toBeInTheDocument()
+
+    await user.type(within(dialog).getByLabelText('Void reason'), 'Incorrect amount')
+    await user.click(within(dialog).getByRole('button', { name: 'Void invoice' }))
+
+    await waitFor(() => expect(invoiceServiceMocks.voidInvoice).toHaveBeenCalledWith(invoice.id, 'Incorrect amount'))
+    expect(invoiceServiceMocks.deleteInvoice).not.toHaveBeenCalled()
     await waitFor(() => expect(invoiceServiceMocks.listInvoices).toHaveBeenCalledTimes(2))
   })
 
