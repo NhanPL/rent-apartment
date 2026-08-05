@@ -1,6 +1,7 @@
 import { query, withTransaction } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
 import { firstDayOfMonth } from '../../shared/utils/date';
+import { writeAuditLog } from '../../shared/services/audit-log.service';
 import {
   getDocumentRetentionUntil,
   resolveCloudinaryAsset,
@@ -11,6 +12,18 @@ import {
 type DbRow = Record<string, any>;
 type AuthScope = { userId: string; role: 'MANAGER' | 'TENANT' };
 type TxClient = Parameters<Parameters<typeof withTransaction>[0]>[0];
+
+const utilityAuditSnapshot = (reading: DbRow): Record<string, unknown> => ({
+  roomId: reading.room_id,
+  month: reading.month,
+  status: reading.status,
+  electricityPrevious: reading.electricity_prev,
+  electricityCurrent: reading.electricity_curr,
+  waterPrevious: reading.water_prev,
+  waterCurrent: reading.water_curr,
+  rejectionReason: reading.rejection_reason,
+  note: reading.note
+});
 
 export interface UtilityReadingListParams {
   buildingId?: string;
@@ -216,6 +229,7 @@ export const createUtilityReading = async (payload: UtilityReadingCreatePayload,
     );
 
     let reading: DbRow;
+    const before = existing.rows[0] ? utilityAuditSnapshot(existing.rows[0]) : null;
     if (existing.rows[0]) {
       if (existing.rows[0].status !== 'REJECTED') {
         throw new AppError(409, 'Submitted readings can only be updated after manager rejection', 'UTILITY_READING_LOCKED');
@@ -290,6 +304,16 @@ export const createUtilityReading = async (payload: UtilityReadingCreatePayload,
       );
     }
 
+    await writeAuditLog(client, {
+      actorUserId: userId,
+      action: 'UTILITY_READING_SUBMITTED',
+      entityType: 'UTILITY_READING',
+      entityId: reading.id,
+      before,
+      after: utilityAuditSnapshot(reading),
+      metadata: { resubmission: Boolean(existing.rows[0]) }
+    });
+
     return reading;
   });
 };
@@ -301,7 +325,7 @@ export const approveUtilityReading = async (id: string, managerId: string) => {
       throw new AppError(409, 'Only submitted readings can be approved', 'UTILITY_READING_NOT_SUBMITTED');
     }
 
-    await client.query(
+    const updated = await client.query<DbRow>(
       `UPDATE utility_reading
        SET status='APPROVED',
            approved_by_user_id=$2,
@@ -311,9 +335,18 @@ export const approveUtilityReading = async (id: string, managerId: string) => {
            rejected_by_user_id=NULL,
            rejected_at=NULL,
            rejection_reason=NULL
-       WHERE id=$1`,
+       WHERE id=$1
+       RETURNING *`,
       [id, managerId]
     );
+    await writeAuditLog(client, {
+      actorUserId: managerId,
+      action: 'UTILITY_READING_APPROVED',
+      entityType: 'UTILITY_READING',
+      entityId: id,
+      before: utilityAuditSnapshot(reading),
+      after: utilityAuditSnapshot(updated.rows[0])
+    });
   });
 
   return getUtilityReadingById(id, { userId: managerId, role: 'MANAGER' });
@@ -326,15 +359,25 @@ export const rejectUtilityReading = async (id: string, managerId: string, reason
       throw new AppError(409, 'Only submitted readings can be rejected', 'UTILITY_READING_NOT_SUBMITTED');
     }
 
-    await client.query(
+    const updated = await client.query<DbRow>(
       `UPDATE utility_reading
        SET status='REJECTED',
            rejected_by_user_id=$2,
            rejected_at=now(),
            rejection_reason=$3
-       WHERE id=$1`,
+       WHERE id=$1
+       RETURNING *`,
       [id, managerId, reason]
     );
+    await writeAuditLog(client, {
+      actorUserId: managerId,
+      action: 'UTILITY_READING_REJECTED',
+      entityType: 'UTILITY_READING',
+      entityId: id,
+      before: utilityAuditSnapshot(reading),
+      after: utilityAuditSnapshot(updated.rows[0]),
+      metadata: { reason }
+    });
   });
 
   return getUtilityReadingById(id, { userId: managerId, role: 'MANAGER' });
@@ -355,13 +398,23 @@ export const requestUtilityReadingCorrection = async (id: string, managerId: str
     );
     if (invoice.rows[0]) throw new AppError(409, 'Void the invoice before requesting a reading correction', 'UTILITY_READING_LOCKED');
 
-    await client.query(
+    const updated = await client.query<DbRow>(
       `UPDATE utility_reading
        SET status='REJECTED', rejected_by_user_id=$2, rejected_at=now(), rejection_reason=$3,
            approved_by_user_id=NULL, approved_at=NULL
-       WHERE id=$1`,
+       WHERE id=$1
+       RETURNING *`,
       [id, managerId, reason]
     );
+    await writeAuditLog(client, {
+      actorUserId: managerId,
+      action: 'UTILITY_READING_REJECTED',
+      entityType: 'UTILITY_READING',
+      entityId: id,
+      before: utilityAuditSnapshot(reading),
+      after: utilityAuditSnapshot(updated.rows[0]),
+      metadata: { reason, correctionRequested: true }
+    });
   });
   return getUtilityReadingById(id, { userId: managerId, role: 'MANAGER' });
 };

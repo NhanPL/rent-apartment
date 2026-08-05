@@ -68,6 +68,8 @@ interface CountRow {
 interface TenantDeleteRow {
   id: string;
   user_id: string | null;
+  account_status: string | null;
+  account_is_active: boolean | null;
 }
 
 interface TenantUpdateScopeRow {
@@ -163,8 +165,8 @@ const upsertTenantContract = async (client: Parameters<Parameters<typeof withTra
 
   const payload = normalizeTenantContractInput(contractInput);
 
-  const activeRs = await client.query<{ contract_id: string; room_id: string; joined_at: string }>(
-    `SELECT ct.contract_id, c.room_id, ct.joined_at::text
+  const activeRs = await client.query<Record<string, any>>(
+    `SELECT c.*, ct.contract_id, ct.joined_at::text
      FROM contract_tenant ct
      JOIN contract c ON c.id=ct.contract_id
      WHERE ct.tenant_id=$1 AND ct.left_at IS NULL AND c.status=$2
@@ -186,26 +188,64 @@ const upsertTenantContract = async (client: Parameters<Parameters<typeof withTra
       'UPDATE contract_tenant SET left_at=$1 WHERE contract_id=$2 AND tenant_id=$3 AND left_at IS NULL',
       [leftAt, current.contract_id, tenantId]
     );
-    await client.query(
+    const ended = await client.query<Record<string, any>>(
       `UPDATE contract
        SET status='ENDED', end_date=COALESCE(end_date, $1), move_out_date=COALESCE(move_out_date, $1)
-       WHERE id=$2`,
+       WHERE id=$2
+       RETURNING *`,
       [leftAt, current.contract_id]
     );
+    await writeAuditLog(client, {
+      actorUserId: managerId,
+      action: 'CONTRACT_ENDED',
+      entityType: 'CONTRACT',
+      entityId: current.contract_id,
+      before: { status: current.status, roomId: current.room_id, moveOutDate: current.move_out_date },
+      after: { status: ended.rows[0].status, roomId: ended.rows[0].room_id, moveOutDate: ended.rows[0].move_out_date },
+      metadata: { source: 'TENANT_ROOM_CHANGE', tenantId }
+    });
     await createTenantContract(client, tenantId, contractInput, managerId);
     return;
   }
 
   await validateTenantContractRoom(client, payload, managerId, current.contract_id);
-  await client.query(
+  const updated = await client.query<Record<string, any>>(
     `UPDATE contract SET room_id=$1,status=$2,start_date=$3,end_date=$4,move_in_date=$5,move_out_date=$6,rent_price=$7,deposit_amount=$8,billing_day=$9,note=$10
-     WHERE id=$11`,
+     WHERE id=$11
+     RETURNING *`,
     [payload.room_id, payload.status, payload.start_date, payload.end_date, payload.move_in_date, payload.move_out_date, payload.rent_price, payload.deposit_amount, payload.billing_day, payload.note, current.contract_id]
   );
   await client.query(
     'UPDATE contract_tenant SET joined_at=$1 WHERE contract_id=$2 AND tenant_id=$3 AND left_at IS NULL',
     [payload.start_date, current.contract_id, tenantId]
   );
+  await writeAuditLog(client, {
+    actorUserId: managerId,
+    action: payload.status === 'ENDED'
+      ? 'CONTRACT_ENDED'
+      : payload.status === 'CANCELLED'
+        ? 'CONTRACT_CANCELLED'
+        : 'CONTRACT_UPDATED',
+    entityType: 'CONTRACT',
+    entityId: current.contract_id,
+    before: {
+      status: current.status,
+      roomId: current.room_id,
+      startDate: current.start_date,
+      endDate: current.end_date,
+      rentPrice: current.rent_price,
+      depositAmount: current.deposit_amount
+    },
+    after: {
+      status: updated.rows[0].status,
+      roomId: updated.rows[0].room_id,
+      startDate: updated.rows[0].start_date,
+      endDate: updated.rows[0].end_date,
+      rentPrice: updated.rows[0].rent_price,
+      depositAmount: updated.rows[0].deposit_amount
+    },
+    metadata: { source: 'TENANT_FORM', tenantId }
+  });
 };
 
 const isUniqueConstraintError = (error: unknown): boolean => (
@@ -556,12 +596,14 @@ router.put('/:id/identity-documents', requireRole('MANAGER'), asyncHandler(async
 router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   await withTransaction(async (client) => {
     const tenantRs = await client.query<TenantDeleteRow>(
-      `SELECT id, user_id
+      `SELECT tenant.id, tenant.user_id, app_user.account_status,
+              app_user.is_active AS account_is_active
        FROM tenant
-       WHERE id=$1
-         AND manager_user_id=$2
-         AND status <> $3
-       FOR UPDATE`,
+       LEFT JOIN app_user ON app_user.id=tenant.user_id
+       WHERE tenant.id=$1
+         AND tenant.manager_user_id=$2
+         AND tenant.status <> $3
+       FOR UPDATE OF tenant`,
       [req.params.id, req.auth!.userId, 'DELETED']
     );
     const tenant = tenantRs.rows[0];
@@ -611,7 +653,15 @@ router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
           action: 'TENANT_IDENTITY_DOCUMENT_DELETED',
           entityType: 'tenant_document',
           entityId: document.id,
-          metadata: { tenantId: tenant.id, documentType: document.doc_type, reason: 'TENANT_DELETED' }
+          metadata: { tenantId: tenant.id, documentType: document.doc_type, reason: 'TENANT_DELETED' },
+          before: {
+            tenantId: tenant.id,
+            documentType: document.doc_type,
+            fileName: document.file_name,
+            mimeType: document.mime_type,
+            fileSize: document.file_size,
+            uploadedAt: document.uploaded_at
+          }
         });
       }
     }
@@ -625,6 +675,18 @@ router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
     );
 
     if (tenant.user_id) {
+      await writeAuditLog(client, {
+        actorUserId: req.auth!.userId,
+        action: 'USER_DEACTIVATED',
+        entityType: 'APP_USER',
+        entityId: tenant.user_id,
+        before: {
+          accountStatus: tenant.account_status,
+          isActive: tenant.account_is_active
+        },
+        after: { accountStatus: 'DELETED', isActive: false },
+        metadata: { reason: 'TENANT_DELETED', tenantId: tenant.id }
+      });
       await client.query('DELETE FROM app_user WHERE id=$1', [tenant.user_id]);
     }
   });

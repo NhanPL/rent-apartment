@@ -17,6 +17,7 @@ interface ActivationTokenRow {
   expires_at: string;
   used_at: string | null;
   revoked_at: string | null;
+  manager_user_id: string | null;
 }
 
 interface PendingTenantAccountRow {
@@ -153,9 +154,11 @@ const findValidActivationToken = async (
   const result = await client.query<ActivationTokenRow>(
     `SELECT activation.id, activation.user_id, activation.expires_at,
             activation.used_at, activation.revoked_at,
-            app_user.email::text AS email, app_user.account_status
+            app_user.email::text AS email, app_user.account_status,
+            tenant.manager_user_id
      FROM account_activation_token activation
      JOIN app_user ON app_user.id=activation.user_id
+     LEFT JOIN tenant ON tenant.user_id=app_user.id
      WHERE activation.token_hash=$1
        AND activation.used_at IS NULL
        AND activation.revoked_at IS NULL
@@ -218,9 +221,13 @@ export const activateTenantAccount = async (
 
     await writeAuditLog(client, {
       actorUserId: activation.user_id,
-      action: 'TENANT_ACCOUNT_ACTIVATED',
+      actorRole: 'TENANT',
+      managerUserId: activation.manager_user_id,
+      action: 'USER_ACTIVATED',
       entityType: 'APP_USER',
-      entityId: activation.user_id
+      entityId: activation.user_id,
+      before: { accountStatus: 'PENDING_ACTIVATION', isActive: false },
+      after: { accountStatus: 'ACTIVE', isActive: true }
     });
   });
 };

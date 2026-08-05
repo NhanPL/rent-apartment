@@ -68,7 +68,7 @@ describe('updateTenantIdentityDocuments', () => {
       query: vi.fn()
         .mockResolvedValueOnce({ rows: [oldFront, oldBack] })
         .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ id: 'front-new', uploaded_at: '2026-08-05T00:00:00.000Z' }] })
         .mockResolvedValueOnce({ rows: [] })
         .mockResolvedValueOnce({ rows: [newFront] })
     };
@@ -100,7 +100,11 @@ describe('updateTenantIdentityDocuments', () => {
       oldBack,
       'TENANT_IDENTITY_DOCUMENT_REPLACED'
     );
-    expect(auditMocks.writeAuditLog).toHaveBeenCalledTimes(2);
+    expect(auditMocks.writeAuditLog).toHaveBeenCalledTimes(3);
+    expect(auditMocks.writeAuditLog).toHaveBeenCalledWith(client, expect.objectContaining({
+      action: 'TENANT_IDENTITY_DOCUMENT_CREATED',
+      entityId: 'front-new'
+    }));
     expect(result.front?.file_url).toBe(newFront.file_url);
     expect(result.back).toBeNull();
   });

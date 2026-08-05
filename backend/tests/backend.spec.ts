@@ -742,7 +742,7 @@ describe('backend API smoke tests', () => {
     expect(fakeDb.passwordResetTokens[0].used_at).toEqual(expect.any(String));
     expect(fakeDb.passwordResetTokens[1].revoked_at).toEqual(expect.any(String));
     expect(fakeDb.auditLogs).toContainEqual(expect.objectContaining({
-      action: 'PASSWORD_RESET_COMPLETED',
+      action: 'USER_PASSWORD_CHANGED',
       entity_id: ids.managerAUser
     }));
 
@@ -1074,7 +1074,7 @@ describe('backend API smoke tests', () => {
       'TENANT_ACCOUNT_CREATED',
       'TENANT_ACTIVATION_INVITATION_CREATED',
       'TENANT_ACTIVATION_INVITATION_DELIVERY',
-      'TENANT_ACCOUNT_ACTIVATED'
+      'USER_ACTIVATED'
     ]));
   });
 

@@ -139,6 +139,7 @@ export const createAuthSession = async (
 
   await writeAuditLog(client, {
     actorUserId: user.id,
+    actorRole: user.role,
     action: 'AUTH_SESSION_CREATED',
     entityType: 'AUTH_SESSION',
     entityId: sessionId
@@ -191,6 +192,7 @@ export const rotateRefreshToken = async (
         await revokeSession(client, row.session_id, 'TOKEN_REUSE_DETECTED');
         await writeAuditLog(client, {
           actorUserId: row.user_id,
+          actorRole: row.role,
           action: 'REFRESH_TOKEN_REUSE_DETECTED',
           entityType: 'AUTH_SESSION',
           entityId: row.session_id

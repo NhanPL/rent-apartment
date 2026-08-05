@@ -138,15 +138,15 @@ export const createTenantContract = async (
   client: PoolClient,
   tenantId: string,
   contractInput: Record<string, unknown>,
-  managerId?: string
+  managerId: string
 ): Promise<{ id: string }> => {
   const payload = normalizeTenantContractInput(contractInput);
   await validateTenantContractRoom(client, payload, managerId);
 
   const code = await generateContractCode(client);
-  const contractRs = await client.query<{ id: string }>(
+  const contractRs = await client.query<{ id: string } & Record<string, any>>(
     `INSERT INTO contract(room_id,contract_code,status,start_date,end_date,move_in_date,move_out_date,rent_price,deposit_amount,billing_day,note)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
     [
       payload.room_id,
       code,
@@ -166,6 +166,24 @@ export const createTenantContract = async (
     'INSERT INTO contract_tenant(contract_id,tenant_id,is_primary,joined_at,left_at) VALUES($1,$2,true,$3,null)',
     [contractRs.rows[0].id, tenantId, payload.start_date]
   );
+
+  await writeAuditLog(client, {
+    actorUserId: managerId,
+    action: 'CONTRACT_CREATED',
+    entityType: 'CONTRACT',
+    entityId: contractRs.rows[0].id,
+    after: {
+      roomId: contractRs.rows[0].room_id,
+      contractCode: contractRs.rows[0].contract_code,
+      status: contractRs.rows[0].status,
+      startDate: contractRs.rows[0].start_date,
+      endDate: contractRs.rows[0].end_date,
+      rentPrice: contractRs.rows[0].rent_price,
+      depositAmount: contractRs.rows[0].deposit_amount,
+      billingDay: contractRs.rows[0].billing_day
+    },
+    metadata: { source: 'TENANT_FORM', tenantId }
+  });
 
   return contractRs.rows[0];
 };

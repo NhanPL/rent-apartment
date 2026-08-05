@@ -126,19 +126,28 @@ export const updateTenantIdentityDocuments = async (
           action: 'TENANT_IDENTITY_DOCUMENT_DELETED',
           entityType: 'tenant_document',
           entityId: document.id,
-          metadata: { tenantId, documentType: document.doc_type, reason: 'REPLACED' }
+          metadata: { tenantId, documentType: document.doc_type, reason: 'REPLACED' },
+          before: {
+            tenantId,
+            documentType: document.doc_type,
+            fileName: document.file_name,
+            mimeType: document.mime_type,
+            fileSize: document.file_size,
+            uploadedAt: document.uploaded_at
+          }
         });
       }
       await client.query('DELETE FROM tenant_document WHERE tenant_id=$1 AND doc_type=$2', [tenantId, docType]);
 
       if (nextDocument && nextAsset) {
-        await client.query(
+        const created = await client.query<{ id: string; uploaded_at: string }>(
           `INSERT INTO tenant_document(
              tenant_id, doc_type, file_name, file_url, mime_type, file_size, uploaded_by_user_id,
              cloudinary_asset_id, cloudinary_public_id, cloudinary_resource_type,
              cloudinary_version, cloudinary_format, cloudinary_delivery_type, retention_until
            )
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+           RETURNING id, uploaded_at`,
           [
             tenantId,
             docType,
@@ -156,6 +165,20 @@ export const updateTenantIdentityDocuments = async (
             getDocumentRetentionUntil('TENANT_DOCUMENT')
           ]
         );
+        await writeAuditLog(client, {
+          actorUserId: uploadedByUserId,
+          action: 'TENANT_IDENTITY_DOCUMENT_CREATED',
+          entityType: 'TENANT_DOCUMENT',
+          entityId: created.rows[0].id,
+          after: {
+            tenantId,
+            documentType: docType,
+            fileName: nextDocument.file_name ?? null,
+            mimeType: nextDocument.mime_type,
+            fileSize: nextDocument.file_size,
+            uploadedAt: created.rows[0].uploaded_at
+          }
+        });
       }
     }
 

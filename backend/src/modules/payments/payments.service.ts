@@ -245,6 +245,13 @@ export const submitPaymentProof = async (
         paymentRequestId,
         invoiceId: data.invoice_id,
         transferAmount
+      },
+      after: {
+        status: created.rows[0].status,
+        paymentRequestId,
+        transferAmount,
+        transferTime: created.rows[0].transfer_time,
+        payerNote: created.rows[0].payer_note
       }
     });
     return created.rows[0];
@@ -304,6 +311,11 @@ export const reviewPaymentProof = async (proofId: string, approve: boolean, mana
           paymentRequestId: proof.payment_request_id,
           invoiceId: proof.invoice_id,
           reason: reason ?? 'Rejected by manager'
+        },
+        before: { status: proof.status, transferAmount: proof.transfer_amount },
+        after: {
+          status: rejected.rows[0].status,
+          rejectionReason: rejected.rows[0].rejection_reason
         }
       });
       return rejected.rows[0];
@@ -369,6 +381,12 @@ export const reviewPaymentProof = async (proofId: string, approve: boolean, mana
         paymentId: payment.rows[0].id,
         paymentRequestId: proof.payment_request_id,
         invoiceId: proof.invoice_id,
+        amount: paymentAmount
+      },
+      before: { status: proof.status, transferAmount: proof.transfer_amount },
+      after: {
+        status: approved.rows[0].status,
+        paymentId: payment.rows[0].id,
         amount: paymentAmount
       }
     });
@@ -466,6 +484,19 @@ export const reversePayment = async (paymentId: string, managerId: string, reaso
         invoiceId: original.invoice_id,
         paymentRequestId: original.payment_request_id,
         amount: toNumber(original.amount),
+        reason
+      },
+      before: {
+        paymentId,
+        entryType: original.entry_type,
+        status: original.status,
+        amount: original.amount
+      },
+      after: {
+        reversalId: reversalRs.rows[0].id,
+        entryType: reversalRs.rows[0].entry_type,
+        status: reversalRs.rows[0].status,
+        amount: reversalRs.rows[0].amount,
         reason
       }
     });

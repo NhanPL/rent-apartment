@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from 'express';
 import { query } from '../../db';
 import { AppError } from '../errors/app-error';
 import { verifyAccessToken } from '../utils/jwt';
+import { setAuditActorRole } from './audit-context';
 
 export type AppRole = 'MANAGER' | 'TENANT';
 
@@ -77,6 +78,7 @@ export const requireAuth = (req: Request, _res: Response, next: NextFunction): v
     }
 
     req.auth = { userId: payload.userId, role: payload.role };
+    setAuditActorRole(payload.role);
     next();
   };
 
