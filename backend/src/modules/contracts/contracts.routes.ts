@@ -182,7 +182,8 @@ const assertTenantVisibleToManager = async (client: Queryable, tenantId: string,
              AND b_scope.manager_user_id=$2
          )
        )
-     LIMIT 1`,
+     LIMIT 1
+     FOR UPDATE OF tenant`,
     [tenantId, managerId]
   );
   if (!rs.rows[0]) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');

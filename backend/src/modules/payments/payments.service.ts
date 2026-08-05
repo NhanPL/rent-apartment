@@ -88,7 +88,8 @@ export const createPaymentRequest = async (invoiceId: string, managerId: string,
        JOIN contract c ON c.id=i.contract_id
        JOIN room r ON r.id=c.room_id
        JOIN building b ON b.id=r.building_id
-       WHERE i.id=$1 AND b.manager_user_id=$2`,
+       WHERE i.id=$1 AND b.manager_user_id=$2
+       FOR UPDATE OF i`,
       [invoiceId, managerId]
     );
     const inv = invRs.rows[0];
@@ -101,12 +102,12 @@ export const createPaymentRequest = async (invoiceId: string, managerId: string,
     const remainingAmount = toNumber(inv.total) - paidAmount;
     if (remainingAmount <= 0) throw new AppError(409, 'Invoice is already fully paid');
 
-    const existing = await client.query(
-      `SELECT id FROM payment_request
+    const existing = await client.query<DbRow>(
+      `SELECT * FROM payment_request
        WHERE invoice_id=$1 AND status NOT IN ('CANCELLED', 'EXPIRED')`,
       [invoiceId]
     );
-    if (existing.rows[0]) throw new AppError(409, 'Payment request already exists for this invoice');
+    if (existing.rows[0]) return existing.rows[0];
 
     const amount = Number(payload.amount ?? remainingAmount);
     if (amount <= 0) throw new AppError(400, 'Amount must be greater than 0');
@@ -624,7 +625,8 @@ export const updatePaymentRequestStatus = async (
        JOIN contract c ON c.id=i.contract_id
        JOIN room r ON r.id=c.room_id
        JOIN building b ON b.id=r.building_id
-       WHERE pr.id=$1 AND b.manager_user_id=$2`,
+       WHERE pr.id=$1 AND b.manager_user_id=$2
+       FOR UPDATE OF pr`,
       [paymentRequestId, managerId]
     );
     const request = reqRs.rows[0];

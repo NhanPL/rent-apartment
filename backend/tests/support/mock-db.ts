@@ -67,6 +67,7 @@ class FakeDb {
   tenantUpdateFailure: Error | null = null;
 
   private sequence = 9000;
+  private transactionTail: Promise<void> = Promise.resolve();
 
   readonly client = {
     query: <T extends Row = Row>(text: string, params?: unknown[]) => this.query<T>(text, params)
@@ -78,6 +79,7 @@ class FakeDb {
 
   reset() {
     this.sequence = 9000;
+    this.transactionTail = Promise.resolve();
 
     this.users = [
       { id: ids.managerAUser, role: 'MANAGER', email: 'manager@example.com', username: 'manager', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null },
@@ -1238,6 +1240,11 @@ class FakeDb {
       return result<T>(reading ? [reading as T] : []);
     }
 
+    if (sql.startsWith('select * from utility_reading where id=$1 and room_id=$2')) {
+      const reading = this.utilityReadings.find((item) => item.id === params[0] && item.room_id === params[1]);
+      return result<T>(reading ? [reading as T] : []);
+    }
+
     if (sql.startsWith('select * from utility_rate where building_id=$1')) {
       const rate = this.utilityRates
         .filter((item) => item.building_id === params[0] && item.effective_from <= params[1])
@@ -1407,6 +1414,11 @@ class FakeDb {
     if (sql.startsWith('select id from payment_request')) {
       const request = this.paymentRequests.find((item) => item.invoice_id === params[0] && !['CANCELLED', 'EXPIRED'].includes(item.status));
       return result<T>(request ? [{ id: request.id } as T] : []);
+    }
+
+    if (sql.startsWith('select * from payment_request') && sql.includes('where invoice_id=$1')) {
+      const request = this.paymentRequests.find((item) => item.invoice_id === params[0] && !['CANCELLED', 'EXPIRED'].includes(item.status));
+      return result<T>(request ? [request as T] : []);
     }
 
     if (sql.startsWith('insert into payment_request(')) {
@@ -1605,7 +1617,17 @@ class FakeDb {
   }
 
   async withTransaction<T>(fn: (client: typeof this.client) => Promise<T>): Promise<T> {
-    return fn(this.client);
+    let release!: () => void;
+    const previous = this.transactionTail;
+    this.transactionTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await fn(this.client);
+    } finally {
+      release();
+    }
   }
 
   private tenantRow(id: string, userId: string | null, managerUserId: string, fullName: string, identityNumber: string, email: string | null, phone: string) {
