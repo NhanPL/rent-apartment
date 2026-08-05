@@ -104,6 +104,55 @@ CREATE TRIGGER trg_app_user_updated_at
 BEFORE UPDATE ON app_user
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+CREATE TABLE IF NOT EXISTS audit_log (
+  id                uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  actor_user_id     uuid,
+  actor_role        varchar(20) NOT NULL DEFAULT 'SYSTEM',
+  manager_user_id   uuid,
+  action            varchar(80) NOT NULL,
+  entity_type       varchar(50) NOT NULL,
+  entity_id         uuid,
+  request_id        varchar(100),
+  client_ip_hash    char(64),
+  user_agent        varchar(300),
+  metadata          jsonb NOT NULL DEFAULT '{}'::jsonb,
+  before_snapshot   jsonb,
+  after_snapshot    jsonb,
+  created_at        timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT ck_audit_log_actor_role CHECK (
+    actor_role IN ('MANAGER','TENANT','SYSTEM','ANONYMOUS')
+  ),
+  CONSTRAINT ck_audit_log_snapshots CHECK (
+    (before_snapshot IS NULL OR jsonb_typeof(before_snapshot)='object')
+    AND (after_snapshot IS NULL OR jsonb_typeof(after_snapshot)='object')
+    AND jsonb_typeof(metadata)='object'
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_entity
+  ON audit_log(entity_type, entity_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_actor
+  ON audit_log(actor_user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_manager_created
+  ON audit_log(manager_user_id, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_action_created
+  ON audit_log(action, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_request
+  ON audit_log(request_id) WHERE request_id IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION protect_audit_log()
+RETURNS TRIGGER AS $$
+BEGIN
+  RAISE EXCEPTION 'Audit log entries are immutable' USING ERRCODE='55000';
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_audit_log_immutable ON audit_log;
+CREATE TRIGGER trg_audit_log_immutable
+BEFORE UPDATE OR DELETE ON audit_log
+FOR EACH ROW EXECUTE FUNCTION protect_audit_log();
+
 CREATE TABLE IF NOT EXISTS manager_profile (
   user_id          uuid PRIMARY KEY REFERENCES app_user(id) ON DELETE CASCADE,
   full_name        text NOT NULL,

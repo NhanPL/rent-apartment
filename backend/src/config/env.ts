@@ -158,6 +158,7 @@ const envSchema = z.object({
   UPLOAD_MAX_PAYMENT_PROOF_MB: z.coerce.number().int().min(1).max(20).default(5),
   UPLOAD_MAX_CONTRACT_DOCUMENT_MB: z.coerce.number().int().min(1).max(50).default(15),
   DOCUMENT_ACCESS_SECRET: optionalString,
+  AUDIT_IP_HASH_SECRET: optionalString,
   DOCUMENT_DELIVERY_BASE_URL: z.union([z.string().trim().url(), z.literal('')]).optional().default(''),
   DOCUMENT_ACCESS_TTL_SECONDS: z.coerce.number().int().min(60).max(900).default(300),
   DOCUMENT_JOB_INTERVAL_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
@@ -221,5 +222,6 @@ export const env = {
   DB_SSL_CA: parsed.data.DB_SSL_CA.replace(/\\n/g, '\n').trim(),
   CORS_ALLOWED_ORIGINS: corsAllowedOrigins,
   TRUST_PROXY_HOPS: trustProxyHops,
-  DOCUMENT_DELIVERY_BASE_URL: documentDeliveryBaseUrl
+  DOCUMENT_DELIVERY_BASE_URL: documentDeliveryBaseUrl,
+  AUDIT_IP_HASH_SECRET: parsed.data.AUDIT_IP_HASH_SECRET || parsed.data.JWT_ACCESS_SECRET
 };

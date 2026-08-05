@@ -529,14 +529,31 @@ class FakeDb {
       return result<T>([]);
     }
 
+    if (sql.startsWith("select app_user.role::text as actor_role") && sql.includes('left join tenant')) {
+      const actor = this.users.find((user) => user.id === params[0]);
+      if (!actor) return result<T>([]);
+      const tenant = this.tenants.find((item) => item.user_id === actor.id);
+      return result<T>([{
+        actor_role: actor.role,
+        manager_user_id: actor.role === 'MANAGER' ? actor.id : tenant?.manager_user_id ?? null
+      } as T]);
+    }
+
     if (sql.startsWith('insert into audit_log(')) {
       this.auditLogs.push({
         id: this.newId(),
         actor_user_id: params[0],
-        action: params[1],
-        entity_type: params[2],
-        entity_id: params[3],
-        metadata: JSON.parse(String(params[4] ?? '{}')),
+        actor_role: params[1],
+        manager_user_id: params[2],
+        action: params[3],
+        entity_type: params[4],
+        entity_id: params[5],
+        request_id: params[6],
+        client_ip_hash: params[7],
+        user_agent: params[8],
+        metadata: JSON.parse(String(params[9] ?? '{}')),
+        before_snapshot: params[10] ? JSON.parse(String(params[10])) : null,
+        after_snapshot: params[11] ? JSON.parse(String(params[11])) : null,
         created_at: new Date().toISOString()
       });
       return result<T>([]);
@@ -769,6 +786,19 @@ class FakeDb {
         user_id: tenant.user_id,
         account_email: user?.email ?? null,
         account_status: user?.account_status ?? null
+      } as T] : []);
+    }
+
+    if (sql.startsWith('select tenant.id, tenant.user_id, app_user.account_status')) {
+      const tenant = this.tenants.find((item) => (
+        item.id === params[0] && item.manager_user_id === params[1] && item.status !== params[2]
+      ));
+      const user = tenant?.user_id ? this.users.find((item) => item.id === tenant.user_id) : null;
+      return result<T>(tenant ? [{
+        id: tenant.id,
+        user_id: tenant.user_id,
+        account_status: user?.account_status ?? null,
+        account_is_active: user?.is_active ?? null
       } as T] : []);
     }
 
@@ -1103,7 +1133,7 @@ class FakeDb {
         reading.approved_by_user_id = params[1];
         reading.verified_by_user_id = params[1];
       }
-      return result<T>([]);
+      return result<T>(reading ? [reading as T] : []);
     }
 
     if (sql.startsWith("update utility_reading set status='rejected'")) {
@@ -1113,7 +1143,7 @@ class FakeDb {
         reading.rejected_by_user_id = params[1];
         reading.rejection_reason = params[2];
       }
-      return result<T>([]);
+      return result<T>(reading ? [reading as T] : []);
     }
 
     if (sql.startsWith('select t.* from contract_tenant ct join tenant t')) {
@@ -1294,7 +1324,7 @@ class FakeDb {
         invoice.approved_by_user_id = params[1];
         invoice.approved_at = now;
       }
-      return result<T>([]);
+      return result<T>(invoice ? [invoice as T] : []);
     }
 
     if (sql.startsWith('select * from invoice_item where invoice_id=$1')) {
@@ -1324,7 +1354,7 @@ class FakeDb {
         invoice.voided_by_user_id = params[2];
         invoice.voided_at = now;
       }
-      return result<T>([]);
+      return result<T>(invoice ? [invoice as T] : []);
     }
 
     if (sql.startsWith('delete from payment_request where invoice_id=$1')) {

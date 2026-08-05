@@ -17,6 +17,7 @@ import {
   clearIdentifierLoginFailures,
   recordLoginFailure
 } from './login-throttle.service';
+import { writeAuditLog } from '../../shared/services/audit-log.service';
 
 interface UserRow {
   id: string;
@@ -199,5 +200,18 @@ export const changePassword = async (userId: string, currentPassword: string, ne
       [passwordHash, userId]
     );
     await revokeUserSessions(client, userId, 'PASSWORD_CHANGED');
+    await writeAuditLog(client, {
+      actorUserId: userId,
+      action: 'USER_PASSWORD_CHANGED',
+      entityType: 'APP_USER',
+      entityId: userId,
+      before: { sessionVersion: user.session_version, passwordConfigured: true },
+      after: {
+        sessionVersion: user.session_version + 1,
+        passwordConfigured: true,
+        sessionsRevoked: true
+      },
+      metadata: { method: 'CURRENT_PASSWORD' }
+    });
   });
 };

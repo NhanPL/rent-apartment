@@ -6,6 +6,7 @@ import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
 import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 import { businessStageSql, getContractBusinessStage } from '../contracts/business-stage';
+import { writeAuditLog } from '../../shared/services/audit-log.service';
 
 const router = Router();
 registerUuidParams(router, ['contractId']);
@@ -275,6 +276,24 @@ router.post('/reserve', requireRole('MANAGER'), asyncHandler(async (req, res) =>
       [contract.rows[0].id, tenantId, body.start_date]
     );
 
+    await writeAuditLog(client, {
+      actorUserId: req.auth!.userId,
+      action: 'CONTRACT_CREATED',
+      entityType: 'CONTRACT',
+      entityId: contract.rows[0].id,
+      after: {
+        roomId: contract.rows[0].room_id,
+        contractCode: contract.rows[0].contract_code,
+        status: contract.rows[0].status,
+        startDate: contract.rows[0].start_date,
+        endDate: contract.rows[0].end_date,
+        rentPrice: contract.rows[0].rent_price,
+        depositAmount: contract.rows[0].deposit_amount,
+        billingDay: contract.rows[0].billing_day
+      },
+      metadata: { source: 'RENTAL_REGISTRATION', tenantId }
+    });
+
     return { ...contract.rows[0], tenant_id: tenantId, business_stage: getContractBusinessStage(contract.rows[0]) };
   });
 
@@ -360,6 +379,16 @@ router.post('/:contractId/handover', requireRole('MANAGER'), asyncHandler(async 
       [contract.id, body.move_in_date, body.note ? `Handover: ${body.note}` : null]
     );
 
+    await writeAuditLog(client, {
+      actorUserId: req.auth!.userId,
+      action: 'CONTRACT_ACTIVATED',
+      entityType: 'CONTRACT',
+      entityId: contract.id,
+      before: { status: contract.status, moveInDate: contract.move_in_date },
+      after: { status: updated.rows[0].status, moveInDate: updated.rows[0].move_in_date },
+      metadata: { source: 'RENTAL_HANDOVER' }
+    });
+
     return { ...updated.rows[0], business_stage: 'ACTIVE' };
   });
 
@@ -390,6 +419,16 @@ router.post('/:contractId/cancel', requireRole('MANAGER'), asyncHandler(async (r
        WHERE contract_id=$2 AND left_at IS NULL`,
       [closeDate, contract.id]
     );
+
+    await writeAuditLog(client, {
+      actorUserId: req.auth!.userId,
+      action: 'CONTRACT_CANCELLED',
+      entityType: 'CONTRACT',
+      entityId: contract.id,
+      before: { status: contract.status, moveOutDate: contract.move_out_date },
+      after: { status: updated.rows[0].status, moveOutDate: updated.rows[0].move_out_date },
+      metadata: { source: 'RENTAL_REGISTRATION', reason: body.reason }
+    });
 
     return { ...updated.rows[0], business_stage: 'CANCELLED' };
   });

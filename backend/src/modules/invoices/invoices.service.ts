@@ -4,11 +4,27 @@ import { firstDayOfMonth } from '../../shared/utils/date';
 import { resolveFixedChargesForContract, type ResolvedFixedCharge } from '../fixed-charges/fixed-charges.service';
 import { env } from '../../config/env';
 import { createVietQrPaymentData } from '../payments/vietqr.service';
+import { writeAuditLog } from '../../shared/services/audit-log.service';
 
 type DbRow = Record<string, any>;
 type AuthScope = { userId: string; role: 'MANAGER' | 'TENANT' };
 type InvoiceStatus = 'DRAFT' | 'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'VOID';
 type TxClient = Parameters<Parameters<typeof withTransaction>[0]>[0];
+
+const invoiceAuditSnapshot = (invoice: DbRow): Record<string, unknown> => ({
+  contractId: invoice.contract_id,
+  roomId: invoice.room_id,
+  utilityReadingId: invoice.utility_reading_id,
+  month: invoice.month,
+  status: invoice.status,
+  dueDate: invoice.due_date,
+  subtotal: invoice.subtotal,
+  discount: invoice.discount,
+  total: invoice.total,
+  voidReason: invoice.void_reason,
+  replacesInvoiceId: invoice.replaces_invoice_id,
+  note: invoice.note
+});
 
 export interface InvoiceUpsertPayload {
   contract_id: string;
@@ -340,6 +356,15 @@ const generateInvoiceForContract = async (client: TxClient, contract: DbRow, mon
     ...toFixedChargeInvoiceItems(fixedCharges)
   ]);
 
+  await writeAuditLog(client, {
+    actorUserId: managerId,
+    action: 'INVOICE_CREATED',
+    entityType: 'INVOICE',
+    entityId: invoice.id,
+    after: invoiceAuditSnapshot(invoice),
+    metadata: { source: 'MONTHLY_GENERATION' }
+  });
+
   return { skipped: false, invoice };
 };
 
@@ -395,6 +420,8 @@ export const updateInvoiceStatus = async (
 ) => {
   const updatedId = await withTransaction(async (client) => {
     const invoice = await getScopedInvoiceForManager(client, invoiceId, managerId);
+    let updatedInvoice: DbRow;
+    let paymentRequestCreated = false;
     if (action === 'issue') {
       if (invoice.status !== 'DRAFT') throw new AppError(409, 'Only draft invoices can be issued', 'INVOICE_NOT_DRAFT');
       const existingRequest = await client.query(
@@ -439,8 +466,16 @@ export const updateInvoiceStatus = async (
             managerId
           ]
         );
+        paymentRequestCreated = true;
       }
-      await client.query(`UPDATE invoice SET status='ISSUED', issued_at=now(), approved_by_user_id=$2, approved_at=now() WHERE id=$1`, [invoiceId, managerId]);
+      const issued = await client.query<DbRow>(
+        `UPDATE invoice
+         SET status='ISSUED', issued_at=now(), approved_by_user_id=$2, approved_at=now()
+         WHERE id=$1
+         RETURNING *`,
+        [invoiceId, managerId]
+      );
+      updatedInvoice = issued.rows[0];
       if (invoice.utility_reading_id) {
         await client.query(`UPDATE utility_reading SET status='INVOICED' WHERE id=$1 AND status='APPROVED'`, [invoice.utility_reading_id]);
       }
@@ -457,12 +492,14 @@ export const updateInvoiceStatus = async (
       const reason = (payload as InvoiceVoidPayload | undefined)?.reason.trim();
       if (!reason) throw new AppError(400, 'Void reason is required', 'INVOICE_VOID_REASON_REQUIRED');
 
-      await client.query(
+      const voided = await client.query<DbRow>(
         `UPDATE invoice
          SET status='VOID',void_reason=$2,voided_by_user_id=$3,voided_at=now()
-         WHERE id=$1`,
+         WHERE id=$1
+         RETURNING *`,
         [invoiceId, reason, managerId]
       );
+      updatedInvoice = voided.rows[0];
       await client.query(
         `UPDATE payment_proof proof
          SET status='REJECTED',rejected_by_user_id=$2,rejected_at=now(),
@@ -480,6 +517,17 @@ export const updateInvoiceStatus = async (
         [invoiceId, `Invoice voided: ${reason}`]
       );
     }
+    await writeAuditLog(client, {
+      actorUserId: managerId,
+      action: action === 'issue' ? 'INVOICE_ISSUED' : 'INVOICE_VOIDED',
+      entityType: 'INVOICE',
+      entityId: invoiceId,
+      before: invoiceAuditSnapshot(invoice),
+      after: invoiceAuditSnapshot(updatedInvoice!),
+      metadata: action === 'void'
+        ? { reason: (payload as InvoiceVoidPayload).reason }
+        : { paymentRequestCreated }
+    });
     return invoiceId;
   });
 
@@ -550,6 +598,15 @@ export const createInvoiceFromReading = async (utilityReadingId: string, manager
       ...toFixedChargeInvoiceItems(fixedCharges)
     ]);
 
+    await writeAuditLog(client, {
+      actorUserId: managerId,
+      action: 'INVOICE_CREATED',
+      entityType: 'INVOICE',
+      entityId: invoice.id,
+      after: invoiceAuditSnapshot(invoice),
+      metadata: { source: 'UTILITY_READING' }
+    });
+
     return invoice;
   });
 
@@ -580,10 +637,19 @@ export const addInvoiceAdjustment = async (invoiceId: string, amount: number, re
 
     const subtotal = Number(inv.subtotal) + (amount > 0 ? amount : 0);
     const discount = Number(inv.discount) + (amount < 0 ? Math.abs(amount) : 0);
-    await client.query<DbRow>(
+    const updated = await client.query<DbRow>(
       `UPDATE invoice SET subtotal=$1, discount=$2, total=$3, adjustment_note=$4 WHERE id=$5 RETURNING *`,
       [subtotal, discount, total, reason, invoiceId]
     );
+    await writeAuditLog(client, {
+      actorUserId: userId,
+      action: 'INVOICE_UPDATED',
+      entityType: 'INVOICE',
+      entityId: invoiceId,
+      before: invoiceAuditSnapshot(inv),
+      after: invoiceAuditSnapshot(updated.rows[0]),
+      metadata: { updateType: 'ADJUSTMENT', adjustmentType: type, amount, reason }
+    });
   });
   return getInvoiceDetail(invoiceId, { userId, role: 'MANAGER' });
 };
@@ -607,13 +673,13 @@ export const createReplacementInvoice = async (voidedInvoiceId: string, managerI
       throw new AppError(409, 'A replacement invoice already exists', 'INVOICE_REPLACEMENT_EXISTS');
     }
 
-    const created = await client.query<{ id: string }>(
+    const created = await client.query<DbRow>(
       `INSERT INTO invoice(
          contract_id,room_id,utility_reading_id,month,status,issued_at,due_date,note,
          subtotal,discount,total,approved_by_user_id,approved_at,replaces_invoice_id
        )
        VALUES($1,$2,$3,$4,'DRAFT',NULL,$5,$6,$7,$8,$9,NULL,NULL,$10)
-       RETURNING id`,
+       RETURNING *`,
       [
         original.contract_id,
         original.room_id,
@@ -640,6 +706,14 @@ export const createReplacementInvoice = async (voidedInvoiceId: string, managerI
        WHERE invoice_id=$2`,
       [newInvoiceId, voidedInvoiceId]
     );
+    await writeAuditLog(client, {
+      actorUserId: managerId,
+      action: 'INVOICE_CREATED',
+      entityType: 'INVOICE',
+      entityId: newInvoiceId,
+      after: invoiceAuditSnapshot(created.rows[0]),
+      metadata: { source: 'VOID_REPLACEMENT', replacedInvoiceId: voidedInvoiceId }
+    });
     return newInvoiceId;
   });
 
@@ -732,6 +806,14 @@ export const createManualInvoice = async (payload: InvoiceUpsertPayload, manager
     );
 
     await replaceInvoiceItems(client, created.rows[0].id, payload, amounts);
+    await writeAuditLog(client, {
+      actorUserId: managerId,
+      action: 'INVOICE_CREATED',
+      entityType: 'INVOICE',
+      entityId: created.rows[0].id,
+      after: invoiceAuditSnapshot(created.rows[0]),
+      metadata: { source: 'MANUAL' }
+    });
     return created.rows[0].id as string;
   });
 
@@ -751,11 +833,12 @@ export const updateManualInvoice = async (invoiceId: string, payload: InvoiceUps
     const reading = await upsertUtilityReadingForInvoice(client, payload, month, managerId);
     const amounts = invoiceItemsSubtotal(payload);
 
-    await client.query(
+    const updated = await client.query<DbRow>(
       `UPDATE invoice
        SET contract_id=$1,room_id=$2,utility_reading_id=$3,month=$4,status='DRAFT',issued_at=NULL,due_date=$5,note=$6,subtotal=$7,discount=$8,total=$9,
            approved_by_user_id=COALESCE(approved_by_user_id, $10), approved_at=COALESCE(approved_at, now())
-       WHERE id=$11`,
+       WHERE id=$11
+       RETURNING *`,
       [
         payload.contract_id,
         payload.room_id,
@@ -772,6 +855,15 @@ export const updateManualInvoice = async (invoiceId: string, payload: InvoiceUps
     );
 
     await replaceInvoiceItems(client, invoiceId, payload, amounts);
+    await writeAuditLog(client, {
+      actorUserId: managerId,
+      action: 'INVOICE_UPDATED',
+      entityType: 'INVOICE',
+      entityId: invoiceId,
+      before: invoiceAuditSnapshot(invoice),
+      after: invoiceAuditSnapshot(updated.rows[0]),
+      metadata: { updateType: 'MANUAL_EDIT' }
+    });
   });
 
   return getInvoiceDetail(invoiceId, { userId: managerId, role: 'MANAGER' });

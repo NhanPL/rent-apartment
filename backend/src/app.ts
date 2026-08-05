@@ -19,6 +19,7 @@ import dashboardRoutes from './modules/dashboard/dashboard.routes';
 import reportsRoutes from './modules/reports/reports.routes';
 import monthlyBillingRoutes from './modules/monthly-billing/monthly-billing.routes';
 import authRoutes from './modules/auth/auth.routes';
+import auditLogsRoutes from './modules/audit-logs/audit-logs.routes';
 import { requireAuth } from './shared/middleware/auth';
 import { errorHandler } from './shared/middleware/error-handler';
 import { env } from './config/env';
@@ -26,6 +27,7 @@ import { corsOptions } from './config/cors';
 import { globalRateLimit } from './config/rate-limit';
 import { securityHeaders } from './config/security';
 import { rejectDirectFileUploads } from './shared/middleware/request-hardening';
+import { auditRequestContext } from './shared/middleware/audit-context';
 
 export const app = express();
 const frontendDistPath = path.resolve(__dirname, '../../front-end/dist');
@@ -36,6 +38,7 @@ if (env.TRUST_PROXY_HOPS > 0) {
 }
 
 app.use(securityHeaders);
+app.use(auditRequestContext);
 app.use(cors(corsOptions));
 app.use('/api', globalRateLimit);
 app.use('/api', rejectDirectFileUploads);
@@ -65,6 +68,7 @@ app.use('/api/uploads', uploadsRoutes);
 app.use('/api/documents', documentAssetsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/reports', reportsRoutes);
+app.use('/api/audit-logs', auditLogsRoutes);
 
 if (fs.existsSync(frontendIndexPath)) {
   app.use(express.static(frontendDistPath, { index: false }));

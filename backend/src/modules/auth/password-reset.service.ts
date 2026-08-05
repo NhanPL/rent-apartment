@@ -260,9 +260,12 @@ export const confirmPasswordReset = async (token: string, newPassword: string): 
 
     await writeAuditLog(client, {
       actorUserId: resetToken.user_id,
-      action: 'PASSWORD_RESET_COMPLETED',
+      action: 'USER_PASSWORD_CHANGED',
       entityType: 'APP_USER',
-      entityId: resetToken.user_id
+      entityId: resetToken.user_id,
+      before: { passwordConfigured: true },
+      after: { passwordConfigured: true, sessionsRevoked: true },
+      metadata: { method: 'PASSWORD_RESET' }
     });
 
     return {

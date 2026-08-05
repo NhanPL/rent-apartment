@@ -24,8 +24,9 @@ const TenantRoomPage = lazy(() => import('../pages/tenant-room/TenantRoomPage').
 const UtilitiesPage = lazy(() => import('../pages/utilities/UtilitiesPage').then((module) => ({ default: module.UtilitiesPage })))
 const PaymentsPage = lazy(() => import('../pages/payments/PaymentsPage').then((module) => ({ default: module.PaymentsPage })))
 const ReportsPage = lazy(() => import('../pages/reports/ReportsPage').then((module) => ({ default: module.ReportsPage })))
+const AuditLogsPage = lazy(() => import('../pages/audit-logs/AuditLogsPage').then((module) => ({ default: module.AuditLogsPage })))
 
-const adminPaths = new Set(['/dashboard', '/buildings', '/rental-registration', '/contracts', '/utilities', '/fixed-charges', '/tenants', '/invoices', '/monthly-billing', '/payments', '/reports'])
+const adminPaths = new Set(['/dashboard', '/buildings', '/rental-registration', '/contracts', '/utilities', '/fixed-charges', '/tenants', '/invoices', '/monthly-billing', '/payments', '/reports', '/audit-logs'])
 
 function RouteFallback() {
   return (
@@ -149,6 +150,7 @@ export function AppRoutes() {
     if (protectedPath === '/monthly-billing') return <MonthlyBillingPage />
     if (protectedPath === '/payments') return <PaymentsPage />
     if (protectedPath === '/reports') return <ReportsPage />
+    if (protectedPath === '/audit-logs') return <AuditLogsPage />
     if (protectedPath === '/my-room') return <TenantRoomPage />
     return null
   }

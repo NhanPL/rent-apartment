@@ -33,6 +33,9 @@ export const API_ROUTES = {
     identityDocuments: (id: string) => `/tenants/${id}/identity-documents`,
     resendActivation: (id: string) => `/tenants/${id}/resend-activation`,
   },
+  auditLogs: {
+    list: '/audit-logs',
+  },
   contracts: {
     list: '/contracts',
     detail: (id: string) => `/contracts/${id}`,

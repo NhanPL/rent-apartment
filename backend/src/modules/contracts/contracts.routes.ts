@@ -19,12 +19,27 @@ import { presentDocumentAsset } from '../documents/document-assets.service';
 import { assertRoomCanHostActiveContract, CURRENT_CONTRACT_STATUS, getContractRoomForManager } from './contracts.rules';
 import { assertTenantBelongsToManager } from '../tenants/tenants.repository';
 import { businessStageSql, getContractBusinessStage } from './business-stage';
+import { writeAuditLog } from '../../shared/services/audit-log.service';
 
 const router = Router();
 registerUuidParams(router, ['id', 'documentId', 'tenantId']);
 type DbRow = Record<string, any>;
 type TxClient = Parameters<Parameters<typeof withTransaction>[0]>[0];
 type Queryable = Pick<TxClient, 'query'>;
+
+const contractAuditSnapshot = (contract: DbRow): Record<string, unknown> => ({
+  roomId: contract.room_id,
+  contractCode: contract.contract_code,
+  status: contract.status,
+  startDate: contract.start_date,
+  endDate: contract.end_date,
+  moveInDate: contract.move_in_date,
+  moveOutDate: contract.move_out_date,
+  rentPrice: contract.rent_price,
+  depositAmount: contract.deposit_amount,
+  billingDay: contract.billing_day,
+  note: contract.note
+});
 
 const contractStatusSchema = z.enum(['DRAFT', 'ACTIVE', 'ENDED', 'CANCELLED']);
 const contractBusinessStageSchema = z.enum([
@@ -533,6 +548,14 @@ router.post('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
       await assertActiveParticipantsReady(client, created.rows[0].id, req.auth!.userId);
     }
 
+    await writeAuditLog(client, {
+      actorUserId: req.auth!.userId,
+      action: 'CONTRACT_CREATED',
+      entityType: 'CONTRACT',
+      entityId: created.rows[0].id,
+      after: contractAuditSnapshot(created.rows[0])
+    });
+
     return created.rows[0];
   });
 
@@ -596,6 +619,15 @@ router.patch('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
       await assertActiveParticipantsReady(client, req.params.id, req.auth!.userId);
     }
 
+    await writeAuditLog(client, {
+      actorUserId: req.auth!.userId,
+      action: 'CONTRACT_UPDATED',
+      entityType: 'CONTRACT',
+      entityId: req.params.id,
+      before: contractAuditSnapshot(contract),
+      after: contractAuditSnapshot(updated.rows[0])
+    });
+
     return updated.rows[0];
   });
 
@@ -624,6 +656,14 @@ router.post('/:id/activate', requireRole('MANAGER'), asyncHandler(async (req, re
        RETURNING *`,
       [req.params.id]
     );
+    await writeAuditLog(client, {
+      actorUserId: req.auth!.userId,
+      action: 'CONTRACT_ACTIVATED',
+      entityType: 'CONTRACT',
+      entityId: req.params.id,
+      before: contractAuditSnapshot(contract),
+      after: contractAuditSnapshot(updated.rows[0])
+    });
     return updated.rows[0];
   });
 
@@ -651,6 +691,14 @@ router.post('/:id/end', requireRole('MANAGER'), asyncHandler(async (req, res) =>
        WHERE contract_id=$2 AND left_at IS NULL`,
       [endDate, req.params.id]
     );
+    await writeAuditLog(client, {
+      actorUserId: req.auth!.userId,
+      action: 'CONTRACT_ENDED',
+      entityType: 'CONTRACT',
+      entityId: req.params.id,
+      before: contractAuditSnapshot(contract),
+      after: contractAuditSnapshot(updated.rows[0])
+    });
     return updated.rows[0];
   });
 
@@ -678,6 +726,14 @@ router.post('/:id/cancel', requireRole('MANAGER'), asyncHandler(async (req, res)
        WHERE contract_id=$2 AND left_at IS NULL`,
       [closeDate, req.params.id]
     );
+    await writeAuditLog(client, {
+      actorUserId: req.auth!.userId,
+      action: 'CONTRACT_CANCELLED',
+      entityType: 'CONTRACT',
+      entityId: req.params.id,
+      before: contractAuditSnapshot(contract),
+      after: contractAuditSnapshot(updated.rows[0])
+    });
     return updated.rows[0];
   });
 
