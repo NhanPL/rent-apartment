@@ -29,6 +29,8 @@ interface RevenueMonthRow {
   invoice_count: number;
   billed: number | string | null;
   collected: number | string | null;
+  gross_payments: number | string | null;
+  reversals: number | string | null;
   unpaid: number | string | null;
 }
 
@@ -38,6 +40,8 @@ interface RevenueBuildingRow {
   invoice_count: number;
   billed: number | string | null;
   collected: number | string | null;
+  gross_payments: number | string | null;
+  reversals: number | string | null;
   unpaid: number | string | null;
 }
 
@@ -70,7 +74,11 @@ interface OccupancyRow {
 
 const invoiceBalanceCte = `
   paid AS (
-    SELECT p.invoice_id, COALESCE(SUM(p.amount), 0) AS amount
+    SELECT
+      p.invoice_id,
+      COALESCE(SUM(CASE WHEN p.entry_type='REVERSAL' THEN -p.amount ELSE p.amount END), 0) AS amount,
+      COALESCE(SUM(p.amount) FILTER (WHERE p.entry_type='PAYMENT'), 0) AS gross_payments,
+      COALESCE(SUM(p.amount) FILTER (WHERE p.entry_type='REVERSAL'), 0) AS reversals
     FROM payment p
     JOIN scoped_invoices si ON si.id=p.invoice_id
     WHERE p.status='SUCCEEDED'
@@ -80,6 +88,8 @@ const invoiceBalanceCte = `
     SELECT
       si.*,
       LEAST(COALESCE(paid.amount, CASE WHEN si.status='PAID' THEN si.total ELSE 0 END), si.total) AS paid_amount,
+      COALESCE(paid.gross_payments, CASE WHEN si.status='PAID' THEN si.total ELSE 0 END) AS gross_payments,
+      COALESCE(paid.reversals, 0) AS reversals,
       CASE
         WHEN si.status='VOID' THEN 0
         ELSE GREATEST(si.total - LEAST(COALESCE(paid.amount, CASE WHEN si.status='PAID' THEN si.total ELSE 0 END), si.total), 0)
@@ -212,6 +222,8 @@ const mapRevenueMonth = (row: RevenueMonthRow) => ({
   invoiceCount: row.invoice_count,
   billed: toNumber(row.billed),
   collected: toNumber(row.collected),
+  grossPayments: toNumber(row.gross_payments),
+  reversals: toNumber(row.reversals),
   unpaid: toNumber(row.unpaid)
 });
 
@@ -221,6 +233,8 @@ const mapRevenueBuilding = (row: RevenueBuildingRow) => ({
   invoiceCount: row.invoice_count,
   billed: toNumber(row.billed),
   collected: toNumber(row.collected),
+  grossPayments: toNumber(row.gross_payments),
+  reversals: toNumber(row.reversals),
   unpaid: toNumber(row.unpaid)
 });
 
@@ -270,6 +284,8 @@ const getRevenueByMonth = async (managerId: string, filters: NormalizedReportsFi
        COUNT(ib.id) FILTER (WHERE ib.status <> 'VOID')::int AS invoice_count,
        COALESCE(SUM(ib.total) FILTER (WHERE ib.status <> 'VOID'), 0)::float AS billed,
        COALESCE(SUM(ib.paid_amount), 0)::float AS collected,
+       COALESCE(SUM(ib.gross_payments), 0)::float AS gross_payments,
+       COALESCE(SUM(ib.reversals), 0)::float AS reversals,
        COALESCE(SUM(ib.outstanding_amount) FILTER (WHERE ib.status IN ('ISSUED', 'PARTIALLY_PAID')), 0)::float AS unpaid
      FROM month_series ms
      LEFT JOIN invoice_balances ib ON ib.month=ms.month_start
@@ -298,6 +314,8 @@ const getRevenueByBuilding = async (managerId: string, filters: NormalizedReport
        COUNT(ib.id) FILTER (WHERE ib.status <> 'VOID')::int AS invoice_count,
        COALESCE(SUM(ib.total) FILTER (WHERE ib.status <> 'VOID'), 0)::float AS billed,
        COALESCE(SUM(ib.paid_amount), 0)::float AS collected,
+       COALESCE(SUM(ib.gross_payments), 0)::float AS gross_payments,
+       COALESCE(SUM(ib.reversals), 0)::float AS reversals,
        COALESCE(SUM(ib.outstanding_amount) FILTER (WHERE ib.status IN ('ISSUED', 'PARTIALLY_PAID')), 0)::float AS unpaid
      FROM scoped_buildings sb
      LEFT JOIN invoice_balances ib ON ib.building_id=sb.id
@@ -383,10 +401,12 @@ export const getReportsData = async (managerId: string, filters: ReportsFilters)
     (acc, item) => ({
       billed: acc.billed + item.billed,
       collected: acc.collected + item.collected,
+      grossPayments: acc.grossPayments + item.grossPayments,
+      reversals: acc.reversals + item.reversals,
       unpaid: acc.unpaid + item.unpaid,
       invoiceCount: acc.invoiceCount + item.invoiceCount
     }),
-    { billed: 0, collected: 0, unpaid: 0, invoiceCount: 0 }
+    { billed: 0, collected: 0, grossPayments: 0, reversals: 0, unpaid: 0, invoiceCount: 0 }
   );
 
   const debtSummary = debtItems.reduce(
@@ -434,8 +454,16 @@ export const getReportsCsv = async (managerId: string, filters: ReportsFilters, 
     return {
       filename: sanitizeCsvFilename(`reports-revenue-${data.filters.monthFrom.slice(0, 7)}-${data.filters.monthTo.slice(0, 7)}.csv`),
       content: createCsv(
-        ['Month', 'Invoice count', 'Billed', 'Collected', 'Unpaid'],
-        data.revenueByMonth.map((item) => [item.month, item.invoiceCount, item.billed, item.collected, item.unpaid])
+        ['Month', 'Invoice count', 'Billed', 'Gross payments', 'Reversals', 'Net payments', 'Unpaid'],
+        data.revenueByMonth.map((item) => [
+          item.month,
+          item.invoiceCount,
+          item.billed,
+          item.grossPayments,
+          item.reversals,
+          item.collected,
+          item.unpaid
+        ])
       )
     };
   }

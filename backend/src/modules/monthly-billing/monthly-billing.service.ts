@@ -73,7 +73,7 @@ export const listMonthlyBilling = async (managerId: string, buildingId: string |
        ORDER BY created_at DESC LIMIT 1
      ) pr ON true
      LEFT JOIN LATERAL (
-       SELECT COALESCE(SUM(amount), 0) AS amount FROM payment
+       SELECT COALESCE(SUM(CASE WHEN entry_type='REVERSAL' THEN -amount ELSE amount END), 0) AS amount FROM payment
        WHERE invoice_id=i.id AND status='SUCCEEDED'
      ) paid ON true
      WHERE c.status='ACTIVE' AND b.manager_user_id=$1 ${buildingCondition}

@@ -1694,6 +1694,7 @@ describe('backend API smoke tests', () => {
       .post(`/api/payments/requests/${requestResponse.body.id}/proofs`)
       .set(auth(tenantSession.accessToken))
       .send({
+        file_name: 'proof-rejected.png',
         file_url: 'https://example.com/proof-rejected.png',
         mime_type: 'image/png',
         file_size: 1024,
@@ -1717,6 +1718,7 @@ describe('backend API smoke tests', () => {
       .post(`/api/payments/requests/${requestResponse.body.id}/proofs`)
       .set(auth(tenantSession.accessToken))
       .send({
+        file_name: 'proof-approved.png',
         file_url: 'https://example.com/proof-approved.png',
         mime_type: 'image/png',
         file_size: 2048,
@@ -1724,10 +1726,23 @@ describe('backend API smoke tests', () => {
       })
       .expect(201);
 
+    const repeatedSubmission = await request(app)
+      .post(`/api/payments/requests/${requestResponse.body.id}/proofs`)
+      .set(auth(tenantSession.accessToken))
+      .send({
+        file_name: 'proof-approved.png',
+        file_url: 'https://example.com/proof-approved.png',
+        mime_type: 'image/png',
+        file_size: 2048,
+        transfer_amount: 1200
+      })
+      .expect(201);
+    expect(repeatedSubmission.body.id).toBe(approvedProof.body.id);
+
     const approved = await request(app)
       .post(`/api/payments/proofs/${approvedProof.body.id}/approve`)
-      .set(auth(managerSession.accessToken))
-      .expect(200);
+      .set(auth(managerSession.accessToken));
+    expect(approved.status, JSON.stringify(approved.body)).toBe(200);
 
     expect(approved.body).toMatchObject({
       paid_amount: 1200,
@@ -1744,5 +1759,95 @@ describe('backend API smoke tests', () => {
     expect(fakeDb.invoices.find((invoice) => invoice.id === ids.invoiceIssued)).toMatchObject({
       status: 'PAID'
     });
+
+    const repeatedApproval = await request(app)
+      .post(`/api/payments/proofs/${approvedProof.body.id}/approve`)
+      .set(auth(managerSession.accessToken))
+      .expect(200);
+    expect(repeatedApproval.body).toMatchObject({ idempotent: true, paid_amount: 1200 });
+
+    const originalPayment = fakeDb.payments.find((item) => item.payment_proof_id === approvedProof.body.id)!;
+    expect(fakeDb.payments.filter((item) => item.payment_proof_id === approvedProof.body.id)).toHaveLength(1);
+    expect(originalPayment).toMatchObject({
+      entry_type: 'PAYMENT',
+      status: 'SUCCEEDED',
+      amount: 1200,
+      original_payment_id: null
+    });
+
+    const reversed = await request(app)
+      .post(`/api/payments/ledger/${originalPayment.id}/reverse`)
+      .set(auth(managerSession.accessToken))
+      .send({ reason: 'Payment was confirmed against the wrong bank transaction' })
+      .expect(201);
+    expect(reversed.body).toMatchObject({
+      paid_amount: 0,
+      remaining_amount: 1200,
+      invoice_status: 'ISSUED',
+      idempotent: false,
+      reversal: {
+        entry_type: 'REVERSAL',
+        original_payment_id: originalPayment.id,
+        amount: 1200
+      }
+    });
+    expect(fakeDb.payments.find((item) => item.id === originalPayment.id)).toEqual(originalPayment);
+    expect(fakeDb.paymentRequests.find((item) => item.id === requestResponse.body.id)).toMatchObject({ status: 'WAITING_TRANSFER' });
+
+    const repeatedReversal = await request(app)
+      .post(`/api/payments/ledger/${originalPayment.id}/reverse`)
+      .set(auth(managerSession.accessToken))
+      .send({ reason: 'Payment was confirmed against the wrong bank transaction' })
+      .expect(201);
+    expect(repeatedReversal.body).toMatchObject({ idempotent: true, paid_amount: 0 });
+    expect(fakeDb.payments.filter((item) => item.original_payment_id === originalPayment.id)).toHaveLength(1);
+
+    expect(fakeDb.auditLogs.filter((item) => item.action === 'PAYMENT_PROOF_SUBMITTED')).toHaveLength(2);
+    expect(fakeDb.auditLogs.filter((item) => item.action === 'PAYMENT_PROOF_REJECTED')).toHaveLength(1);
+    expect(fakeDb.auditLogs.filter((item) => item.action === 'PAYMENT_PROOF_APPROVED')).toHaveLength(1);
+    expect(fakeDb.auditLogs.filter((item) => item.action === 'PAYMENT_REVERSED')).toHaveLength(1);
+  });
+
+  it('rejects an approval that would exceed the current invoice balance', async () => {
+    const managerSession = await login('manager@example.com');
+    const tenantSession = await login('tenant@example.com');
+    const requestResponse = await request(app)
+      .post('/api/payments/requests')
+      .set(auth(managerSession.accessToken))
+      .send({ invoice_id: ids.invoiceIssued, ...issueBankPayload })
+      .expect(201);
+
+    const proof = await request(app)
+      .post(`/api/payments/requests/${requestResponse.body.id}/proofs`)
+      .set(auth(tenantSession.accessToken))
+      .send({
+        file_name: 'proof-over-limit.png',
+        file_url: 'https://example.com/proof-over-limit.png',
+        mime_type: 'image/png',
+        file_size: 1024,
+        transfer_amount: 800
+      })
+      .expect(201);
+
+    fakeDb.payments.push({
+      id: '00000000-0000-4000-8000-000000009201',
+      invoice_id: ids.invoiceIssued,
+      payment_request_id: requestResponse.body.id,
+      payment_proof_id: null,
+      entry_type: 'PAYMENT',
+      original_payment_id: null,
+      method: 'BANK_TRANSFER',
+      status: 'SUCCEEDED',
+      amount: 600,
+      paid_at: '2026-06-14T00:00:00.000Z'
+    });
+
+    const response = await request(app)
+      .post(`/api/payments/proofs/${proof.body.id}/approve`)
+      .set(auth(managerSession.accessToken));
+    expect(response.status, JSON.stringify(response.body)).toBe(409);
+    expect(response.body).toMatchObject({ code: 'PAYMENT_EXCEEDS_INVOICE_BALANCE' });
+    expect(fakeDb.paymentProofs.find((item) => item.id === proof.body.id)).toMatchObject({ status: 'PENDING' });
+    expect(fakeDb.payments.some((item) => item.payment_proof_id === proof.body.id)).toBe(false);
   });
 });

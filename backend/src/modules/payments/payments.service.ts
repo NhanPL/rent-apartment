@@ -3,6 +3,7 @@ import { env } from '../../config/env';
 import { AppError } from '../../shared/errors/app-error';
 import { createVietQrPaymentData } from './vietqr.service';
 import { getDocumentRetentionUntil, resolveCloudinaryAsset } from '../uploads/uploads.service';
+import { writeAuditLog } from '../../shared/services/audit-log.service';
 
 type DbRow = Record<string, any>;
 type AuthScope = { userId: string; role: 'MANAGER' | 'TENANT' };
@@ -25,6 +26,8 @@ const paymentRequestSummarySelect = `
   i.total::float AS invoice_total,
   i.due_date,
   COALESCE(paid.total_paid, 0)::float AS paid_amount,
+  COALESCE(paid.gross_payments, 0)::float AS gross_payment_amount,
+  COALESCE(paid.reversals, 0)::float AS reversal_amount,
   GREATEST(i.total - COALESCE(paid.total_paid, 0), 0)::float AS remaining_amount,
   b.id AS building_id,
   b.name AS building_name,
@@ -51,7 +54,10 @@ const paymentRequestSummaryJoins = `
     LIMIT 1
   ) tenant_info ON true
   LEFT JOIN LATERAL (
-    SELECT COALESCE(SUM(p.amount), 0) AS total_paid
+    SELECT
+      COALESCE(SUM(CASE WHEN p.entry_type='REVERSAL' THEN -p.amount ELSE p.amount END), 0) AS total_paid,
+      COALESCE(SUM(p.amount) FILTER (WHERE p.entry_type='PAYMENT'), 0) AS gross_payments,
+      COALESCE(SUM(p.amount) FILTER (WHERE p.entry_type='REVERSAL'), 0) AS reversals
     FROM payment p
     WHERE p.invoice_id=i.id AND p.status='SUCCEEDED'
   ) paid ON true
@@ -66,7 +72,7 @@ const paymentRequestSummaryJoins = `
 
 const getInvoicePaidAmount = async (client: any, invoiceId: string) => {
   const rs = await client.query(
-    `SELECT COALESCE(SUM(amount), 0) AS paid_amount
+    `SELECT COALESCE(SUM(CASE WHEN entry_type='REVERSAL' THEN -amount ELSE amount END), 0) AS paid_amount
      FROM payment
      WHERE invoice_id=$1 AND status='SUCCEEDED'`,
     [invoiceId]
@@ -142,7 +148,12 @@ export const createPaymentRequest = async (invoiceId: string, managerId: string,
     return pr.rows[0];
   });
 
-export const submitPaymentProof = async (paymentRequestId: string, payload: any, tenantUserId: string) =>
+export const submitPaymentProof = async (
+  paymentRequestId: string,
+  payload: any,
+  tenantUserId: string,
+  idempotencyKey: string
+) =>
   withTransaction(async (client) => {
     const reqRs = await client.query<DbRow>(
       `SELECT pr.*, i.total invoice_total, i.status invoice_status, t.user_id tenant_user_id
@@ -150,11 +161,30 @@ export const submitPaymentProof = async (paymentRequestId: string, payload: any,
        JOIN invoice i ON i.id=pr.invoice_id
        JOIN contract_tenant ct ON ct.contract_id=i.contract_id
        JOIN tenant t ON t.id=ct.tenant_id
-       WHERE pr.id=$1 AND t.user_id=$2`,
+       WHERE pr.id=$1 AND t.user_id=$2
+       FOR UPDATE OF pr, i`,
       [paymentRequestId, tenantUserId]
     );
     const data = reqRs.rows[0];
     if (!data) throw new AppError(404, 'Payment request not found');
+
+    const existingSubmission = await client.query<DbRow>(
+      `SELECT * FROM payment_proof
+       WHERE submitted_by_user_id=$1 AND idempotency_key=$2
+       LIMIT 1`,
+      [tenantUserId, idempotencyKey]
+    );
+    if (existingSubmission.rows[0]) {
+      if (existingSubmission.rows[0].payment_request_id !== paymentRequestId) {
+        throw new AppError(
+          409,
+          'This idempotency key was already used for another payment request',
+          'IDEMPOTENCY_KEY_REUSED'
+        );
+      }
+      return existingSubmission.rows[0];
+    }
+
     if (!['ISSUED', 'PARTIALLY_PAID'].includes(data.invoice_status)) {
       throw new AppError(409, 'This invoice is not accepting payment proofs', 'INVOICE_NOT_PAYABLE');
     }
@@ -180,9 +210,10 @@ export const submitPaymentProof = async (paymentRequestId: string, payload: any,
          payment_request_id,status,file_name,file_url,mime_type,file_size,submitted_by_user_id,
          transfer_amount,transfer_time,payer_note,
          cloudinary_asset_id,cloudinary_public_id,cloudinary_resource_type,
-         cloudinary_version,cloudinary_format,cloudinary_delivery_type,retention_until
+         cloudinary_version,cloudinary_format,cloudinary_delivery_type,retention_until,
+         idempotency_key
        )
-       VALUES($1,'PENDING',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+       VALUES($1,'PENDING',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
        RETURNING *`,
       [
         paymentRequestId,
@@ -200,10 +231,22 @@ export const submitPaymentProof = async (paymentRequestId: string, payload: any,
         asset.version,
         asset.format,
         asset.deliveryType,
-        getDocumentRetentionUntil('PAYMENT_PROOF')
+        getDocumentRetentionUntil('PAYMENT_PROOF'),
+        idempotencyKey
       ]
     );
     await client.query(`UPDATE payment_request SET status='TRANSFER_SUBMITTED' WHERE id=$1`, [paymentRequestId]);
+    await writeAuditLog(client, {
+      actorUserId: tenantUserId,
+      action: 'PAYMENT_PROOF_SUBMITTED',
+      entityType: 'PAYMENT_PROOF',
+      entityId: created.rows[0].id,
+      metadata: {
+        paymentRequestId,
+        invoiceId: data.invoice_id,
+        transferAmount
+      }
+    });
     return created.rows[0];
   });
 
@@ -217,11 +260,33 @@ export const reviewPaymentProof = async (proofId: string, approve: boolean, mana
        JOIN contract c ON c.id=i.contract_id
        JOIN room r ON r.id=c.room_id
        JOIN building b ON b.id=r.building_id
-       WHERE pf.id=$1 AND b.manager_user_id=$2`,
+       WHERE pf.id=$1 AND b.manager_user_id=$2
+       FOR UPDATE OF pf, pr, i`,
       [proofId, managerId]
     );
     const proof = pfRs.rows[0];
     if (!proof) throw new AppError(404, 'Proof not found');
+
+    if (approve && proof.status === 'APPROVED') {
+      const existingPayment = await client.query<DbRow>(
+        `SELECT * FROM payment
+         WHERE payment_proof_id=$1 AND entry_type='PAYMENT'
+         LIMIT 1`,
+        [proofId]
+      );
+      if (!existingPayment.rows[0]) {
+        throw new AppError(409, 'Approved proof has no payment ledger entry', 'PAYMENT_LEDGER_INCONSISTENT');
+      }
+      const paidAmount = await getInvoicePaidAmount(client, proof.invoice_id);
+      return {
+        proof,
+        payment: existingPayment.rows[0],
+        paid_amount: paidAmount,
+        remaining_amount: Math.max(0, toNumber(proof.invoice_total) - paidAmount),
+        invoice_status: proof.invoice_status,
+        idempotent: true
+      };
+    }
     if (proof.status !== 'PENDING') throw new AppError(409, 'Proof already reviewed');
 
     if (!approve) {
@@ -230,11 +295,33 @@ export const reviewPaymentProof = async (proofId: string, approve: boolean, mana
         [proofId, managerId, reason ?? 'Rejected by manager']
       );
       await client.query(`UPDATE payment_request SET status='REJECTED' WHERE id=$1`, [proof.payment_request_id]);
+      await writeAuditLog(client, {
+        actorUserId: managerId,
+        action: 'PAYMENT_PROOF_REJECTED',
+        entityType: 'PAYMENT_PROOF',
+        entityId: proofId,
+        metadata: {
+          paymentRequestId: proof.payment_request_id,
+          invoiceId: proof.invoice_id,
+          reason: reason ?? 'Rejected by manager'
+        }
+      });
       return rejected.rows[0];
     }
 
     if (!['ISSUED', 'PARTIALLY_PAID'].includes(proof.invoice_status)) {
       throw new AppError(409, 'This invoice is not accepting payments', 'INVOICE_NOT_PAYABLE');
+    }
+
+    const paidBeforeApproval = await getInvoicePaidAmount(client, proof.invoice_id);
+    const paymentAmount = toNumber(proof.transfer_amount ?? proof.request_amount);
+    const remainingBeforeApproval = Math.max(0, toNumber(proof.invoice_total) - paidBeforeApproval);
+    if (paymentAmount > remainingBeforeApproval) {
+      throw new AppError(
+        409,
+        'Approving this proof would exceed the invoice balance',
+        'PAYMENT_EXCEEDS_INVOICE_BALANCE'
+      );
     }
 
     const approved = await client.query<DbRow>(
@@ -243,11 +330,21 @@ export const reviewPaymentProof = async (proofId: string, approve: boolean, mana
     );
 
     const payment = await client.query<DbRow>(
-      `INSERT INTO payment(invoice_id,payment_request_id,payment_proof_id,method,status,amount,paid_at,created_by_user_id,note)
-       VALUES($1,$2,$3,'BANK_TRANSFER','SUCCEEDED',$4,now(),$5,$6)
-       ON CONFLICT (payment_proof_id) DO UPDATE SET status='SUCCEEDED',paid_at=now(),amount=EXCLUDED.amount
+      `INSERT INTO payment(
+         invoice_id,payment_request_id,payment_proof_id,entry_type,method,status,amount,
+         paid_at,created_by_user_id,note,idempotency_key
+       )
+       VALUES($1,$2,$3,'PAYMENT','BANK_TRANSFER','SUCCEEDED',$4,now(),$5,$6,$7)
        RETURNING *`,
-      [proof.invoice_id, proof.payment_request_id, proofId, proof.transfer_amount ?? proof.request_amount, managerId, 'Verified from transfer proof']
+      [
+        proof.invoice_id,
+        proof.payment_request_id,
+        proofId,
+        paymentAmount,
+        managerId,
+        'Verified from transfer proof',
+        `approve-proof:${proofId}`
+      ]
     );
 
     const paidAmount = await getInvoicePaidAmount(client, proof.invoice_id);
@@ -263,12 +360,123 @@ export const reviewPaymentProof = async (proofId: string, approve: boolean, mana
     const invoiceStatus = fullyPaid ? 'PAID' : 'PARTIALLY_PAID';
     await client.query(`UPDATE invoice SET status=$2 WHERE id=$1`, [proof.invoice_id, invoiceStatus]);
 
+    await writeAuditLog(client, {
+      actorUserId: managerId,
+      action: 'PAYMENT_PROOF_APPROVED',
+      entityType: 'PAYMENT_PROOF',
+      entityId: proofId,
+      metadata: {
+        paymentId: payment.rows[0].id,
+        paymentRequestId: proof.payment_request_id,
+        invoiceId: proof.invoice_id,
+        amount: paymentAmount
+      }
+    });
+
     return {
       proof: approved.rows[0],
       payment: payment.rows[0],
       paid_amount: paidAmount,
       remaining_amount: Math.max(0, toNumber(proof.invoice_total) - paidAmount),
-      invoice_status: invoiceStatus
+      invoice_status: invoiceStatus,
+      idempotent: false
+    };
+  });
+
+export const reversePayment = async (paymentId: string, managerId: string, reason: string) =>
+  withTransaction(async (client) => {
+    const paymentRs = await client.query<DbRow>(
+      `SELECT p.*, i.total AS invoice_total, i.status AS invoice_status
+       FROM payment p
+       JOIN invoice i ON i.id=p.invoice_id
+       JOIN room r ON r.id=i.room_id
+       JOIN building b ON b.id=r.building_id
+       WHERE p.id=$1 AND b.manager_user_id=$2
+       FOR UPDATE OF p, i`,
+      [paymentId, managerId]
+    );
+    const original = paymentRs.rows[0];
+    if (!original) throw new AppError(404, 'Payment not found', 'PAYMENT_NOT_FOUND');
+    if (original.entry_type !== 'PAYMENT' || original.status !== 'SUCCEEDED') {
+      throw new AppError(409, 'Only an approved payment can be reversed', 'PAYMENT_NOT_REVERSIBLE');
+    }
+
+    const existingRs = await client.query<DbRow>(
+      `SELECT * FROM payment
+       WHERE original_payment_id=$1 AND entry_type='REVERSAL'
+       LIMIT 1`,
+      [paymentId]
+    );
+    if (existingRs.rows[0]) {
+      const paidAmount = await getInvoicePaidAmount(client, original.invoice_id);
+      return {
+        payment: original,
+        reversal: existingRs.rows[0],
+        paid_amount: paidAmount,
+        remaining_amount: Math.max(0, toNumber(original.invoice_total) - paidAmount),
+        invoice_status: original.invoice_status,
+        idempotent: true
+      };
+    }
+
+    const reversalRs = await client.query<DbRow>(
+      `INSERT INTO payment(
+         invoice_id,payment_request_id,payment_proof_id,entry_type,original_payment_id,
+         method,status,amount,paid_at,created_by_user_id,note,reversal_reason,idempotency_key
+       )
+       VALUES($1,$2,NULL,'REVERSAL',$3,$4,'SUCCEEDED',$5,now(),$6,$7,$7,$8)
+       RETURNING *`,
+      [
+        original.invoice_id,
+        original.payment_request_id,
+        paymentId,
+        original.method,
+        original.amount,
+        managerId,
+        reason,
+        `reverse-payment:${paymentId}`
+      ]
+    );
+
+    const paidAmount = await getInvoicePaidAmount(client, original.invoice_id);
+    let invoiceStatus = original.invoice_status;
+    if (invoiceStatus !== 'VOID') {
+      invoiceStatus = paidAmount >= toNumber(original.invoice_total)
+        ? 'PAID'
+        : paidAmount > 0
+          ? 'PARTIALLY_PAID'
+          : 'ISSUED';
+      await client.query(`UPDATE invoice SET status=$2 WHERE id=$1`, [original.invoice_id, invoiceStatus]);
+      if (original.payment_request_id) {
+        await client.query(
+          `UPDATE payment_request SET status='WAITING_TRANSFER'
+           WHERE id=$1 AND status='VERIFIED'`,
+          [original.payment_request_id]
+        );
+      }
+    }
+
+    await writeAuditLog(client, {
+      actorUserId: managerId,
+      action: 'PAYMENT_REVERSED',
+      entityType: 'PAYMENT',
+      entityId: reversalRs.rows[0].id,
+      metadata: {
+        originalPaymentId: paymentId,
+        invoiceId: original.invoice_id,
+        paymentRequestId: original.payment_request_id,
+        amount: toNumber(original.amount),
+        reason
+      }
+    });
+
+    return {
+      payment: original,
+      reversal: reversalRs.rows[0],
+      paid_amount: paidAmount,
+      remaining_amount: Math.max(0, toNumber(original.invoice_total) - paidAmount),
+      invoice_status: invoiceStatus,
+      idempotent: false
     };
   });
 
@@ -294,7 +502,21 @@ export const getPaymentRequestDetail = async (id: string, scope: AuthScope) => {
   const [reqRs, proofs, payment] = await Promise.all([
     requestQuery,
     query('SELECT * FROM payment_proof WHERE payment_request_id=$1 ORDER BY created_at DESC', [id]),
-    query('SELECT * FROM payment WHERE payment_request_id=$1 ORDER BY paid_at DESC NULLS LAST, created_at DESC', [id])
+    query(
+      `SELECT p.*,
+              CASE WHEN p.entry_type='REVERSAL' THEN -p.amount ELSE p.amount END::float AS signed_amount,
+              reversal.id AS reversal_payment_id
+       FROM payment p
+       LEFT JOIN LATERAL (
+         SELECT child.id
+         FROM payment child
+         WHERE child.original_payment_id=p.id AND child.entry_type='REVERSAL'
+         LIMIT 1
+       ) reversal ON true
+       WHERE p.payment_request_id=$1
+       ORDER BY p.created_at DESC`,
+      [id]
+    )
   ]);
   if (!reqRs.rows[0]) throw new AppError(404, 'Payment request not found');
   return { ...reqRs.rows[0], proofs: proofs.rows, payments: payment.rows, payment: payment.rows[0] ?? null };

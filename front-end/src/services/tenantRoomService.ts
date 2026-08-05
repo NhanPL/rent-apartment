@@ -270,10 +270,19 @@ function toInvoiceItem(row: Record<string, unknown>): InvoiceItem {
 }
 
 function toPaymentRecord(row: Record<string, unknown>): PaymentRecord {
-  const payment = row as unknown as PaymentRecord & { amount?: number | string | null }
+  const payment = row as unknown as PaymentRecord & { amount?: number | string | null; signed_amount?: number | string | null }
+  const amount = Number(payment.amount ?? 0)
+  const entryType = payment.entry_type ?? 'PAYMENT'
   return {
     ...payment,
-    amount: Number(payment.amount ?? 0),
+    entry_type: entryType,
+    original_payment_id: payment.original_payment_id ?? null,
+    reversal_payment_id: payment.reversal_payment_id ?? null,
+    reversal_reason: payment.reversal_reason ?? null,
+    amount,
+    signed_amount: payment.signed_amount === null || payment.signed_amount === undefined
+      ? (entryType === 'REVERSAL' ? -amount : amount)
+      : Number(payment.signed_amount),
   }
 }
 

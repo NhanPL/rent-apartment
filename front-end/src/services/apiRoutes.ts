@@ -71,6 +71,7 @@ export const API_ROUTES = {
     submitProof: (id: string) => `/payments/requests/${id}/proofs`,
     approveProof: (id: string) => `/payments/proofs/${id}/approve`,
     rejectProof: (id: string) => `/payments/proofs/${id}/reject`,
+    reversePayment: (id: string) => `/payments/ledger/${id}/reverse`,
   },
   fixedCharges: {
     catalog: '/fixed-charges/catalog',

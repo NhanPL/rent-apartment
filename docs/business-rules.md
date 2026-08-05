@@ -31,3 +31,14 @@
 - A void invoice can be corrected only through an explicit replacement invoice. The replacement is a new `DRAFT`, references the original through `replaces_invoice_id`, and may reuse the original utility reading.
 - A clean draft deletion may return its utility reading to `APPROVED` only when no invoice still references that reading.
 - Dashboard billed totals and invoice counts exclude `VOID` invoices. Debt and outstanding totals exclude `VOID`, while successful payments remain in collected totals for historical reconciliation.
+
+## Immutable payment ledger
+
+- A successful `PAYMENT` entry is immutable. It cannot be updated or deleted through the application or directly in the database.
+- An incorrect successful payment is corrected by appending one full `REVERSAL` entry linked through `original_payment_id`; the original payment remains unchanged.
+- Every ledger amount is stored as a positive value. Net paid is calculated as successful payments minus successful reversals.
+- A proof approval cannot make net paid exceed the invoice total. The proof, payment request, and invoice are locked while approval is processed.
+- Repeated proof submissions and approvals are idempotent and cannot create duplicate proofs or payment entries.
+- Reversing a payment recalculates the invoice balance and reopens its verified payment request when the invoice is still payable. A void invoice remains void.
+- Submit, reject, approve, and reverse operations are recorded in the audit log.
+- Financial reports expose gross payments, reversals, and net payments separately.

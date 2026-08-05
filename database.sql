@@ -49,6 +49,10 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 DO $$ BEGIN
+  CREATE TYPE payment_entry_type AS ENUM ('PAYMENT', 'REVERSAL');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
   CREATE TYPE payment_method AS ENUM ('CASH', 'BANK_TRANSFER', 'E_WALLET', 'CARD', 'VNPAY', 'MOMO', 'OTHER');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
@@ -372,6 +376,7 @@ CREATE TABLE IF NOT EXISTS utility_reading (
   rejection_reason      text,
 
   manager_note          text,
+  idempotency_key       text,
   note                  text,
 
   created_at            timestamptz NOT NULL DEFAULT now(),
@@ -716,6 +721,7 @@ CREATE TABLE IF NOT EXISTS payment_proof (
   transfer_time         timestamptz,
   payer_note            text,
   manager_note          text,
+  idempotency_key       text,
 
   created_at            timestamptz NOT NULL DEFAULT now(),
   updated_at            timestamptz NOT NULL DEFAULT now(),
@@ -731,6 +737,10 @@ ON payment_proof(payment_request_id);
 CREATE INDEX IF NOT EXISTS idx_payment_proof_status
 ON payment_proof(status);
 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_proof_submit_idempotency
+ON payment_proof(submitted_by_user_id, idempotency_key)
+WHERE idempotency_key IS NOT NULL;
+
 DROP TRIGGER IF EXISTS trg_payment_proof_updated_at ON payment_proof;
 CREATE TRIGGER trg_payment_proof_updated_at
 BEFORE UPDATE ON payment_proof
@@ -741,6 +751,8 @@ CREATE TABLE IF NOT EXISTS payment (
   invoice_id          uuid NOT NULL REFERENCES invoice(id) ON DELETE RESTRICT,
   payment_request_id  uuid REFERENCES payment_request(id) ON DELETE SET NULL,
   payment_proof_id    uuid UNIQUE REFERENCES payment_proof(id) ON DELETE SET NULL,
+  entry_type          payment_entry_type NOT NULL DEFAULT 'PAYMENT',
+  original_payment_id uuid REFERENCES payment(id) ON DELETE RESTRICT,
 
   method              payment_method NOT NULL DEFAULT 'CASH',
   status              payment_status NOT NULL DEFAULT 'PENDING',
@@ -749,24 +761,80 @@ CREATE TABLE IF NOT EXISTS payment (
   paid_at             timestamptz,
   reference_code      varchar(100),
   note                text,
+  reversal_reason     text,
+  idempotency_key     text,
 
   created_by_user_id  uuid REFERENCES app_user(id) ON DELETE SET NULL,
 
   created_at          timestamptz NOT NULL DEFAULT now(),
   updated_at          timestamptz NOT NULL DEFAULT now(),
 
-  CONSTRAINT ck_payment_amount CHECK (amount > 0)
+  CONSTRAINT ck_payment_amount CHECK (amount > 0),
+  CONSTRAINT ck_payment_ledger_entry CHECK (
+    (entry_type='PAYMENT' AND original_payment_id IS NULL AND reversal_reason IS NULL)
+    OR
+    (entry_type='REVERSAL' AND original_payment_id IS NOT NULL
+      AND NULLIF(btrim(reversal_reason), '') IS NOT NULL
+      AND payment_proof_id IS NULL AND status='SUCCEEDED')
+  )
 );
 
 CREATE INDEX IF NOT EXISTS idx_payment_invoice ON payment(invoice_id);
 CREATE INDEX IF NOT EXISTS idx_payment_status ON payment(status);
 CREATE INDEX IF NOT EXISTS idx_payment_request_id ON payment(payment_request_id);
 CREATE INDEX IF NOT EXISTS idx_payment_proof_id ON payment(payment_proof_id);
+CREATE INDEX IF NOT EXISTS idx_payment_original_payment ON payment(original_payment_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_original_reversal
+ON payment(original_payment_id) WHERE entry_type='REVERSAL';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_idempotency_key
+ON payment(idempotency_key) WHERE idempotency_key IS NOT NULL;
 
 DROP TRIGGER IF EXISTS trg_payment_updated_at ON payment;
 CREATE TRIGGER trg_payment_updated_at
 BEFORE UPDATE ON payment
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE OR REPLACE FUNCTION validate_payment_reversal()
+RETURNS TRIGGER AS $$
+DECLARE
+  original payment%ROWTYPE;
+BEGIN
+  IF NEW.entry_type <> 'REVERSAL' THEN RETURN NEW; END IF;
+  SELECT * INTO original FROM payment WHERE id=NEW.original_payment_id FOR UPDATE;
+  IF NOT FOUND OR original.entry_type <> 'PAYMENT' OR original.status <> 'SUCCEEDED' THEN
+    RAISE EXCEPTION 'Reversal requires an approved original payment' USING ERRCODE='23514';
+  END IF;
+  IF NEW.invoice_id <> original.invoice_id
+     OR NEW.payment_request_id IS DISTINCT FROM original.payment_request_id
+     OR NEW.amount <> original.amount THEN
+    RAISE EXCEPTION 'Reversal must match the original payment scope and amount' USING ERRCODE='23514';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_payment_validate_reversal ON payment;
+CREATE TRIGGER trg_payment_validate_reversal
+BEFORE INSERT ON payment
+FOR EACH ROW EXECUTE FUNCTION validate_payment_reversal();
+
+CREATE OR REPLACE FUNCTION protect_approved_payment_ledger()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF OLD.status='SUCCEEDED' THEN
+    RAISE EXCEPTION 'Approved payment ledger entries are immutable' USING ERRCODE='55000';
+  END IF;
+  IF TG_OP='DELETE' THEN
+    RETURN OLD;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_payment_protect_approved ON payment;
+CREATE TRIGGER trg_payment_protect_approved
+BEFORE UPDATE OR DELETE ON payment
+FOR EACH ROW EXECUTE FUNCTION protect_approved_payment_ledger();
 
 CREATE TABLE IF NOT EXISTS payment_transaction (
   id                  uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
