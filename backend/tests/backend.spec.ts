@@ -1370,6 +1370,36 @@ describe('backend API smoke tests', () => {
     });
   });
 
+  it('allows only one concurrent reservation for the same room and tenant', async () => {
+    const managerSession = await login('manager@example.com');
+    const payload = {
+      room_id: ids.roomSmall,
+      tenant_id: ids.tenantFree,
+      start_date: '2026-08-01',
+      rent_price: 850,
+      deposit_amount: 850,
+      billing_day: 7
+    };
+
+    const responses = await Promise.all([
+      request(app)
+        .post('/api/rental-registration/reserve')
+        .set(auth(managerSession.accessToken))
+        .send(payload),
+      request(app)
+        .post('/api/rental-registration/reserve')
+        .set(auth(managerSession.accessToken))
+        .send(payload)
+    ]);
+
+    expect(responses.map((response) => response.status).sort()).toEqual([201, 409]);
+    const createdContracts = fakeDb.contracts.filter((contract) => contract.room_id === ids.roomSmall && contract.status === 'DRAFT');
+    expect(createdContracts).toHaveLength(1);
+    expect(fakeDb.contractTenants.filter((assignment) => (
+      assignment.contract_id === createdContracts[0].id && assignment.tenant_id === ids.tenantFree
+    ))).toHaveLength(1);
+  });
+
   it('rejects invalid rental registration reservations and handovers', async () => {
     const managerSession = await login('manager@example.com');
 
@@ -1573,6 +1603,71 @@ describe('backend API smoke tests', () => {
 
   });
 
+  it('keeps invoice issuing and payment approval idempotent under concurrent requests', async () => {
+    const managerSession = await login('manager@example.com');
+    const tenantSession = await login('tenant@example.com');
+
+    const generationResponses = await Promise.all([
+      request(app)
+        .post('/api/invoices/generate/room')
+        .set(auth(managerSession.accessToken))
+        .send({ month: '2026-06', room_id: ids.roomA }),
+      request(app)
+        .post('/api/invoices/generate/room')
+        .set(auth(managerSession.accessToken))
+        .send({ month: '2026-06', room_id: ids.roomA })
+    ]);
+
+    expect(generationResponses.map((response) => response.status)).toEqual([201, 201]);
+    const generatedInvoices = generationResponses.flatMap((response) => response.body.generated);
+    expect(generatedInvoices).toHaveLength(1);
+    expect(generationResponses.flatMap((response) => response.body.skipped)).toHaveLength(1);
+    const invoiceId = generatedInvoices[0].id as string;
+    expect(fakeDb.invoices.filter((invoice) => invoice.contract_id === ids.contractA && invoice.month === '2026-06-01')).toHaveLength(1);
+
+    const issueResponses = await Promise.all([
+      request(app)
+        .post(`/api/invoices/${invoiceId}/issue`)
+        .set(auth(managerSession.accessToken))
+        .send(issueBankPayload),
+      request(app)
+        .post(`/api/invoices/${invoiceId}/issue`)
+        .set(auth(managerSession.accessToken))
+        .send(issueBankPayload)
+    ]);
+
+    expect(issueResponses.map((response) => response.status)).toEqual([200, 200]);
+    const paymentRequests = fakeDb.paymentRequests.filter((item) => item.invoice_id === invoiceId);
+    expect(paymentRequests).toHaveLength(1);
+
+    const proof = await request(app)
+      .post(`/api/payments/requests/${paymentRequests[0].id}/proofs`)
+      .set(auth(tenantSession.accessToken))
+      .set('Idempotency-Key', 'concurrent-proof-submission')
+      .send({
+        file_name: 'concurrent-proof.png',
+        file_url: 'https://example.com/concurrent-proof.png',
+        mime_type: 'image/png',
+        file_size: 1024,
+        transfer_amount: generatedInvoices[0].total
+      })
+      .expect(201);
+
+    const approvalResponses = await Promise.all([
+      request(app)
+        .post(`/api/payments/proofs/${proof.body.id}/approve`)
+        .set(auth(managerSession.accessToken)),
+      request(app)
+        .post(`/api/payments/proofs/${proof.body.id}/approve`)
+        .set(auth(managerSession.accessToken))
+    ]);
+
+    expect(approvalResponses.map((response) => response.status)).toEqual([200, 200]);
+    expect(approvalResponses.map((response) => response.body.idempotent).sort()).toEqual([false, true]);
+    expect(fakeDb.payments.filter((payment) => payment.payment_proof_id === proof.body.id)).toHaveLength(1);
+    expect(fakeDb.invoices.find((invoice) => invoice.id === invoiceId)).toMatchObject({ status: 'PAID' });
+  });
+
   it('only permanently deletes clean draft invoices', async () => {
     const managerSession = await login('manager@example.com');
 
@@ -1689,6 +1784,14 @@ describe('backend API smoke tests', () => {
       amount: 1200,
       qr_image_url: expect.stringContaining('https://img.vietqr.io/image/970436-1234567890-compact2.png')
     });
+
+    const repeatedRequest = await request(app)
+      .post('/api/payments/requests')
+      .set(auth(managerSession.accessToken))
+      .send({ invoice_id: ids.invoiceIssued, ...issueBankPayload })
+      .expect(201);
+    expect(repeatedRequest.body.id).toBe(requestResponse.body.id);
+    expect(fakeDb.paymentRequests.filter((item) => item.invoice_id === ids.invoiceIssued)).toHaveLength(1);
 
     const rejectedProof = await request(app)
       .post(`/api/payments/requests/${requestResponse.body.id}/proofs`)

@@ -36,6 +36,58 @@ const uniqueConstraintErrors: Record<string, { message: string; code: string }> 
   app_user_phone_key: {
     message: 'This phone number is already used by another account.',
     code: 'TENANT_PHONE_EXISTS'
+  },
+  uq_contract_code: {
+    message: 'This contract code is already used by another contract.',
+    code: 'CONTRACT_CODE_EXISTS'
+  },
+  uq_room_active_contract: {
+    message: 'This room already has an active contract.',
+    code: 'ROOM_ALREADY_OCCUPIED'
+  },
+  uq_contract_primary_tenant: {
+    message: 'This contract already has a primary tenant.',
+    code: 'CONTRACT_PRIMARY_TENANT_CONFLICT'
+  },
+  contract_tenant_pkey: {
+    message: 'This tenant is already assigned to the contract.',
+    code: 'CONTRACT_TENANT_EXISTS'
+  },
+  uq_reading_room_month: {
+    message: 'A utility reading already exists for this room and month.',
+    code: 'UTILITY_READING_ALREADY_EXISTS'
+  },
+  uq_invoice_contract_month_active: {
+    message: 'An invoice already exists for this contract and month.',
+    code: 'INVOICE_ALREADY_EXISTS'
+  },
+  uq_invoice_replaces_invoice: {
+    message: 'A replacement invoice already exists for this invoice.',
+    code: 'INVOICE_REPLACEMENT_EXISTS'
+  },
+  uq_payment_request_invoice_active: {
+    message: 'An active payment request already exists for this invoice.',
+    code: 'PAYMENT_REQUEST_ALREADY_EXISTS'
+  },
+  uq_payment_proof_pending: {
+    message: 'A payment proof is already pending review for this request.',
+    code: 'PAYMENT_PROOF_PENDING'
+  },
+  uq_payment_proof_submit_idempotency: {
+    message: 'This payment proof request has already been submitted.',
+    code: 'PAYMENT_PROOF_ALREADY_SUBMITTED'
+  },
+  payment_payment_proof_id_key: {
+    message: 'This payment proof has already been approved.',
+    code: 'PAYMENT_PROOF_ALREADY_APPROVED'
+  },
+  uq_payment_idempotency_key: {
+    message: 'This payment operation has already been processed.',
+    code: 'PAYMENT_ALREADY_PROCESSED'
+  },
+  uq_payment_original_reversal: {
+    message: 'This payment has already been reversed.',
+    code: 'PAYMENT_ALREADY_REVERSED'
   }
 };
 

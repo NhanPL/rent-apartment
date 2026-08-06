@@ -30,11 +30,13 @@ export const getContractRoomForManager = async (
          FROM room r
          JOIN building b ON b.id=r.building_id
          WHERE r.id=$1 AND b.manager_user_id=$2
-         LIMIT 1`
+         LIMIT 1
+         FOR UPDATE OF r`
       : `SELECT id, building_id, max_occupants
          FROM room
          WHERE id=$1
-         LIMIT 1`,
+         LIMIT 1
+         FOR UPDATE`,
     managerId ? [roomId, managerId] : [roomId]
   );
 

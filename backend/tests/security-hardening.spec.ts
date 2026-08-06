@@ -81,6 +81,27 @@ describe('security headers and request hardening', () => {
     });
   });
 
+  it.each([
+    ['uq_invoice_contract_month_active', 'INVOICE_ALREADY_EXISTS'],
+    ['uq_payment_request_invoice_active', 'PAYMENT_REQUEST_ALREADY_EXISTS'],
+    ['uq_payment_proof_pending', 'PAYMENT_PROOF_PENDING'],
+    ['uq_payment_idempotency_key', 'PAYMENT_ALREADY_PROCESSED']
+  ])('maps unique constraint %s to a meaningful conflict', async (constraint, expectedCode) => {
+    const conflictApp = express();
+    conflictApp.get('/conflict', () => {
+      throw Object.assign(new Error('duplicate key value violates unique constraint'), {
+        code: '23505',
+        constraint
+      });
+    });
+    conflictApp.use(createErrorHandler('production'));
+
+    const response = await request(conflictApp).get('/conflict').expect(409);
+
+    expect(response.body.code).toBe(expectedCode);
+    expect(response.body.message).not.toContain('duplicate key');
+  });
+
   it.each(['staging', 'production'] as const)(
     'does not expose stack traces or SQL errors in %s',
     async (environment) => {

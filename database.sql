@@ -305,6 +305,9 @@ CREATE TABLE IF NOT EXISTS contract (
 CREATE INDEX IF NOT EXISTS idx_contract_room ON contract(room_id);
 CREATE INDEX IF NOT EXISTS idx_contract_status ON contract(status);
 CREATE INDEX IF NOT EXISTS idx_contract_start_date ON contract(start_date);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_contract_code
+ON contract(lower(btrim(contract_code)))
+WHERE NULLIF(btrim(contract_code), '') IS NOT NULL;
 
 DROP TRIGGER IF EXISTS trg_contract_updated_at ON contract;
 CREATE TRIGGER trg_contract_updated_at
@@ -789,6 +792,9 @@ ON payment_proof(status);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_proof_submit_idempotency
 ON payment_proof(submitted_by_user_id, idempotency_key)
 WHERE idempotency_key IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_proof_pending
+ON payment_proof(payment_request_id)
+WHERE status='PENDING';
 
 DROP TRIGGER IF EXISTS trg_payment_proof_updated_at ON payment_proof;
 CREATE TRIGGER trg_payment_proof_updated_at

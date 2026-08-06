@@ -203,7 +203,8 @@ export const createUtilityReading = async (payload: UtilityReadingCreatePayload,
        JOIN contract_tenant ct ON ct.contract_id=c.id AND ct.left_at IS NULL
        JOIN tenant t ON t.id=ct.tenant_id
        WHERE c.room_id=$1 AND c.status='ACTIVE' AND t.user_id=$2
-       LIMIT 1`,
+       LIMIT 1
+       FOR UPDATE OF c`,
       [payload.room_id, userId]
     );
     if (!roomContract.rows[0]) throw new AppError(403, 'Tenant is not active in this room', 'TENANT_ROOM_FORBIDDEN');

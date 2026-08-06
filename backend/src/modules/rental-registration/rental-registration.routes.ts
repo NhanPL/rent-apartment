@@ -131,7 +131,8 @@ const assertTenantCanBeUsed = async (client: Queryable, tenantId: string, manage
     `SELECT *
      FROM tenant
      WHERE id=$1 AND manager_user_id=$2 AND status <> 'DELETED'
-     LIMIT 1`,
+     LIMIT 1
+     FOR UPDATE`,
     [tenantId, managerId]
   );
   const tenant = rows[0];

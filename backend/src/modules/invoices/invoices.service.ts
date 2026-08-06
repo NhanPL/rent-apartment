@@ -171,7 +171,8 @@ const getContractForInvoicePayload = async (client: TxClient, payload: InvoiceUp
      FROM contract c
      JOIN room r ON r.id=c.room_id
      JOIN building b ON b.id=r.building_id
-     WHERE c.id=$1 AND c.room_id=$2 AND b.manager_user_id=$3`,
+     WHERE c.id=$1 AND c.room_id=$2 AND b.manager_user_id=$3
+     FOR UPDATE OF c`,
     [payload.contract_id, payload.room_id, managerId]
   );
 
@@ -298,7 +299,8 @@ const generateInvoiceForContract = async (client: TxClient, contract: DbRow, mon
      FROM utility_reading
      WHERE room_id=$1 AND month=$2 AND status='APPROVED'
      ORDER BY approved_at DESC NULLS LAST, created_at DESC
-     LIMIT 1`,
+     LIMIT 1
+     FOR UPDATE`,
     [contract.room_id, month]
   );
   const reading = readingRs.rows[0];
@@ -386,7 +388,8 @@ const getContractsForGeneration = async (client: TxClient, managerId: string, fi
      JOIN room r ON r.id=c.room_id
      JOIN building b ON b.id=r.building_id
      WHERE ${conditions.join(' AND ')}
-     ORDER BY b.name, r.code`,
+     ORDER BY b.name, r.code
+     FOR UPDATE OF c`,
     params
   );
   return rows;
@@ -423,11 +426,16 @@ export const updateInvoiceStatus = async (
     let updatedInvoice: DbRow;
     let paymentRequestCreated = false;
     if (action === 'issue') {
-      if (invoice.status !== 'DRAFT') throw new AppError(409, 'Only draft invoices can be issued', 'INVOICE_NOT_DRAFT');
       const existingRequest = await client.query(
         `SELECT id FROM payment_request WHERE invoice_id=$1 AND status NOT IN ('CANCELLED','EXPIRED') LIMIT 1`,
         [invoiceId]
       );
+      if (invoice.status !== 'DRAFT') {
+        if (['ISSUED', 'PARTIALLY_PAID', 'PAID'].includes(invoice.status) && existingRequest.rows[0]) {
+          return invoiceId;
+        }
+        throw new AppError(409, 'Only draft invoices can be issued', 'INVOICE_NOT_DRAFT');
+      }
       if (!existingRequest.rows[0]) {
         const paid = await client.query<{ paid_amount: string | number }>(
           `SELECT COALESCE(SUM(CASE WHEN entry_type='REVERSAL' THEN -amount ELSE amount END), 0) AS paid_amount
@@ -536,16 +544,15 @@ export const updateInvoiceStatus = async (
 
 export const createInvoiceFromReading = async (utilityReadingId: string, managerId: string) =>
   withTransaction(async (client) => {
-    const readingRs = await client.query<DbRow>(
+    const readingScopeRs = await client.query<DbRow>(
       `SELECT ur.*, b.id building_id FROM utility_reading ur
        JOIN room r ON r.id=ur.room_id
        JOIN building b ON b.id=r.building_id
        WHERE ur.id=$1 AND b.manager_user_id=$2`,
       [utilityReadingId, managerId]
     );
-    const reading = readingRs.rows[0];
-    if (!reading) throw new AppError(404, 'Reading not found');
-    if (reading.status !== 'APPROVED') throw new AppError(409, 'Reading must be APPROVED to invoice');
+    const readingScope = readingScopeRs.rows[0];
+    if (!readingScope) throw new AppError(404, 'Reading not found');
 
     const contractRs = await client.query<DbRow>(
       `SELECT c.*, r.building_id
@@ -553,11 +560,24 @@ export const createInvoiceFromReading = async (utilityReadingId: string, manager
        JOIN room r ON r.id=c.room_id
        WHERE c.room_id=$1 AND c.status='ACTIVE'
        ORDER BY c.start_date DESC
-       LIMIT 1`,
-      [reading.room_id]
+       LIMIT 1
+       FOR UPDATE OF c`,
+      [readingScope.room_id]
     );
     const contract = contractRs.rows[0];
     if (!contract) throw new AppError(409, 'No active contract for room');
+
+    const readingRs = await client.query<DbRow>(
+      `SELECT *
+       FROM utility_reading
+       WHERE id=$1 AND room_id=$2
+       FOR UPDATE`,
+      [utilityReadingId, contract.room_id]
+    );
+    const reading = readingRs.rows[0];
+    if (!reading) throw new AppError(404, 'Reading not found');
+    if (reading.status !== 'APPROVED') throw new AppError(409, 'Reading must be APPROVED to invoice');
+    reading.building_id = readingScope.building_id;
 
     const month = firstDayOfMonth(reading.month);
     const existed = await client.query('SELECT id FROM invoice WHERE contract_id=$1 AND month=$2', [contract.id, month]);
@@ -618,7 +638,8 @@ export const addInvoiceAdjustment = async (invoiceId: string, amount: number, re
        JOIN contract c ON c.id=i.contract_id
        JOIN room r ON r.id=c.room_id
        JOIN building b ON b.id=r.building_id
-       WHERE i.id=$1 AND b.manager_user_id=$2`,
+       WHERE i.id=$1 AND b.manager_user_id=$2
+       FOR UPDATE OF i`,
       [invoiceId, userId]
     );
     const inv = invRs.rows[0];
