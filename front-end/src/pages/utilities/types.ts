@@ -39,6 +39,9 @@ export interface UtilityReadingListItem {
   electricity_curr: number | null
   water_prev: number | null
   water_curr: number | null
+  electricity_meter_reset: boolean
+  water_meter_reset: boolean
+  meter_reset_note: string | null
   status: UtilityReadingStatus
   reported_by_user_id: string | null
   reported_at: string | null

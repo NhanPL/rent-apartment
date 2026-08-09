@@ -58,6 +58,9 @@ interface InvoiceBoundaryRow {
   electricity_curr: DatabaseNumeric | null;
   water_prev: DatabaseNumeric | null;
   water_curr: DatabaseNumeric | null;
+  electricity_meter_reset: boolean;
+  water_meter_reset: boolean;
+  meter_reset_note: string | null;
   electricity_unit_price: DatabaseNumeric;
   electric_unit_price: DatabaseNumeric;
   water_unit_price: DatabaseNumeric;
@@ -94,6 +97,7 @@ const contractColumns = (alias?: string) => [
 ].map((column) => alias ? `${alias}.${column}` : column).join(', ');
 const readingColumns = (alias?: string) => [
   'id', 'room_id', 'month', 'electricity_prev', 'electricity_curr', 'water_prev', 'water_curr',
+  'electricity_meter_reset', 'water_meter_reset', 'meter_reset_note',
   'status', 'reported_by_user_id', 'reported_at', 'submitted_at', 'verified_by_user_id',
   'verified_at', 'approved_by_user_id', 'approved_at', 'rejected_by_user_id', 'rejected_at',
   'rejection_reason', 'manager_note', 'note', 'created_at', 'updated_at'
@@ -177,6 +181,11 @@ export interface InvoiceSummary {
 
 const calc = (q: number, p: number) => Number((q * p).toFixed(2));
 const toNumber = (value: DatabaseNumeric | null | undefined): number => toDatabaseNumber(value);
+export const calculateMeterUsage = (
+  previous: DatabaseNumeric | null | undefined,
+  current: DatabaseNumeric | null | undefined,
+  reset: boolean
+) => reset ? Math.max(0, toNumber(current)) : Math.max(0, toNumber(current) - toNumber(previous));
 const fixedChargeItemCode = (chargeCode: string) => `FIXED_${chargeCode}`.slice(0, 50);
 const invoiceItemsSubtotal = (payload: InvoiceUpsertPayload) => {
   const electricAmount = calc(Math.max(0, payload.electricity_curr - payload.electricity_prev), payload.electric_unit_price);
@@ -321,6 +330,7 @@ const upsertUtilityReadingForInvoice = async (client: TxClient, payload: Invoice
     const updated = await client.query<DbRow>(
       `UPDATE utility_reading
        SET electricity_prev=$1,electricity_curr=$2,water_prev=$3,water_curr=$4,status='INVOICED',
+           electricity_meter_reset=false,water_meter_reset=false,meter_reset_note=NULL,
            verified_by_user_id=$5,verified_at=COALESCE(verified_at, now()),
            approved_by_user_id=$5,approved_at=COALESCE(approved_at, now()),note=$6
          WHERE id=$7
@@ -443,8 +453,8 @@ const generateInvoiceForContract = async (
     return { skipped: true, contract_id: contract.id, room_id: contract.room_id, reason: 'UTILITY_RATE_REQUIRED' };
   }
 
-  const electricUsage = Math.max(0, toNumber(reading.electricity_curr) - toNumber(reading.electricity_prev));
-  const waterUsage = Math.max(0, toNumber(reading.water_curr) - toNumber(reading.water_prev));
+  const electricUsage = calculateMeterUsage(reading.electricity_prev, reading.electricity_curr, reading.electricity_meter_reset);
+  const waterUsage = calculateMeterUsage(reading.water_prev, reading.water_curr, reading.water_meter_reset);
   const rent = toNumber(contract.rent_price);
   const electricAmount = calc(electricUsage, toNumber(rate.electricity_unit_price));
   const waterAmount = calc(waterUsage, toNumber(rate.water_unit_price));
@@ -475,8 +485,8 @@ const generateInvoiceForContract = async (
 
   await insertInvoiceItems(client, invoice.id, [
     ['ROOM_RENT', 'Room rent', 1, rent, rent, { source: 'generated:contract.rent_price', contract_id: contract.id }],
-    ['ELECTRICITY', 'Electricity', electricUsage, toNumber(rate.electricity_unit_price), electricAmount, { source: 'generated:utility_reading', reading_id: reading.id, rate_id: rate.id, prev: reading.electricity_prev, curr: reading.electricity_curr }],
-    ['WATER', 'Water', waterUsage, toNumber(rate.water_unit_price), waterAmount, { source: 'generated:utility_reading', reading_id: reading.id, rate_id: rate.id, prev: reading.water_prev, curr: reading.water_curr }],
+    ['ELECTRICITY', 'Electricity', electricUsage, toNumber(rate.electricity_unit_price), electricAmount, { source: 'generated:utility_reading', reading_id: reading.id, rate_id: rate.id, prev: reading.electricity_prev, curr: reading.electricity_curr, meter_reset: reading.electricity_meter_reset }],
+    ['WATER', 'Water', waterUsage, toNumber(rate.water_unit_price), waterAmount, { source: 'generated:utility_reading', reading_id: reading.id, rate_id: rate.id, prev: reading.water_prev, curr: reading.water_curr, meter_reset: reading.water_meter_reset }],
     ...toFixedChargeInvoiceItems(fixedCharges)
   ]);
 
@@ -600,7 +610,9 @@ export const updateInvoiceStatus = async (
       }
       const issued = await client.query<DbRow>(
         `UPDATE invoice
-         SET status='ISSUED', issued_at=now(), approved_by_user_id=$2, approved_at=now()
+         SET status='ISSUED', issued_at=now(),
+             due_date=GREATEST(COALESCE(due_date, CURRENT_DATE), CURRENT_DATE),
+             approved_by_user_id=$2, approved_at=now()
          WHERE id=$1
          RETURNING ${invoiceColumns()}`,
         [invoiceId, managerId]
@@ -713,8 +725,8 @@ export const createInvoiceFromReading = async (utilityReadingId: string, manager
     const rate = rateRs.rows[0];
     if (!rate) throw new AppError(409, 'No utility rate configured');
 
-    const elecUsage = Math.max(0, Number(reading.electricity_curr) - Number(reading.electricity_prev ?? 0));
-    const waterUsage = Math.max(0, Number(reading.water_curr) - Number(reading.water_prev ?? 0));
+    const elecUsage = calculateMeterUsage(reading.electricity_prev, reading.electricity_curr, reading.electricity_meter_reset);
+    const waterUsage = calculateMeterUsage(reading.water_prev, reading.water_curr, reading.water_meter_reset);
 
     const elecAmount = calc(elecUsage, Number(rate.electricity_unit_price));
     const waterAmount = calc(waterUsage, Number(rate.water_unit_price));
@@ -737,8 +749,8 @@ export const createInvoiceFromReading = async (utilityReadingId: string, manager
 
     await insertInvoiceItems(client, invoice.id, [
       ['ROOM_RENT', 'Room rent', 1, rent, rent, { source: 'generated:contract.rent_price', contract_id: contract.id }],
-      ['ELECTRICITY', 'Electricity', elecUsage, Number(rate.electricity_unit_price), elecAmount, { source: 'generated:utility_reading', reading_id: reading.id, rate_id: rate.id, prev: reading.electricity_prev, curr: reading.electricity_curr }],
-      ['WATER', 'Water', waterUsage, Number(rate.water_unit_price), waterAmount, { source: 'generated:utility_reading', reading_id: reading.id, rate_id: rate.id, prev: reading.water_prev, curr: reading.water_curr }],
+      ['ELECTRICITY', 'Electricity', elecUsage, Number(rate.electricity_unit_price), elecAmount, { source: 'generated:utility_reading', reading_id: reading.id, rate_id: rate.id, prev: reading.electricity_prev, curr: reading.electricity_curr, meter_reset: reading.electricity_meter_reset }],
+      ['WATER', 'Water', waterUsage, Number(rate.water_unit_price), waterAmount, { source: 'generated:utility_reading', reading_id: reading.id, rate_id: rate.id, prev: reading.water_prev, curr: reading.water_curr, meter_reset: reading.water_meter_reset }],
       ...toFixedChargeInvoiceItems(fixedCharges)
     ]);
 

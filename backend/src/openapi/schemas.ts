@@ -234,6 +234,9 @@ export const openApiSchemas: Record<string, OpenApiSchema> = {
     type: 'object', required: ['room_id', 'electricity_curr', 'water_curr'], properties: {
       room_id: uuid, month: { type: ['string', 'null'] },
       electricity_curr: { type: 'number', minimum: 0 }, water_curr: { type: 'number', minimum: 0 }, note: nullableString,
+      electricity_meter_reset: { type: 'boolean', default: false },
+      water_meter_reset: { type: 'boolean', default: false },
+      meter_reset_note: nullableString,
       evidence: { type: 'object', required: ['electricity', 'water'], properties: {
         electricity: { $ref: '#/components/schemas/StoredDocumentInput' }, water: { $ref: '#/components/schemas/StoredDocumentInput' }
       } }
@@ -243,6 +246,8 @@ export const openApiSchemas: Record<string, OpenApiSchema> = {
     allOf: [{ $ref: '#/components/schemas/UtilityReadingInput' }, { type: 'object', properties: {
       id: uuid, status: { type: 'string', enum: ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'INVOICED'] },
       electricity_prev: { type: ['number', 'null'] }, water_prev: { type: ['number', 'null'] },
+      electricity_meter_reset: { type: 'boolean' }, water_meter_reset: { type: 'boolean' },
+      meter_reset_note: nullableString,
       evidence: { type: 'array', items: { $ref: '#/components/schemas/Document' } }
     } }], additionalProperties: true
   },

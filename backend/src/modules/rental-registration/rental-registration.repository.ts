@@ -318,7 +318,8 @@ export const cancelContract = async (
   closeDate: string,
   reason: string
 ) => (await client.query<RentalRegistrationRow>(
-  `UPDATE contract SET status='CANCELLED', move_out_date=$2,
+  `UPDATE contract SET status='CANCELLED',
+     move_out_date=CASE WHEN move_in_date IS NULL THEN NULL ELSE GREATEST(move_in_date, $2::date) END,
      note=CONCAT(COALESCE(note, ''), E'\nCancel reason: ', $3::text)
    WHERE id=$1 RETURNING ${contractColumns}`,
   [contractId, closeDate, reason]

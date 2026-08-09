@@ -123,6 +123,10 @@ describe('API error contract', () => {
   it.each([
     ['23505', 'uq_tenant_identity', 409, 'TENANT_IDENTITY_EXISTS', 'identity_number'],
     ['23503', 'contract_room_id_fkey', 404, 'ROOM_NOT_FOUND', 'room_id'],
+    ['23514', 'ck_contract_dates', 400, 'CONTRACT_DATES_INVALID', undefined],
+    ['23514', 'ck_invoice_due_date', 400, 'INVOICE_DUE_DATE_INVALID', 'due_date'],
+    ['23514', 'ck_reading_elec', 400, 'UTILITY_METER_READING_DECREASED', 'electricity_curr'],
+    ['23514', 'ck_payment_amount', 400, 'PAYMENT_AMOUNT_INVALID', 'amount'],
     ['23514', undefined, 400, 'BUSINESS_RULE_VIOLATION', undefined],
     ['23502', undefined, 400, 'REQUIRED_FIELD_MISSING', 'email'],
     ['22P02', undefined, 400, 'INVALID_FIELD_VALUE', undefined],

@@ -1134,24 +1134,32 @@ class FakeDb {
         row.note = params[5] ?? null;
         return result<T>([]);
       }
+      const hasMeterReset = sql.includes('electricity_meter_reset');
       const row = this.readingRow(this.newId(), String(params[0]), String(params[1]), Number(params[2]), Number(params[3]), Number(params[4]), Number(params[5]), 'SUBMITTED');
-      row.reported_by_user_id = params[6];
-      row.note = params[7] ?? null;
+      row.electricity_meter_reset = hasMeterReset ? Boolean(params[6]) : false;
+      row.water_meter_reset = hasMeterReset ? Boolean(params[7]) : false;
+      row.meter_reset_note = hasMeterReset ? params[8] ?? null : null;
+      row.reported_by_user_id = hasMeterReset ? params[9] : params[6];
+      row.note = hasMeterReset ? params[10] ?? null : params[7] ?? null;
       this.utilityReadings.push(row);
       return result<T>([row as T]);
     }
 
     if (sql.startsWith('update utility_reading set electricity_prev')) {
-      const reading = this.utilityReadings.find((item) => item.id === params[6]);
+      const hasMeterReset = sql.includes('electricity_meter_reset=$5');
+      const reading = this.utilityReadings.find((item) => item.id === params[hasMeterReset ? 9 : 6]);
       if (!reading) return result<T>([]);
       Object.assign(reading, {
         electricity_prev: params[0],
         electricity_curr: params[1],
         water_prev: params[2],
         water_curr: params[3],
+        electricity_meter_reset: hasMeterReset ? Boolean(params[4]) : false,
+        water_meter_reset: hasMeterReset ? Boolean(params[5]) : false,
+        meter_reset_note: hasMeterReset ? params[6] ?? null : null,
         status: 'SUBMITTED',
-        reported_by_user_id: params[4],
-        note: params[5] ?? null,
+        reported_by_user_id: hasMeterReset ? params[7] : params[4],
+        note: hasMeterReset ? params[8] ?? null : params[5] ?? null,
         rejected_by_user_id: null,
         rejected_at: null,
         rejection_reason: null
@@ -1262,11 +1270,17 @@ class FakeDb {
     }
 
     if (sql.startsWith("update contract set status='cancelled'")) {
-      const contract = this.contracts.find((item) => item.id === params[0]);
+      const rentalRegistrationUpdate = sql.includes('where id=$1');
+      const contract = this.contracts.find((item) => item.id === params[rentalRegistrationUpdate ? 0 : 2]);
       if (!contract) return result<T>([]);
       contract.status = 'CANCELLED';
-      contract.move_out_date = params[1];
-      contract.note = `${contract.note ?? ''}\nCancel reason: ${params[2]}`;
+      const closeDate = params[rentalRegistrationUpdate ? 1 : 0];
+      contract.move_out_date = contract.move_in_date && String(contract.move_in_date) > String(closeDate)
+        ? contract.move_in_date
+        : contract.move_in_date ? closeDate : null;
+      contract.note = rentalRegistrationUpdate
+        ? `${contract.note ?? ''}\nCancel reason: ${params[2]}`
+        : params[1] ?? contract.note;
       return result<T>([contract as T]);
     }
 
@@ -1759,6 +1773,9 @@ class FakeDb {
       electricity_curr: electricityCurr,
       water_prev: waterPrev,
       water_curr: waterCurr,
+      electricity_meter_reset: false,
+      water_meter_reset: false,
+      meter_reset_note: null,
       status,
       reported_by_user_id: ids.tenantAUser,
       reported_at: now,

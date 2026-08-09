@@ -689,6 +689,11 @@ export function UtilitiesPage() {
               <Descriptions.Item label="Electricity curr">{detailItem.electricity_curr ?? '-'}</Descriptions.Item>
               <Descriptions.Item label="Water prev">{detailItem.water_prev ?? '-'}</Descriptions.Item>
               <Descriptions.Item label="Water curr">{detailItem.water_curr ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label="Electric meter reset">{detailItem.electricity_meter_reset ? 'Yes' : 'No'}</Descriptions.Item>
+              <Descriptions.Item label="Water meter reset">{detailItem.water_meter_reset ? 'Yes' : 'No'}</Descriptions.Item>
+              {(detailItem.electricity_meter_reset || detailItem.water_meter_reset) ? (
+                <Descriptions.Item label="Meter reset reason" span={screens.lg ? 2 : 1}>{detailItem.meter_reset_note ?? '-'}</Descriptions.Item>
+              ) : null}
               <Descriptions.Item label="Approved at">{detailItem.approved_at ? dayjs(detailItem.approved_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
               <Descriptions.Item label="Rejected at">{detailItem.rejected_at ? dayjs(detailItem.rejected_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
               <Descriptions.Item label="Tenant note" span={screens.lg ? 2 : 1}>{detailItem.note ?? '-'}</Descriptions.Item>
