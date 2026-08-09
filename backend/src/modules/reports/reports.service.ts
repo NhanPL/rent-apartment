@@ -1,9 +1,22 @@
 import { createCsv, sanitizeCsvFilename } from '../../shared/utils/csv';
-import { loadReportRows, type ReportsFilters } from './reports.repository';
+import {
+  loadReportDetailRows,
+  loadReportRows,
+  loadReportSummaryRows,
+  type ReportDetailPagination,
+  type ReportsFilters
+} from './reports.repository';
 
 export type { ReportsFilters } from './reports.repository';
 
 export type ReportSection = 'revenue' | 'debt' | 'occupancy';
+
+export const getReportDetails = (
+  managerId: string,
+  filters: ReportsFilters,
+  section: ReportSection,
+  pagination: ReportDetailPagination
+) => loadReportDetailRows(managerId, filters, section, pagination);
 
 export const getReportsData = async (managerId: string, filters: ReportsFilters) => {
   const data = await loadReportRows(managerId, filters);
@@ -48,6 +61,35 @@ export const getReportsData = async (managerId: string, filters: ReportsFilters)
         : Math.round((occupancyTotals.occupiedRooms / occupancyTotals.totalRooms) * 100)
     },
     debtSummary
+  };
+};
+
+export const getReportsSummary = async (managerId: string, filters: ReportsFilters) => {
+  const data = await loadReportSummaryRows(managerId, filters);
+  const revenueSummary = data.revenueByMonth.reduce(
+    (acc, item) => ({
+      billed: acc.billed + item.billed,
+      collected: acc.collected + item.collected,
+      grossPayments: acc.grossPayments + item.grossPayments,
+      reversals: acc.reversals + item.reversals,
+      unpaid: acc.unpaid + item.unpaid,
+      invoiceCount: acc.invoiceCount + item.invoiceCount
+    }),
+    { billed: 0, collected: 0, grossPayments: 0, reversals: 0, unpaid: 0, invoiceCount: 0 }
+  );
+  const occupancyRate = data.occupancySummary.totalRooms === 0
+    ? 0
+    : Math.round((data.occupancySummary.occupiedRooms / data.occupancySummary.totalRooms) * 100);
+  return {
+    filters: data.filters,
+    summary: {
+      ...revenueSummary,
+      ...data.debtSummary,
+      ...data.occupancySummary,
+      occupancyRate
+    },
+    debtSummary: data.debtSummary,
+    revenueByMonth: data.revenueByMonth
   };
 };
 

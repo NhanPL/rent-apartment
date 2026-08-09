@@ -119,6 +119,11 @@ export function UtilitiesPage() {
   const [readingsLoading, setReadingsLoading] = useState(true)
   const [readingsError, setReadingsError] = useState<string | null>(null)
   const [readings, setReadings] = useState<UtilityReadingListItem[]>([])
+  const [readingsTotal, setReadingsTotal] = useState(0)
+  const [readingsPage, setReadingsPage] = useState(1)
+  const [readingsPageSize, setReadingsPageSize] = useState(20)
+  const [readingSearchInput, setReadingSearchInput] = useState('')
+  const [readingSearch, setReadingSearch] = useState('')
   const [readingBuildingFilter, setReadingBuildingFilter] = useState<string | undefined>()
   const [readingRoomFilter, setReadingRoomFilter] = useState<string | undefined>()
   const [readingMonthFilter, setReadingMonthFilter] = useState('')
@@ -156,18 +161,25 @@ export function UtilitiesPage() {
     setReadingsError(null)
 
     try {
-      setReadings(await listUtilityReadings({
+      const response = await listUtilityReadings({
+        search: readingSearch || undefined,
         building_id: readingBuildingFilter,
         room_id: readingRoomFilter,
         month: readingMonthFilter || undefined,
         status: readingStatusFilter,
-      }))
+        page: readingsPage,
+        pageSize: readingsPageSize,
+        sortBy: 'month',
+        sortOrder: 'desc',
+      })
+      setReadings(response.items)
+      setReadingsTotal(response.total)
     } catch (error) {
       setReadingsError(getUserErrorMessage(error, 'Khong tai duoc chi so dien nuoc.'))
     } finally {
       setReadingsLoading(false)
     }
-  }, [readingBuildingFilter, readingMonthFilter, readingRoomFilter, readingStatusFilter])
+  }, [readingBuildingFilter, readingMonthFilter, readingRoomFilter, readingSearch, readingStatusFilter, readingsPage, readingsPageSize])
 
   const loadRates = useCallback(async () => {
     setRatesLoading(true)
@@ -189,6 +201,14 @@ export function UtilitiesPage() {
   useEffect(() => {
     void loadReadings()
   }, [loadReadings])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setReadingSearch(readingSearchInput.trim())
+      setReadingsPage(1)
+    }, 300)
+    return () => window.clearTimeout(timer)
+  }, [readingSearchInput])
 
   useEffect(() => {
     void loadRates()
@@ -507,6 +527,12 @@ export function UtilitiesPage() {
               <Card>
                 <Space direction="vertical" size={16} style={{ width: '100%' }}>
                   <div className="utilities-filters">
+                    <Input
+                      allowClear
+                      value={readingSearchInput}
+                      placeholder="Search building, room, tenant"
+                      onChange={(event) => setReadingSearchInput(event.target.value)}
+                    />
                     <Select
                       value={readingBuildingFilter}
                       placeholder="Building"
@@ -515,6 +541,7 @@ export function UtilitiesPage() {
                       onChange={(value) => {
                         setReadingBuildingFilter(value)
                         setReadingRoomFilter(undefined)
+                        setReadingsPage(1)
                       }}
                     />
                     <Select
@@ -522,19 +549,19 @@ export function UtilitiesPage() {
                       placeholder="Room"
                       allowClear
                       options={readingRooms.map((room) => ({ label: room.code, value: room.id }))}
-                      onChange={(value) => setReadingRoomFilter(value)}
+                      onChange={(value) => { setReadingRoomFilter(value); setReadingsPage(1) }}
                     />
                     <Input
                       type="month"
                       value={readingMonthFilter}
-                      onChange={(event) => setReadingMonthFilter(event.target.value)}
+                      onChange={(event) => { setReadingMonthFilter(event.target.value); setReadingsPage(1) }}
                     />
                     <Select
                       value={readingStatusFilter}
                       placeholder="Status"
                       allowClear
                       options={readingStatusOptions.map((item) => ({ label: item.label, value: item.value }))}
-                      onChange={(value) => setReadingStatusFilter(value)}
+                      onChange={(value) => { setReadingStatusFilter(value); setReadingsPage(1) }}
                     />
                     <Button icon={<ReloadOutlined />} onClick={() => void loadReadings()}>
                       Refresh
@@ -555,6 +582,18 @@ export function UtilitiesPage() {
                       columns={readingColumns}
                       dataSource={readings}
                       scroll={{ x: 1440 }}
+                      pagination={{
+                        current: readingsPage,
+                        pageSize: readingsPageSize,
+                        total: readingsTotal,
+                        showSizeChanger: true,
+                        pageSizeOptions: [10, 20, 50, 100],
+                        showTotal: (value) => `${value} readings`,
+                        onChange: (page, pageSize) => {
+                          setReadingsPage(pageSize === readingsPageSize ? page : 1)
+                          setReadingsPageSize(pageSize)
+                        },
+                      }}
                     />
                   )}
                 </Space>

@@ -195,6 +195,9 @@ export function InvoicesPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [items, setItems] = useState<InvoiceListItem[]>([])
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(20)
+  const [total, setTotal] = useState(0)
   const [summary, setSummary] = useState({ totalInvoices: 0, paidInvoices: 0, unpaidInvoices: 0, totalRevenue: 0 })
 
   const [searchInput, setSearchInput] = useState('')
@@ -242,7 +245,10 @@ export function InvoicesPage() {
   const [issueLoading, setIssueLoading] = useState(false)
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setSearch(searchInput), 300)
+    const timer = window.setTimeout(() => {
+      setSearch(searchInput)
+      setPage(1)
+    }, 300)
     return () => window.clearTimeout(timer)
   }, [searchInput])
 
@@ -269,7 +275,7 @@ export function InvoicesPage() {
     setError(null)
 
     try {
-      const [paymentRows, summaryRows] = await Promise.all([
+      const [invoicePage, summaryRows] = await Promise.all([
         listInvoices({
           search,
           month: monthFilter,
@@ -278,18 +284,23 @@ export function InvoicesPage() {
           building_id: buildingFilter,
           room_id: roomFilter,
           tenant_id: tenantFilter,
+          page,
+          pageSize,
+          sortBy: 'month',
+          sortOrder: 'desc',
         }),
         getInvoicesSummary(monthFilter),
       ])
 
-      setItems(paymentRows)
+      setItems(invoicePage.items)
+      setTotal(invoicePage.total)
       setSummary(summaryRows)
     } catch (error) {
       setError(getUserErrorMessage(error, 'Khong tai duoc danh sach hoa don.'))
     } finally {
       setLoading(false)
     }
-  }, [search, monthFilter, invoiceStatusFilter, paymentStatusFilter, buildingFilter, roomFilter, tenantFilter])
+  }, [search, monthFilter, invoiceStatusFilter, paymentStatusFilter, buildingFilter, roomFilter, tenantFilter, page, pageSize])
 
   useEffect(() => {
     void loadOptions()
@@ -838,9 +849,9 @@ export function InvoicesPage() {
       <Card>
         <div className="invoices-filters">
           <Input placeholder="Search building, room, tenant" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} allowClear />
-          <Input type="month" value={monthFilter} onChange={(event) => setMonthFilter(event.target.value)} />
-          <Select allowClear placeholder="Invoice status" value={invoiceStatusFilter} onChange={setInvoiceStatusFilter} options={invoiceStatusOptions.map((item) => ({ label: item.label, value: item.value }))} />
-          <Select allowClear placeholder="Payment status" value={paymentStatusFilter} onChange={setPaymentStatusFilter} options={paymentStatusOptions.map((item) => ({ label: item.label, value: item.value }))} />
+          <Input type="month" value={monthFilter} onChange={(event) => { setMonthFilter(event.target.value); setPage(1) }} />
+          <Select allowClear placeholder="Invoice status" value={invoiceStatusFilter} onChange={(value) => { setInvoiceStatusFilter(value); setPage(1) }} options={invoiceStatusOptions.map((item) => ({ label: item.label, value: item.value }))} />
+          <Select allowClear placeholder="Payment status" value={paymentStatusFilter} onChange={(value) => { setPaymentStatusFilter(value); setPage(1) }} options={paymentStatusOptions.map((item) => ({ label: item.label, value: item.value }))} />
           <Select
             allowClear
             placeholder="Building"
@@ -848,11 +859,12 @@ export function InvoicesPage() {
             onChange={(value) => {
               setBuildingFilter(value)
               setRoomFilter(undefined)
+              setPage(1)
             }}
             options={buildings.map((item) => ({ label: item.name, value: item.id }))}
           />
-          <Select allowClear placeholder="Room" value={roomFilter} onChange={setRoomFilter} options={roomFilterOptions.map((item) => ({ label: item.code, value: item.id }))} />
-          <Select allowClear placeholder="Tenant" value={tenantFilter} onChange={setTenantFilter} options={tenants.map((item) => ({ label: item.full_name, value: item.id }))} />
+          <Select allowClear placeholder="Room" value={roomFilter} onChange={(value) => { setRoomFilter(value); setPage(1) }} options={roomFilterOptions.map((item) => ({ label: item.code, value: item.id }))} />
+          <Select allowClear placeholder="Tenant" value={tenantFilter} onChange={(value) => { setTenantFilter(value); setPage(1) }} options={tenants.map((item) => ({ label: item.full_name, value: item.id }))} />
           <Button icon={<ReloadOutlined />} onClick={() => void loadData()}>Refresh</Button>
         </div>
       </Card>
@@ -870,7 +882,25 @@ export function InvoicesPage() {
         ) : error ? (
           <Empty description={error}><Button onClick={() => void loadData()}>Retry</Button></Empty>
         ) : (
-          <Table rowKey="id" columns={columns} dataSource={items} scroll={{ x: 1950 }} locale={{ emptyText: <Empty description="No invoices found" /> }} />
+          <Table
+            rowKey="id"
+            columns={columns}
+            dataSource={items}
+            scroll={{ x: 1950 }}
+            pagination={{
+              current: page,
+              pageSize,
+              total,
+              showSizeChanger: true,
+              pageSizeOptions: [10, 20, 50, 100],
+              showTotal: (value) => `${value} invoices`,
+              onChange: (nextPage, nextPageSize) => {
+                setPage(nextPageSize === pageSize ? nextPage : 1)
+                setPageSize(nextPageSize)
+              },
+            }}
+            locale={{ emptyText: <Empty description="No invoices found" /> }}
+          />
         )}
       </Card>
 

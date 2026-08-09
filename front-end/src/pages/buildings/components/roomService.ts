@@ -168,7 +168,7 @@ export async function listTenantsByRoomId(room_id: string): Promise<TenantSummar
 }
 
 export async function listMonthlyBillsByRoomId(room_id: string): Promise<MonthlyBill[]> {
-  const invoices = await listInvoices({ room_id })
+  const invoices = (await listInvoices({ room_id, page: 1, pageSize: 100 })).items
   return invoices.map(mapInvoiceToMonthlyBill)
 }
 

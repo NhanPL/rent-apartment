@@ -4,6 +4,7 @@ import { UTILITY_READING_STATUSES } from '../../shared/types/database';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { parseBody, parseEmptyBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
+import { createPaginationQuerySchema } from '../../shared/utils/pagination';
 import {
   cloudinaryDeliveryTypeValues,
   normalizeStoredUpload,
@@ -59,7 +60,11 @@ const utilityRejectSchema = z.object({
 });
 
 const utilityReadingStatusSchema = z.enum(UTILITY_READING_STATUSES);
-const utilityReadingListQuerySchema = z.object({
+const utilityReadingSortFields = [
+  'month', 'createdAt', 'submittedAt', 'status', 'building', 'room', 'tenant'
+] as const;
+const utilityReadingListQuerySchema = createPaginationQuerySchema(utilityReadingSortFields, 'month').extend({
+  search: z.string().trim().max(100).optional(),
   building_id: z.string().uuid().optional(),
   buildingId: z.string().uuid().optional(),
   room_id: z.string().uuid().optional(),
@@ -74,7 +79,12 @@ router.get('/', asyncHandler(async (req, res) => {
     buildingId: filters.building_id ?? filters.buildingId,
     roomId: filters.room_id ?? filters.roomId,
     month: filters.month,
-    status: filters.status
+    status: filters.status,
+    search: filters.search,
+    page: filters.page,
+    pageSize: filters.pageSize,
+    sortBy: filters.sortBy,
+    sortOrder: filters.sortOrder
   }));
 }));
 

@@ -1,5 +1,6 @@
 import { apiRequest } from './apiClient'
 import { API_ROUTES } from './apiRoutes'
+import { appendPaginationParams, type PaginatedResponse, type PaginationParams } from './pagination'
 
 export type PaymentRequestStatus = 'DRAFT' | 'WAITING_TRANSFER' | 'TRANSFER_SUBMITTED' | 'VERIFIED' | 'REJECTED' | 'CANCELLED' | 'EXPIRED'
 export type PaymentProofStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
@@ -100,7 +101,10 @@ export interface PaymentProofPayload {
   payer_note?: string | null
 }
 
-export interface PaymentRequestListFilters {
+export type PaymentRequestSortBy = 'createdAt' | 'month' | 'amount' | 'status' | 'building' | 'room' | 'tenant' | 'latestProofSubmittedAt'
+
+export interface PaymentRequestListFilters extends PaginationParams<PaymentRequestSortBy> {
+  search?: string
   month?: string
   building_id?: string
   room_id?: string
@@ -174,15 +178,16 @@ function toPaymentRequest(row: PaymentRequestApiRow): PaymentRequest {
   }
 }
 
-export async function listPaymentRequests(filters: PaymentRequestListFilters = {}): Promise<PaymentRequest[]> {
+export async function listPaymentRequests(filters: PaymentRequestListFilters = {}): Promise<PaginatedResponse<PaymentRequest>> {
   const search = new URLSearchParams()
   Object.entries(filters).forEach(([key, value]) => {
-    if (value) search.set(key, value)
+    if (value && !['page', 'pageSize', 'sortBy', 'sortOrder'].includes(key)) search.set(key, String(value))
   })
+  appendPaginationParams(search, filters)
   const queryString = search.toString()
   const route = queryString ? `${API_ROUTES.payments.requests}?${queryString}` : API_ROUTES.payments.requests
-  const rows = await apiRequest<PaymentRequestApiRow[]>(route)
-  return rows.map(toPaymentRequest)
+  const response = await apiRequest<PaginatedResponse<PaymentRequestApiRow>>(route)
+  return { ...response, items: response.items.map(toPaymentRequest) }
 }
 
 export async function getPaymentRequest(id: string): Promise<PaymentRequest> {

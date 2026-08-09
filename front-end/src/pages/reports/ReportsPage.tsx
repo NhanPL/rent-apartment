@@ -21,7 +21,7 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { exportReportsCsv, getReportsData, listReportBuildings } from '../../services/reportsService'
+import { exportReportsCsv, getReportDetails, getReportsData, listReportBuildings } from '../../services/reportsService'
 import { getUserErrorMessage } from '../../services/errorMessage'
 import { Localized } from '../../shared/components/Localized'
 import { vndCurrency } from '../../i18n'
@@ -30,6 +30,7 @@ import type {
   OccupancyReportRow,
   ReportBuildingOption,
   ReportFilters,
+  ReportDetailItem,
   ReportInvoiceStatus,
   ReportSection,
   ReportsData,
@@ -72,6 +73,11 @@ export function ReportsPage() {
   const [error, setError] = useState<string | null>(null)
   const [activeSection, setActiveSection] = useState<ReportSection>('revenue')
   const [exporting, setExporting] = useState(false)
+  const [detailItems, setDetailItems] = useState<ReportDetailItem[]>([])
+  const [detailLoading, setDetailLoading] = useState(true)
+  const [detailPage, setDetailPage] = useState(1)
+  const [detailPageSize, setDetailPageSize] = useState(20)
+  const [detailTotal, setDetailTotal] = useState(0)
 
   const filters = useMemo<ReportFilters>(() => ({
     monthFrom: range[0].format('YYYY-MM'),
@@ -96,6 +102,27 @@ export function ReportsPage() {
   useEffect(() => {
     void loadReports()
   }, [loadReports])
+
+  const loadDetails = useCallback(async () => {
+    setDetailLoading(true)
+    try {
+      const response = await getReportDetails(filters, activeSection, {
+        page: detailPage,
+        pageSize: detailPageSize,
+        sortOrder: 'desc',
+      })
+      setDetailItems(response.items)
+      setDetailTotal(response.total)
+    } catch (requestError) {
+      setError(getUserErrorMessage(requestError, 'Unable to load report details.'))
+    } finally {
+      setDetailLoading(false)
+    }
+  }, [activeSection, detailPage, detailPageSize, filters])
+
+  useEffect(() => {
+    void loadDetails()
+  }, [loadDetails])
 
   useEffect(() => {
     let active = true
@@ -209,8 +236,19 @@ export function ReportsPage() {
             <Table<RevenueBuildingRow>
               rowKey="buildingId"
               columns={buildingRevenueColumns}
-              dataSource={data?.revenueByBuilding ?? []}
-              pagination={false}
+              dataSource={activeSection === 'revenue' ? detailItems as RevenueBuildingRow[] : []}
+              loading={detailLoading}
+              pagination={{
+                current: detailPage,
+                pageSize: detailPageSize,
+                total: detailTotal,
+                showSizeChanger: true,
+                pageSizeOptions: [10, 20, 50, 100],
+                onChange: (page, pageSize) => {
+                  setDetailPage(pageSize === detailPageSize ? page : 1)
+                  setDetailPageSize(pageSize)
+                },
+              }}
               scroll={{ x: 850 }}
               locale={{ emptyText: <Empty description="No building revenue" /> }}
             />
@@ -226,7 +264,19 @@ export function ReportsPage() {
           <Table<DebtReportRow>
             rowKey="invoiceId"
             columns={debtColumns}
-            dataSource={data?.debtItems ?? []}
+            dataSource={activeSection === 'debt' ? detailItems as DebtReportRow[] : []}
+            loading={detailLoading}
+            pagination={{
+              current: detailPage,
+              pageSize: detailPageSize,
+              total: detailTotal,
+              showSizeChanger: true,
+              pageSizeOptions: [10, 20, 50, 100],
+              onChange: (page, pageSize) => {
+                setDetailPage(pageSize === detailPageSize ? page : 1)
+                setDetailPageSize(pageSize)
+              },
+            }}
             scroll={{ x: 1370 }}
             locale={{ emptyText: <Empty description="No unpaid invoices" /> }}
           />
@@ -241,8 +291,19 @@ export function ReportsPage() {
           <Table<OccupancyReportRow>
             rowKey="buildingId"
             columns={occupancyColumns}
-            dataSource={data?.occupancyByBuilding ?? []}
-            pagination={false}
+            dataSource={activeSection === 'occupancy' ? detailItems as OccupancyReportRow[] : []}
+            loading={detailLoading}
+            pagination={{
+              current: detailPage,
+              pageSize: detailPageSize,
+              total: detailTotal,
+              showSizeChanger: true,
+              pageSizeOptions: [10, 20, 50, 100],
+              onChange: (page, pageSize) => {
+                setDetailPage(pageSize === detailPageSize ? page : 1)
+                setDetailPageSize(pageSize)
+              },
+            }}
             scroll={{ x: 1050 }}
             locale={{ emptyText: <Empty description="No occupancy data" /> }}
           />
@@ -282,6 +343,7 @@ export function ReportsPage() {
             onChange={(value) => {
               if (value?.[0] && value[1]) {
                 setRange([value[0].startOf('month'), value[1].startOf('month')])
+                setDetailPage(1)
               }
             }}
           />
@@ -291,14 +353,14 @@ export function ReportsPage() {
             optionFilterProp="label"
             placeholder="All buildings"
             value={buildingId}
-            onChange={setBuildingId}
+            onChange={(value) => { setBuildingId(value); setDetailPage(1) }}
             options={buildings.map((building) => ({ label: building.name, value: building.id }))}
           />
           <Select
             allowClear
             placeholder="Invoice status"
             value={status}
-            onChange={setStatus}
+            onChange={(value) => { setStatus(value); setDetailPage(1) }}
             options={invoiceStatusOptions.map((item) => ({ label: item.label, value: item.value }))}
           />
         </div>
@@ -322,7 +384,7 @@ export function ReportsPage() {
       ) : (
         <Tabs
           activeKey={activeSection}
-          onChange={(key) => setActiveSection(key as ReportSection)}
+          onChange={(key) => { setActiveSection(key as ReportSection); setDetailPage(1) }}
           items={tabItems}
         />
       )}

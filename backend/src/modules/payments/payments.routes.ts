@@ -5,6 +5,7 @@ import { asyncHandler } from '../../shared/middleware/async-handler';
 import { parseBody, parseEmptyBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 import { paymentProofRateLimit } from '../../config/rate-limit';
 import { PAYMENT_PROOF_STATUSES, PAYMENT_REQUEST_STATUSES } from '../../shared/types/database';
+import { createPaginationQuerySchema } from '../../shared/utils/pagination';
 import {
   cloudinaryDeliveryTypeValues,
   normalizeStoredUpload,
@@ -67,7 +68,11 @@ const idempotencyKeySchema = z.string()
   .max(200)
   .regex(/^[A-Za-z0-9._:-]+$/);
 
-const paymentRequestFiltersSchema = z.object({
+const paymentSortFields = [
+  'createdAt', 'month', 'amount', 'status', 'building', 'room', 'tenant', 'latestProofSubmittedAt'
+] as const;
+const paymentRequestFiltersSchema = createPaginationQuerySchema(paymentSortFields, 'createdAt').extend({
+  search: z.string().trim().max(100).optional(),
   month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional(),
   building_id: z.string().uuid().optional(),
   room_id: z.string().uuid().optional(),
@@ -100,7 +105,12 @@ router.get('/requests', asyncHandler(async (req, res) => {
     roomId: filters.room_id,
     tenantId: filters.tenant_id,
     requestStatus: filters.request_status,
-    latestProofStatus: filters.latest_proof_status
+    latestProofStatus: filters.latest_proof_status,
+    search: filters.search,
+    page: filters.page,
+    pageSize: filters.pageSize,
+    sortBy: filters.sortBy,
+    sortOrder: filters.sortOrder
   }));
 }));
 

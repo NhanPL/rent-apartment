@@ -58,10 +58,24 @@ export interface UtilityReadingDetail extends UtilityReadingListItem {
 }
 
 export interface UtilityReadingListParams {
+  search?: string
   building_id?: string
   room_id?: string
   month?: string
   status?: UtilityReadingStatus
+  page?: number
+  pageSize?: number
+  sortBy?: UtilityReadingSortBy
+  sortOrder?: 'asc' | 'desc'
+}
+
+export type UtilityReadingSortBy = 'month' | 'createdAt' | 'submittedAt' | 'status' | 'building' | 'room' | 'tenant'
+
+export interface UtilityReadingListResponse {
+  total: number
+  page: number
+  pageSize: number
+  items: UtilityReadingListItem[]
 }
 
 export interface UtilityEvidencePayload {

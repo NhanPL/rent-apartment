@@ -60,8 +60,9 @@ vi.mock('../../services/paymentsService', () => ({
 }))
 
 import { InvoicesPage } from './InvoicesPage'
+import type { InvoiceListItem } from './types'
 
-const invoice = {
+const invoice: InvoiceListItem = {
   id: '00000000-0000-4000-8000-000000000901',
   contract_id: '00000000-0000-4000-8000-000000000401',
   room_id: '00000000-0000-4000-8000-000000000301',
@@ -93,9 +94,16 @@ const invoice = {
   water_amount: 150_000,
   other_fees: 500_000,
   paid_amount: 4_000_000,
+  void_reason: null,
+  voided_by_user_id: null,
+  voided_at: null,
+  replaces_invoice_id: null,
+  replacement_invoice_id: null,
   created_at: '2026-07-01T00:00:00.000Z',
   updated_at: '2026-07-03T00:00:00.000Z',
 }
+
+const invoicePage = (items: InvoiceListItem[]) => ({ items, total: items.length, page: 1, pageSize: 20 })
 
 describe('InvoicesPage invoice deletion', () => {
   beforeEach(() => {
@@ -105,7 +113,7 @@ describe('InvoicesPage invoice deletion', () => {
     invoiceServiceMocks.listContracts.mockResolvedValue([])
     invoiceServiceMocks.listRooms.mockResolvedValue([])
     invoiceServiceMocks.listTenants.mockResolvedValue([])
-    invoiceServiceMocks.listInvoices.mockResolvedValue([invoice])
+    invoiceServiceMocks.listInvoices.mockResolvedValue(invoicePage([invoice]))
     invoiceServiceMocks.getInvoicesSummary.mockResolvedValue({
       totalInvoices: 1,
       paidInvoices: 1,
@@ -127,13 +135,13 @@ describe('InvoicesPage invoice deletion', () => {
   })
 
   it('confirms permanent deletion for a draft invoice and reloads the table', async () => {
-    invoiceServiceMocks.listInvoices.mockResolvedValue([{
+    invoiceServiceMocks.listInvoices.mockResolvedValue(invoicePage([{
       ...invoice,
       status: 'DRAFT',
       payment_status: null,
       paid_amount: 0,
       paid_at: null,
-    }])
+    }]))
     const user = userEvent.setup()
     render(<InvoicesPage />)
 

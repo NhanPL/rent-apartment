@@ -14,6 +14,12 @@ import type {
   DatabaseTimestamp,
   UtilityReadingStatus
 } from '../../shared/types/database';
+import {
+  paginationOffset,
+  sqlSortDirection,
+  type PaginatedResult,
+  type PaginationParams
+} from '../../shared/utils/pagination';
 
 interface UtilityReadingBoundaryRow {
   id: string;
@@ -101,7 +107,17 @@ const utilityAuditSnapshot = (reading: DbRow): Record<string, unknown> => ({
   note: reading.note
 });
 
-export interface UtilityReadingListParams {
+export type UtilityReadingSortBy =
+  | 'month'
+  | 'createdAt'
+  | 'submittedAt'
+  | 'status'
+  | 'building'
+  | 'room'
+  | 'tenant';
+
+export interface UtilityReadingListParams extends PaginationParams<UtilityReadingSortBy> {
+  search?: string;
   buildingId?: string;
   roomId?: string;
   month?: string;
@@ -234,7 +250,20 @@ export const getUtilityReadingById = async (
   return { ...reading, evidence: evidence.rows };
 };
 
-export const listUtilityReadings = async (scope: AuthScope, filters: UtilityReadingListParams = {}) => {
+const utilityReadingSortColumns: Record<UtilityReadingSortBy, string> = {
+  month: 'ur.month',
+  createdAt: 'ur.created_at',
+  submittedAt: 'ur.submitted_at',
+  status: 'ur.status',
+  building: 'b.name',
+  room: 'r.code',
+  tenant: 'tenant.full_name'
+};
+
+export const listUtilityReadings = async (
+  scope: AuthScope,
+  filters: UtilityReadingListParams
+): Promise<PaginatedResult<DbRow>> => {
   const params: unknown[] = [scope.userId];
   const conditions = scope.role === 'MANAGER'
     ? ['b.manager_user_id=$1']
@@ -246,31 +275,64 @@ export const listUtilityReadings = async (scope: AuthScope, filters: UtilityRead
          WHERE c_scope.room_id=ur.room_id AND c_scope.status='ACTIVE' AND t_scope.user_id=$1
        )`];
 
-  if (filters.buildingId && scope.role === 'MANAGER') {
-    params.push(filters.buildingId);
-    conditions.push(`b.id=$${params.length}`);
-  }
-  if (filters.roomId) {
-    params.push(filters.roomId);
-    conditions.push(`ur.room_id=$${params.length}`);
-  }
-  if (filters.month) {
-    params.push(firstDayOfMonth(filters.month));
-    conditions.push(`ur.month=$${params.length}`);
-  }
-  if (filters.status) {
-    params.push(filters.status);
-    conditions.push(`ur.status=$${params.length}`);
+  const addCondition = (sql: string, value: unknown) => {
+    params.push(value);
+    conditions.push(sql.replace('?', `$${params.length}`));
+  };
+
+  if (filters.search) {
+    addCondition(`(
+      b.name ILIKE '%' || ? || '%'
+      OR r.code ILIKE '%' || ? || '%'
+      OR COALESCE(tenant.full_name, '') ILIKE '%' || ? || '%'
+    )`, filters.search);
+    const searchParameter = `$${params.length}`;
+    conditions[conditions.length - 1] = conditions[conditions.length - 1].split('?').join(searchParameter);
   }
 
-  return (await query<DbRow>(
-    `SELECT ${readingProjection}
-     FROM utility_reading ur
-     ${readingJoins}
-     WHERE ${conditions.join(' AND ')}
-     ORDER BY ur.month DESC, ur.created_at DESC`,
-    params
-  )).rows;
+  if (filters.buildingId && scope.role === 'MANAGER') {
+    addCondition('b.id=?', filters.buildingId);
+  }
+  if (filters.roomId) {
+    addCondition('ur.room_id=?', filters.roomId);
+  }
+  if (filters.month) {
+    addCondition('ur.month=?', firstDayOfMonth(filters.month));
+  }
+  if (filters.status) {
+    addCondition('ur.status=?', filters.status);
+  }
+
+  const where = conditions.join(' AND ');
+  const countParams = [...params];
+  const itemParams = [...params, filters.pageSize, paginationOffset(filters)];
+  const sortColumn = utilityReadingSortColumns[filters.sortBy];
+  const direction = sqlSortDirection(filters.sortOrder);
+  const [countResult, itemResult] = await Promise.all([
+    query<{ total: number }>(
+      `SELECT COUNT(*)::int AS total
+       FROM utility_reading ur
+       ${readingJoins}
+       WHERE ${where}`,
+      countParams
+    ),
+    query<DbRow>(
+      `SELECT ${readingProjection}
+       FROM utility_reading ur
+       ${readingJoins}
+       WHERE ${where}
+       ORDER BY ${sortColumn} ${direction} NULLS LAST, ur.created_at DESC, ur.id
+       LIMIT $${itemParams.length - 1} OFFSET $${itemParams.length}`,
+      itemParams
+    )
+  ]);
+
+  return {
+    total: countResult.rows[0]?.total ?? 0,
+    page: filters.page,
+    pageSize: filters.pageSize,
+    items: itemResult.rows
+  };
 };
 
 export const createUtilityReading = async (payload: UtilityReadingCreatePayload, userId: string) => {

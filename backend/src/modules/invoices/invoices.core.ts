@@ -15,6 +15,12 @@ import type {
   UtilityReadingStatus
 } from '../../shared/types/database';
 import { toDatabaseNumber, toDateString } from '../../shared/types/database';
+import {
+  paginationOffset,
+  sqlSortDirection,
+  type PaginatedResult,
+  type PaginationParams
+} from '../../shared/utils/pagination';
 
 // Internal implementation shared by invoice command, query, and generation services.
 
@@ -148,6 +154,25 @@ export interface InvoiceIssuePaymentPayload {
 
 export interface InvoiceVoidPayload {
   reason: string;
+}
+
+export type InvoiceSortBy = 'month' | 'createdAt' | 'dueDate' | 'total' | 'status' | 'building' | 'room' | 'tenant';
+
+export interface InvoiceListFilters extends PaginationParams<InvoiceSortBy> {
+  search?: string;
+  month?: string;
+  invoiceStatus?: DatabaseInvoiceStatus;
+  paymentStatus?: PaymentStatus;
+  buildingId?: string;
+  roomId?: string;
+  tenantId?: string;
+}
+
+export interface InvoiceSummary {
+  totalInvoices: number;
+  paidInvoices: number;
+  unpaidInvoices: number;
+  totalRevenue: number;
 }
 
 const calc = (q: number, p: number) => Number((q * p).toFixed(2));
@@ -841,31 +866,132 @@ export const createReplacementInvoice = async (voidedInvoiceId: string, managerI
   return getInvoiceDetail(replacementId, { userId: managerId, role: 'MANAGER' });
 };
 
-export const listInvoices = async (scope: AuthScope) => {
-  if (scope.role === 'MANAGER') {
-    return (await query<DbRow>(
+const invoiceSortColumns: Record<InvoiceSortBy, string> = {
+  month: 'i.month',
+  createdAt: 'i.created_at',
+  dueDate: 'i.due_date',
+  total: 'i.total',
+  status: 'i.status',
+  building: 'b.name',
+  room: 'r.code',
+  tenant: 'tenant.full_name'
+};
+
+export const listInvoices = async (
+  scope: AuthScope,
+  filters: InvoiceListFilters
+): Promise<PaginatedResult<DbRow>> => {
+  const params: unknown[] = [scope.userId];
+  const conditions = scope.role === 'MANAGER'
+    ? ['b.manager_user_id=$1']
+    : [
+        "i.status <> 'DRAFT'",
+        `EXISTS (
+          SELECT 1
+          FROM contract_tenant ct_scope
+          JOIN tenant t_scope ON t_scope.id=ct_scope.tenant_id
+          WHERE ct_scope.contract_id=i.contract_id AND t_scope.user_id=$1
+        )`
+      ];
+  const addCondition = (sql: string, value: unknown) => {
+    params.push(value);
+    conditions.push(sql.replace('?', `$${params.length}`));
+  };
+
+  if (filters.search) {
+    addCondition(`(
+      b.name ILIKE '%' || ? || '%'
+      OR r.code ILIKE '%' || ? || '%'
+      OR COALESCE(tenant.full_name, '') ILIKE '%' || ? || '%'
+      OR COALESCE(c.contract_code, '') ILIKE '%' || ? || '%'
+    )`, filters.search);
+    const searchParameter = `$${params.length}`;
+    conditions[conditions.length - 1] = conditions[conditions.length - 1].split('?').join(searchParameter);
+  }
+  if (filters.month) addCondition('i.month=?', `${filters.month}-01`);
+  if (filters.invoiceStatus) addCondition('i.status=?', filters.invoiceStatus);
+  if (filters.paymentStatus) addCondition('latest_payment.status=?', filters.paymentStatus);
+  if (filters.buildingId) addCondition('b.id=?', filters.buildingId);
+  if (filters.roomId) addCondition('r.id=?', filters.roomId);
+  if (filters.tenantId) addCondition('tenant.id=?', filters.tenantId);
+
+  const where = conditions.join(' AND ');
+  const sortColumn = invoiceSortColumns[filters.sortBy];
+  const direction = sqlSortDirection(filters.sortOrder);
+  const countParams = [...params];
+  const itemParams = [...params, filters.pageSize, paginationOffset(filters)];
+  const limitParameter = `$${itemParams.length - 1}`;
+  const offsetParameter = `$${itemParams.length}`;
+
+  const [countResult, itemResult] = await Promise.all([
+    query<{ total: number }>(
+      `SELECT COUNT(*)::int AS total
+       FROM invoice i
+       ${invoiceListJoins}
+       WHERE ${where}`,
+      countParams
+    ),
+    query<DbRow>(
       `SELECT ${invoiceListProjection}
        FROM invoice i
        ${invoiceListJoins}
-       WHERE b.manager_user_id=$1
-       ORDER BY i.month DESC, i.created_at DESC`,
-      [scope.userId]
-    )).rows;
+       WHERE ${where}
+       ORDER BY ${sortColumn} ${direction} NULLS LAST, i.created_at DESC, i.id
+       LIMIT ${limitParameter} OFFSET ${offsetParameter}`,
+      itemParams
+    )
+  ]);
+
+  return {
+    total: countResult.rows[0]?.total ?? 0,
+    page: filters.page,
+    pageSize: filters.pageSize,
+    items: itemResult.rows
+  };
+};
+
+export const getInvoiceSummary = async (
+  scope: AuthScope,
+  month?: string
+): Promise<InvoiceSummary> => {
+  const params: unknown[] = [scope.userId];
+  const conditions = scope.role === 'MANAGER'
+    ? ['b.manager_user_id=$1']
+    : [`EXISTS (
+        SELECT 1
+        FROM contract_tenant ct_scope
+        JOIN tenant t_scope ON t_scope.id=ct_scope.tenant_id
+        WHERE ct_scope.contract_id=i.contract_id AND t_scope.user_id=$1
+      )`];
+  if (month) {
+    params.push(`${month}-01`);
+    conditions.push(`i.month=$${params.length}`);
   }
 
-  return (await query<DbRow>(
-    `SELECT DISTINCT ${invoiceListProjection}
+  const { rows } = await query<{
+    total_invoices: number;
+    paid_invoices: number;
+    unpaid_invoices: number;
+    total_revenue: number | string | null;
+  }>(
+    `SELECT
+       COUNT(*)::int AS total_invoices,
+       COUNT(*) FILTER (WHERE i.status='PAID')::int AS paid_invoices,
+       COUNT(*) FILTER (WHERE i.status NOT IN ('PAID', 'VOID'))::int AS unpaid_invoices,
+       COALESCE(SUM(i.total) FILTER (WHERE i.status='PAID'), 0)::float AS total_revenue
      FROM invoice i
-     ${invoiceListJoins}
-     WHERE i.status <> 'DRAFT' AND EXISTS (
-       SELECT 1
-       FROM contract_tenant ct_scope
-       JOIN tenant t_scope ON t_scope.id=ct_scope.tenant_id
-       WHERE ct_scope.contract_id=i.contract_id AND t_scope.user_id=$1
-     )
-     ORDER BY i.month DESC, i.created_at DESC`,
-    [scope.userId]
-  )).rows;
+     JOIN room r ON r.id=i.room_id
+     JOIN building b ON b.id=r.building_id
+     WHERE ${conditions.join(' AND ')}`,
+    params
+  );
+  const row = rows[0];
+  return {
+    totalInvoices: row?.total_invoices ?? 0,
+    paidInvoices: row?.paid_invoices ?? 0,
+    unpaidInvoices: row?.unpaid_invoices ?? 0,
+    totalRevenue: toNumber(row?.total_revenue)
+  };
 };
 
 export const getInvoiceDetail = async (id: string, scope: AuthScope) => {

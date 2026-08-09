@@ -12,7 +12,7 @@ import { listPaymentRequests } from './paymentsService'
 
 describe('listPaymentRequests', () => {
   beforeEach(() => {
-    apiMocks.apiRequest.mockResolvedValue([])
+    apiMocks.apiRequest.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 })
   })
 
   it('serializes all payment filters as query parameters', async () => {
@@ -23,6 +23,11 @@ describe('listPaymentRequests', () => {
       tenant_id: 'tenant-id',
       request_status: 'TRANSFER_SUBMITTED',
       latest_proof_status: 'PENDING',
+      search: 'room a',
+      page: 2,
+      pageSize: 50,
+      sortBy: 'tenant',
+      sortOrder: 'asc',
     })
 
     const route = String(apiMocks.apiRequest.mock.calls[0][0])
@@ -35,6 +40,11 @@ describe('listPaymentRequests', () => {
       tenant_id: 'tenant-id',
       request_status: 'TRANSFER_SUBMITTED',
       latest_proof_status: 'PENDING',
+      search: 'room a',
+      page: '2',
+      pageSize: '50',
+      sortBy: 'tenant',
+      sortOrder: 'asc',
     })
   })
 

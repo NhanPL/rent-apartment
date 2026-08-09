@@ -2,16 +2,18 @@ import express from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import reportsRoutes from '../src/modules/reports/reports.routes';
-import { getReportsCsv } from '../src/modules/reports/reports.service';
+import { getReportDetails, getReportsCsv } from '../src/modules/reports/reports.service';
 import { errorHandler } from '../src/shared/middleware/error-handler';
 import { UTF8_BOM } from '../src/shared/utils/csv';
 
 vi.mock('../src/modules/reports/reports.service', () => ({
+  getReportDetails: vi.fn(),
   getReportsCsv: vi.fn(),
-  getReportsData: vi.fn()
+  getReportsSummary: vi.fn()
 }));
 
 const mockedGetReportsCsv = vi.mocked(getReportsCsv);
+const mockedGetReportDetails = vi.mocked(getReportDetails);
 
 describe('reports CSV export route', () => {
   const app = express();
@@ -23,10 +25,36 @@ describe('reports CSV export route', () => {
   app.use(errorHandler);
 
   beforeEach(() => {
+    vi.clearAllMocks();
+    mockedGetReportDetails.mockResolvedValue({ total: 0, page: 1, pageSize: 20, items: [] });
     mockedGetReportsCsv.mockResolvedValue({
       filename: 'báo cáo\r\nX-Injected: yes.csv',
       content: `${UTF8_BOM}"Tên","Số tiền"\r\n"Nguyễn An","1000"`
     });
+  });
+
+  it('validates and forwards standardized report detail pagination', async () => {
+    await request(app)
+      .get('/reports/details?section=debt&page=2&pageSize=50&sortBy=outstandingAmount&sortOrder=asc')
+      .expect(200)
+      .expect({ total: 0, page: 1, pageSize: 20, items: [] });
+
+    expect(mockedGetReportDetails).toHaveBeenCalledWith(
+      '00000000-0000-4000-8000-000000000001',
+      expect.objectContaining({ buildingId: undefined, status: undefined }),
+      'debt',
+      { page: 2, pageSize: 50, sortBy: 'outstandingAmount', sortOrder: 'asc' }
+    );
+  });
+
+  it('rejects oversized pages and section-incompatible sort fields', async () => {
+    await request(app)
+      .get('/reports/details?section=debt&pageSize=101')
+      .expect(400);
+    await request(app)
+      .get('/reports/details?section=occupancy&sortBy=dueDate')
+      .expect(400);
+    expect(mockedGetReportDetails).not.toHaveBeenCalled();
   });
 
   it('returns UTF-8 CSV with safe download and caching headers', async () => {

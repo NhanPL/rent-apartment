@@ -50,7 +50,12 @@ const paymentRequest = {
 describe('PaymentsPage filters', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    paymentServiceMocks.listPaymentRequests.mockResolvedValue([paymentRequest])
+    paymentServiceMocks.listPaymentRequests.mockResolvedValue({
+      items: [paymentRequest],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    })
     paymentServiceMocks.reversePayment.mockResolvedValue({ idempotent: false })
   })
 
@@ -73,9 +78,11 @@ describe('PaymentsPage filters', () => {
     await user.click(statusOption!)
 
     await waitFor(() => {
-      expect(paymentServiceMocks.listPaymentRequests).toHaveBeenCalledWith({
+      expect(paymentServiceMocks.listPaymentRequests).toHaveBeenCalledWith(expect.objectContaining({
         request_status: 'WAITING_TRANSFER',
-      })
+        page: 1,
+        pageSize: 20,
+      }))
     })
   })
 
@@ -112,6 +119,8 @@ describe('PaymentsPage filters', () => {
     render(<PaymentsPage />)
     await screen.findByText('Tenant One')
     await user.click(screen.getByRole('button', { name: 'eye' }))
+    await waitFor(() => expect(paymentServiceMocks.getPaymentRequest).toHaveBeenCalledWith(paymentRequest.id))
+    await screen.findByText('Payment ledger')
     await user.click(await screen.findByRole('button', { name: /reverse/i }))
 
     await user.type(screen.getByLabelText('Reversal reason'), 'Matched the wrong transfer')

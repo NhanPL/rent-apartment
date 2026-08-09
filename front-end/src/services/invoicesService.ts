@@ -11,12 +11,14 @@ import type {
   InvoiceIssuePaymentPayload,
   InvoiceListItem,
   InvoiceListParams,
+  InvoiceListResponse,
   InvoicePrefill,
   InvoiceSummary,
   InvoiceUpsertPayload,
   Room,
   Tenant,
 } from '../pages/invoices/types'
+import { appendPaginationParams, type PaginatedResponse } from './pagination'
 
 interface TenantListResponse {
   items: Array<Tenant & { current_room?: { contract_id: string | null } | null }>
@@ -101,24 +103,6 @@ const toInvoicePayload = (payload: InvoiceUpsertPayload) => ({
   month: dayjs(payload.month).startOf('month').format('YYYY-MM-DD'),
 })
 
-function matchesInvoiceFilters(item: InvoiceListItem, params: InvoiceListParams) {
-  const search = params.search?.trim().toLowerCase() ?? ''
-  const matchesSearch =
-    search.length === 0 ||
-    item.building_name.toLowerCase().includes(search) ||
-    item.room_code.toLowerCase().includes(search) ||
-    item.tenant_name.toLowerCase().includes(search)
-
-  const matchesMonth = !params.month || dayjs(item.month).format('YYYY-MM') === params.month
-  const matchesInvoiceStatus = !params.invoice_status || item.status === params.invoice_status
-  const matchesPaymentStatus = !params.payment_status || item.payment_status === params.payment_status
-  const matchesBuilding = !params.building_id || item.building_id === params.building_id
-  const matchesRoom = !params.room_id || item.room_id === params.room_id
-  const matchesTenant = !params.tenant_id || item.tenant_id === params.tenant_id
-
-  return matchesSearch && matchesMonth && matchesInvoiceStatus && matchesPaymentStatus && matchesBuilding && matchesRoom && matchesTenant
-}
-
 export async function listBuildings(): Promise<Building[]> {
   const rows = await apiRequest<Array<Building & { units?: number }>>(API_ROUTES.buildings.list)
   return rows.map((row) => ({ id: row.id, name: row.name }))
@@ -165,12 +149,19 @@ export async function listContracts(): Promise<Contract[]> {
   }))
 }
 
-export async function listInvoices(params: InvoiceListParams): Promise<InvoiceListItem[]> {
-  const rows = await apiRequest<InvoiceApiRow[]>(API_ROUTES.invoices.list)
-  return rows
-    .map(toInvoiceListItem)
-    .filter((item) => matchesInvoiceFilters(item, params))
-    .sort((left, right) => dayjs(right.month).valueOf() - dayjs(left.month).valueOf())
+export async function listInvoices(params: InvoiceListParams = {}): Promise<InvoiceListResponse> {
+  const search = new URLSearchParams()
+  if (params.search) search.set('search', params.search)
+  if (params.month) search.set('month', params.month)
+  if (params.invoice_status) search.set('invoice_status', params.invoice_status)
+  if (params.payment_status) search.set('payment_status', params.payment_status)
+  if (params.building_id) search.set('building_id', params.building_id)
+  if (params.room_id) search.set('room_id', params.room_id)
+  if (params.tenant_id) search.set('tenant_id', params.tenant_id)
+  appendPaginationParams(search, params)
+  const route = search.size ? `${API_ROUTES.invoices.list}?${search.toString()}` : API_ROUTES.invoices.list
+  const response = await apiRequest<PaginatedResponse<InvoiceApiRow>>(route)
+  return { ...response, items: response.items.map(toInvoiceListItem) }
 }
 
 export async function getInvoice(id: string): Promise<InvoiceDetail> {
@@ -245,13 +236,11 @@ export async function createReplacementInvoice(id: string): Promise<InvoiceDetai
 }
 
 export async function getInvoicesSummary(month: string): Promise<InvoiceSummary> {
-  const rows = await listInvoices({ month })
-  return {
-    totalInvoices: rows.length,
-    paidInvoices: rows.filter((item) => item.status === 'PAID').length,
-    unpaidInvoices: rows.filter((item) => item.status !== 'PAID' && item.status !== 'VOID').length,
-    totalRevenue: rows.filter((item) => item.status === 'PAID').reduce((acc, item) => acc + item.total, 0),
-  }
+  const search = new URLSearchParams()
+  if (month) search.set('month', month)
+  const route = search.size ? `${API_ROUTES.invoices.summary}?${search.toString()}` : API_ROUTES.invoices.summary
+  const response = await apiRequest<InvoiceSummary & { totalRevenue: number | string | null }>(route)
+  return { ...response, totalRevenue: toNumber(response.totalRevenue) }
 }
 
 export async function getInvoicePrefill(roomId: string, month: string): Promise<InvoicePrefill> {
