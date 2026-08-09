@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
-import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
+import { parseBody, parseEmptyBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 import { paymentProofRateLimit } from '../../config/rate-limit';
 import { PAYMENT_PROOF_STATUSES, PAYMENT_REQUEST_STATUSES } from '../../shared/types/database';
 import {
@@ -118,10 +118,12 @@ router.post('/requests', requireRole('MANAGER'), asyncHandler(async (req, res) =
 }));
 
 router.post('/requests/:id/cancel', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   res.json(await updatePaymentRequestStatus(req.params.id, req.auth!.userId, 'CANCELLED'));
 }));
 
 router.post('/requests/:id/expire', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   res.json(await updatePaymentRequestStatus(req.params.id, req.auth!.userId, 'EXPIRED'));
 }));
 
@@ -152,6 +154,7 @@ router.post('/requests/:id/proofs', paymentProofRateLimit, requireRole('TENANT')
 }));
 
 router.post('/proofs/:id/approve', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   const result = await reviewPaymentProof(req.params.id, true, req.auth!.userId);
   res.json({
     ...result,

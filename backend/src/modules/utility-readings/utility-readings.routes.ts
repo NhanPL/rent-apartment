@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { UTILITY_READING_STATUSES } from '../../shared/types/database';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
-import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
+import { parseBody, parseEmptyBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 import {
   cloudinaryDeliveryTypeValues,
   normalizeStoredUpload,
@@ -139,6 +139,7 @@ router.post('/:id/evidence', asyncHandler(async (req, res) => {
 }));
 
 router.post('/:id/approve', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   const reading = await approveUtilityReading(req.params.id, req.auth!.userId);
   res.json({
     ...reading,

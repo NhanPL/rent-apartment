@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
-import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
+import { parseBody, parseEmptyBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 import { CHARGE_TYPES } from '../../shared/types/database';
 import {
   createBuildingCharge,
@@ -151,6 +151,7 @@ router.patch('/catalog/:id', asyncHandler(async (req, res) => {
 }));
 
 router.delete('/catalog/:id', asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   await deleteChargeCatalog(req.params.id);
   res.status(204).send();
 }));
@@ -176,6 +177,7 @@ router.patch('/building-charges/:id', asyncHandler(async (req, res) => {
 }));
 
 router.delete('/building-charges/:id', asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   await deleteBuildingCharge(req.params.id, req.auth!.userId);
   res.status(204).send();
 }));
@@ -202,6 +204,7 @@ router.patch('/room-overrides/:id', asyncHandler(async (req, res) => {
 }));
 
 router.delete('/room-overrides/:id', asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   await deleteRoomChargeOverride(req.params.id, req.auth!.userId);
   res.status(204).send();
 }));
@@ -229,6 +232,7 @@ router.patch('/contract-overrides/:id', asyncHandler(async (req, res) => {
 }));
 
 router.delete('/contract-overrides/:id', asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   await deleteContractChargeOverride(req.params.id, req.auth!.userId);
   res.status(204).send();
 }));
@@ -256,6 +260,7 @@ router.patch('/room-month-extras/:id', asyncHandler(async (req, res) => {
 }));
 
 router.delete('/room-month-extras/:id', asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   await deleteRoomMonthExtra(req.params.id, req.auth!.userId);
   res.status(204).send();
 }));

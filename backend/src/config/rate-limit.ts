@@ -4,6 +4,7 @@ import {
   rateLimit
 } from 'express-rate-limit';
 import { env } from './env';
+import { buildErrorResponse } from '../shared/errors/error-contract';
 
 interface RateLimitPolicy {
   windowMinutes: number;
@@ -28,7 +29,7 @@ export const createRateLimitMiddleware = ({
   legacyHeaders: false,
   keyGenerator,
   handler: (_request, response) => {
-    response.status(429).json({ code, message });
+    response.status(429).json(buildErrorResponse(response, code, message));
   }
 });
 

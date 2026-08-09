@@ -4,7 +4,7 @@ import { query } from '../../db';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
-import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
+import { parseBody, parseEmptyBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 import type {
   DatabaseDate,
   DatabaseNumeric,
@@ -232,6 +232,7 @@ router.get('/:id/occupancy', requireRole('MANAGER'), asyncHandler(async (req, re
 }));
 
 router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   const room = await query<IdRow>(
     `SELECT r.id
      FROM room r

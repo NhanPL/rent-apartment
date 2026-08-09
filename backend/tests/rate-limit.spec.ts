@@ -34,7 +34,9 @@ describe('rate-limit configuration', () => {
     expect(blocked.headers['retry-after']).toEqual(expect.any(String));
     expect(blocked.body).toEqual({
       code: 'TEST_RATE_LIMIT',
-      message: 'Request limit reached.'
+      message: 'Request limit reached.',
+      fieldErrors: null,
+      requestId: 'unknown'
     });
   });
 

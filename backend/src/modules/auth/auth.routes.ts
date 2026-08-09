@@ -37,6 +37,7 @@ import {
   passwordResetRateLimit,
   refreshRateLimit
 } from '../../config/rate-limit';
+import { parseBody, parseEmptyBody, parseQuery } from '../../shared/utils/validation';
 
 const router = Router();
 
@@ -52,6 +53,7 @@ const changePasswordSchema = z.object({
 });
 
 const activationTokenSchema = z.string().trim().min(32).max(256);
+const activationQuerySchema = z.object({ token: activationTokenSchema });
 
 const activateAccountSchema = z.object({
   token: activationTokenSchema,
@@ -110,6 +112,7 @@ router.post('/login', loginRateLimit, asyncHandler(async (req, res) => {
 }));
 
 router.post('/refresh', refreshRateLimit, asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   const refreshToken = getRefreshTokenCookie(req);
   if (!refreshToken) {
     clearRefreshTokenCookie(res);
@@ -129,6 +132,7 @@ router.post('/refresh', refreshRateLimit, asyncHandler(async (req, res) => {
 }));
 
 router.post('/logout', asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   const refreshToken = getRefreshTokenCookie(req);
   if (refreshToken) await revokeSessionByRefreshToken(refreshToken);
   clearRefreshTokenCookie(res);
@@ -136,47 +140,39 @@ router.post('/logout', asyncHandler(async (req, res) => {
 }));
 
 router.get('/activation', asyncHandler(async (req, res) => {
-  const parsed = activationTokenSchema.safeParse(req.query.token);
-  if (!parsed.success) {
-    throw new AppError(
-      400,
-      'This activation link is invalid, expired, or has already been used.',
-      'ACTIVATION_TOKEN_INVALID'
-    );
-  }
-
-  res.json(await validateActivationToken(parsed.data));
+  const parsed = parseQuery(activationQuerySchema, req.query, {
+    code: 'ACTIVATION_TOKEN_INVALID',
+    message: 'This activation link is invalid, expired, or has already been used.'
+  });
+  res.json(await validateActivationToken(parsed.token));
 }));
 
 router.post('/activate', asyncHandler(async (req, res) => {
-  const parsed = activateAccountSchema.safeParse(req.body);
-  if (!parsed.success) {
-    throw new AppError(400, 'Please enter and confirm a valid password.', 'VALIDATION_ERROR');
-  }
+  const parsed = parseBody(activateAccountSchema, req.body, {
+    message: 'Please enter and confirm a valid password.'
+  });
 
-  validateNewPassword(parsed.data.newPassword, parsed.data.confirmPassword);
-  await activateTenantAccount(parsed.data.token, parsed.data.newPassword);
+  validateNewPassword(parsed.newPassword, parsed.confirmPassword);
+  await activateTenantAccount(parsed.token, parsed.newPassword);
   res.json({ success: true });
 }));
 
 router.post('/password-reset/request', passwordResetRateLimit, asyncHandler(async (req, res) => {
-  const parsed = requestPasswordResetSchema.safeParse(req.body);
-  if (!parsed.success) {
-    throw new AppError(400, 'Please enter a valid email address.', 'VALIDATION_ERROR');
-  }
+  const parsed = parseBody(requestPasswordResetSchema, req.body, {
+    message: 'Please enter a valid email address.'
+  });
 
-  await requestPasswordReset(parsed.data.email, req.ip || req.socket.remoteAddress || 'unknown');
+  await requestPasswordReset(parsed.email, req.ip || req.socket.remoteAddress || 'unknown');
   res.status(202).json({ message: PASSWORD_RESET_REQUEST_MESSAGE });
 }));
 
 router.post('/password-reset/confirm', passwordResetRateLimit, asyncHandler(async (req, res) => {
-  const parsed = confirmPasswordResetSchema.safeParse(req.body);
-  if (!parsed.success) {
-    throw new AppError(400, 'Please enter and confirm a valid password.', 'VALIDATION_ERROR');
-  }
+  const parsed = parseBody(confirmPasswordResetSchema, req.body, {
+    message: 'Please enter and confirm a valid password.'
+  });
 
-  validateNewPassword(parsed.data.newPassword, parsed.data.confirmPassword);
-  await confirmPasswordReset(parsed.data.token, parsed.data.newPassword);
+  validateNewPassword(parsed.newPassword, parsed.confirmPassword);
+  await confirmPasswordReset(parsed.token, parsed.newPassword);
   clearRefreshTokenCookie(res);
   res.json({ success: true });
 }));
@@ -187,22 +183,22 @@ router.get('/me', requireAuth, asyncHandler(async (req, res) => {
 }));
 
 router.put('/password', requireAuth, asyncHandler(async (req, res) => {
-  const parsed = changePasswordSchema.safeParse(req.body);
-  if (!parsed.success) {
-    throw new AppError(400, 'Invalid password change payload', 'VALIDATION_ERROR');
-  }
+  const parsed = parseBody(changePasswordSchema, req.body, {
+    message: 'Invalid password change payload'
+  });
 
   validateNewPassword(
-    parsed.data.newPassword,
-    parsed.data.confirmPassword,
-    parsed.data.currentPassword
+    parsed.newPassword,
+    parsed.confirmPassword,
+    parsed.currentPassword
   );
-  await changePassword(req.auth!.userId, parsed.data.currentPassword, parsed.data.newPassword);
+  await changePassword(req.auth!.userId, parsed.currentPassword, parsed.newPassword);
   clearRefreshTokenCookie(res);
   res.json({ success: true });
 }));
 
 router.post('/sessions/revoke-all', requireAuth, asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   await revokeAllUserSessions(req.auth!.userId);
   clearRefreshTokenCookie(res);
   res.json({ success: true });

@@ -15,7 +15,7 @@ import {
   updateInvoiceStatus,
   updateManualInvoice
 } from './invoices.service';
-import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
+import { parseBody, parseEmptyBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 
 const router = Router();
 registerUuidParams(router, ['id', 'utilityReadingId']);
@@ -97,6 +97,7 @@ router.put('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 }));
 
 router.post('/from-reading/:utilityReadingId', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   res.status(201).json(await createInvoiceFromReading(req.params.utilityReadingId, req.auth!.userId));
 }));
 
@@ -126,6 +127,7 @@ router.post('/:id/void', requireRole('MANAGER'), asyncHandler(async (req, res) =
 }));
 
 router.post('/:id/replacement', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   res.status(201).json(await createReplacementInvoice(req.params.id, req.auth!.userId));
 }));
 
@@ -135,6 +137,7 @@ router.post('/:id/adjustments', requireRole('MANAGER'), asyncHandler(async (req,
 }));
 
 router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   await deleteManualInvoice(req.params.id, req.auth!.userId);
   res.status(204).send();
 }));
