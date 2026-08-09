@@ -5,10 +5,11 @@ import { asyncHandler } from '../../shared/middleware/async-handler';
 import { parseQuery } from '../../shared/utils/validation';
 import { getReportsCsv, getReportsData } from './reports.service';
 import { buildCsvContentDisposition } from '../../shared/utils/csv';
+import { INVOICE_STATUSES } from '../../shared/types/database';
 
 const router = Router();
 
-const invoiceStatusSchema = z.enum(['DRAFT', 'ISSUED', 'PARTIALLY_PAID', 'PAID', 'VOID']);
+const invoiceStatusSchema = z.enum(INVOICE_STATUSES);
 const reportSectionSchema = z.enum(['revenue', 'debt', 'occupancy']);
 
 const reportsQuerySchema = z.object({

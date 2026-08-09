@@ -315,7 +315,7 @@ export const revokeAllUserSessions = async (userId: string): Promise<void> => {
 };
 
 export const cleanupExpiredSessions = async (): Promise<number> => {
-  const result = await query(
+  const result = await query<{ id: string }>(
     `DELETE FROM auth_session
      WHERE expires_at <= now()
         OR (

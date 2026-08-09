@@ -9,8 +9,47 @@ import {
 } from '../auth/account-activation.service';
 import { assertRoomCanHostActiveContract, CURRENT_CONTRACT_STATUS, getContractRoomForManager } from '../contracts/contracts.rules';
 import { createTenantRecord, createTenantUserAccount, findTenantByIdentityNumber, TenantInsertPayload } from './tenants.repository';
+import type { ContractStatus } from '../../shared/types/database';
 
 export type CreateTenantInput = Omit<TenantInsertPayload, 'manager_user_id'>;
+
+export interface TenantCreateInputDto {
+  full_name: string;
+  phone: string;
+  identity_number: string;
+  email: string;
+  dob?: string | null;
+  gender?: string | null;
+  identity_issued_date?: string | null;
+  identity_issued_place?: string | null;
+  permanent_address?: string | null;
+  status?: CreateTenantInput['status'];
+  note?: string | null;
+}
+
+export interface TenantContractInputDto {
+  building_id?: string | null;
+  room_id: string;
+  status?: ContractStatus;
+  start_date: string;
+  end_date?: string | null;
+  move_in_date?: string | null;
+  move_out_date?: string | null;
+  rent_price?: number | null;
+  deposit_amount?: number | null;
+  billing_day?: number | null;
+  note?: string | null;
+}
+
+interface TenantCreationMetadata {
+  contract?: TenantContractInputDto | null;
+  privacy_consent: true;
+  privacy_policy_version?: string;
+}
+
+export type CreateTenantCommand =
+  | (TenantCreateInputDto & TenantCreationMetadata)
+  | (TenantCreationMetadata & { tenant: TenantCreateInputDto });
 
 export interface CreateTenantResult {
   tenantId: string;
@@ -21,7 +60,7 @@ export interface CreateTenantResult {
 export interface TenantContractPayload {
   building_id: string | null;
   room_id: string;
-  status: 'DRAFT' | 'ACTIVE' | 'ENDED' | 'CANCELLED';
+  status: ContractStatus;
   start_date: string;
   end_date: string | null;
   move_in_date: string | null;
@@ -32,7 +71,7 @@ export interface TenantContractPayload {
   note: string | null;
 }
 
-const validateCreateInput = (input: Record<string, unknown>): CreateTenantInput => {
+const validateCreateInput = (input: TenantCreateInputDto): CreateTenantInput => {
   if (!input.full_name || !input.phone || !input.identity_number || !input.email) {
     throw new AppError(400, 'full_name, phone, identity_number, email are required', 'VALIDATION_ERROR');
   }
@@ -90,7 +129,7 @@ const toContractStatus = (value: unknown): TenantContractPayload['status'] => {
   return parsed as TenantContractPayload['status'];
 };
 
-export const normalizeTenantContractInput = (input: Record<string, unknown>): TenantContractPayload => ({
+export const normalizeTenantContractInput = (input: TenantContractInputDto): TenantContractPayload => ({
   building_id: toNullableString(input.building_id),
   room_id: toRequiredString(input.room_id, 'room_id'),
   status: toContractStatus(input.status),
@@ -129,7 +168,7 @@ const generateContractCode = async (client: PoolClient): Promise<string> => {
   for (let i = 0; i < 5; i += 1) {
     const random = Math.floor(1000 + Math.random() * 9000);
     const code = `CONTRACT-${datePart}-${random}`;
-    const exists = await client.query('SELECT 1 FROM contract WHERE contract_code = $1 LIMIT 1', [code]);
+    const exists = await client.query<{ exists: 1 }>('SELECT 1 FROM contract WHERE contract_code = $1 LIMIT 1', [code]);
     if (exists.rows.length === 0) return code;
   }
   throw new AppError(500, 'Cannot generate contract code', 'CONTRACT_CODE_ERROR');
@@ -138,16 +177,28 @@ const generateContractCode = async (client: PoolClient): Promise<string> => {
 export const createTenantContract = async (
   client: PoolClient,
   tenantId: string,
-  contractInput: Record<string, unknown>,
+  contractInput: TenantContractInputDto,
   managerId: string
 ): Promise<{ id: string }> => {
   const payload = normalizeTenantContractInput(contractInput);
   await validateTenantContractRoom(client, payload, managerId);
 
   const code = await generateContractCode(client);
-  const contractRs = await client.query<{ id: string } & Record<string, any>>(
+  const contractRs = await client.query<{
+    id: string;
+    room_id: string;
+    contract_code: string;
+    status: TenantContractPayload['status'];
+    start_date: string;
+    end_date: string | null;
+    rent_price: number | string;
+    deposit_amount: number | string;
+    billing_day: number;
+  }>(
     `INSERT INTO contract(room_id,contract_code,status,start_date,end_date,move_in_date,move_out_date,rent_price,deposit_amount,billing_day,note)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+     RETURNING id, room_id, contract_code, status, start_date, end_date,
+               rent_price, deposit_amount, billing_day`,
     [
       payload.room_id,
       code,
@@ -189,9 +240,9 @@ export const createTenantContract = async (
   return contractRs.rows[0];
 };
 
-export const createTenant = async (raw: Record<string, unknown>, managerId: string): Promise<CreateTenantResult> => {
-  const tenantPayload = validateCreateInput((raw.tenant as Record<string, unknown> | undefined) ?? raw);
-  const contractPayload = (raw.contract as Record<string, unknown> | null | undefined) ?? null;
+export const createTenant = async (raw: CreateTenantCommand, managerId: string): Promise<CreateTenantResult> => {
+  const tenantPayload = validateCreateInput('tenant' in raw ? raw.tenant : raw);
+  const contractPayload = raw.contract ?? null;
 
   const { tenantId, userId, loginEmail, username, tenantName, invitation } = await withTransaction(async (client) => {
     const existing = await findTenantByIdentityNumber(client, tenantPayload.identity_number);

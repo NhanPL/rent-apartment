@@ -1,14 +1,64 @@
 import { query, withTransaction } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
 import { firstDayOfMonth } from '../../shared/utils/date';
+import type {
+  ChargeType as DatabaseChargeType,
+  DatabaseDate,
+  DatabaseNumeric,
+  DatabaseTimestamp
+} from '../../shared/types/database';
+import { toDatabaseNumber, toDateString } from '../../shared/types/database';
 
 // Internal implementation shared by the focused fixed-charge services.
 
-type DbRow = Record<string, any>;
+interface FixedChargeBoundaryRow {
+  id: string;
+  code: string;
+  name: string;
+  charge_id: string;
+  charge_code: string;
+  charge_name: string;
+  charge_type: DatabaseChargeType;
+  building_id: string;
+  building_name: string;
+  room_id: string;
+  room_code: string;
+  contract_id: string;
+  contract_code: string;
+  unit_price: DatabaseNumeric;
+  effective_from: DatabaseDate;
+  effective_to: DatabaseDate | null;
+  is_active: boolean;
+  month: DatabaseDate;
+  persons_count: number | null;
+  vehicles_count: number | null;
+  reported_by_user_id: string | null;
+  reported_at: DatabaseTimestamp | null;
+  note: string | null;
+  created_at: DatabaseTimestamp;
+  updated_at: DatabaseTimestamp;
+  source: FixedChargeSource;
+  source_id: string;
+  room_month_extra_id: string | null;
+  contract_row_id: string | null;
+  contract_unit_price: DatabaseNumeric | null;
+  contract_effective_from: DatabaseDate | null;
+  contract_is_active: boolean | null;
+  room_row_id: string | null;
+  room_unit_price: DatabaseNumeric | null;
+  room_effective_from: DatabaseDate | null;
+  room_is_active: boolean | null;
+  building_row_id: string | null;
+  building_unit_price: DatabaseNumeric | null;
+  building_effective_from: DatabaseDate | null;
+  building_is_active: boolean | null;
+  [column: string]: unknown;
+}
+type DbRow = FixedChargeBoundaryRow;
 type TxClient = Parameters<Parameters<typeof withTransaction>[0]>[0];
 type QueryClient = Pick<TxClient, 'query'>;
 
-export type ChargeType = 'FLAT' | 'PER_PERSON' | 'PER_VEHICLE';
+export type ChargeType = DatabaseChargeType;
 export type FixedChargeSource = 'CONTRACT_OVERRIDE' | 'ROOM_OVERRIDE' | 'BUILDING_DEFAULT';
 
 export interface ChargeCatalogPayload {
@@ -85,7 +135,7 @@ export interface ResolveFixedChargeParams {
   month: string;
 }
 
-const toNumber = (value: unknown): number => Number(value ?? 0);
+const toNumber = (value: DatabaseNumeric | null | undefined): number => toDatabaseNumber(value);
 const money = (value: number): number => Number(value.toFixed(2));
 const normalizeCode = (value: string): string => value.trim().toUpperCase().replace(/\s+/g, '_');
 const hasOwn = <T extends object>(payload: T, key: keyof T): boolean => Object.prototype.hasOwnProperty.call(payload, key);
@@ -96,11 +146,12 @@ const assertDateRange = (effectiveFrom: unknown, effectiveTo: unknown) => {
 };
 
 const catalogProjection = `
-  cc.*
+  cc.id, cc.code, cc.name, cc.charge_type, cc.is_active, cc.note, cc.created_at, cc.updated_at
 `;
 
 const buildingChargeProjection = `
-  bc.*,
+  bc.id, bc.building_id, bc.charge_id, bc.unit_price, bc.effective_from,
+  bc.is_active, bc.created_at, bc.updated_at,
   b.name AS building_name,
   cc.code AS charge_code,
   cc.name AS charge_name,
@@ -108,7 +159,8 @@ const buildingChargeProjection = `
 `;
 
 const roomChargeProjection = `
-  rco.*,
+  rco.id, rco.room_id, rco.charge_id, rco.unit_price, rco.effective_from,
+  rco.is_active, rco.created_at, rco.updated_at,
   r.building_id,
   r.code AS room_code,
   b.name AS building_name,
@@ -118,7 +170,8 @@ const roomChargeProjection = `
 `;
 
 const contractChargeProjection = `
-  cco.*,
+  cco.id, cco.contract_id, cco.charge_id, cco.unit_price, cco.effective_from,
+  cco.effective_to, cco.is_active, cco.created_at, cco.updated_at,
   c.room_id,
   c.contract_code,
   c.status AS contract_status,
@@ -132,19 +185,20 @@ const contractChargeProjection = `
 `;
 
 const roomMonthExtraProjection = `
-  rme.*,
+  rme.id, rme.room_id, rme.month, rme.persons_count, rme.vehicles_count,
+  rme.reported_by_user_id, rme.reported_at, rme.note, rme.created_at, rme.updated_at,
   r.building_id,
   r.code AS room_code,
   b.name AS building_name
 `;
 
 const assertChargeCatalog = async (client: QueryClient, chargeId: string) => {
-  const { rows } = await client.query('SELECT id FROM charge_catalog WHERE id=$1', [chargeId]);
+  const { rows } = await client.query<{ id: string }>('SELECT id FROM charge_catalog WHERE id=$1', [chargeId]);
   if (!rows[0]) throw new AppError(404, 'Charge catalog item not found', 'CHARGE_NOT_FOUND');
 };
 
 const assertUniqueCatalogCode = async (client: QueryClient, code: string, excludeId?: string) => {
-  const { rows } = await client.query(
+  const { rows } = await client.query<{ id: string }>(
     `SELECT id FROM charge_catalog WHERE code=$1 AND ($2::uuid IS NULL OR id<>$2) LIMIT 1`,
     [code, excludeId ?? null]
   );
@@ -152,12 +206,12 @@ const assertUniqueCatalogCode = async (client: QueryClient, code: string, exclud
 };
 
 const assertManagerBuilding = async (client: QueryClient, buildingId: string, managerId: string) => {
-  const { rows } = await client.query('SELECT id FROM building WHERE id=$1 AND manager_user_id=$2', [buildingId, managerId]);
+  const { rows } = await client.query<{ id: string }>('SELECT id FROM building WHERE id=$1 AND manager_user_id=$2', [buildingId, managerId]);
   if (!rows[0]) throw new AppError(404, 'Building not found', 'BUILDING_NOT_FOUND');
 };
 
 const assertManagerRoom = async (client: QueryClient, roomId: string, managerId: string) => {
-  const { rows } = await client.query(
+  const { rows } = await client.query<{ id: string }>(
     `SELECT r.id
      FROM room r
      JOIN building b ON b.id=r.building_id
@@ -168,7 +222,7 @@ const assertManagerRoom = async (client: QueryClient, roomId: string, managerId:
 };
 
 const assertManagerContract = async (client: QueryClient, contractId: string, managerId: string) => {
-  const { rows } = await client.query(
+  const { rows } = await client.query<{ id: string }>(
     `SELECT c.id
      FROM contract c
      JOIN room r ON r.id=c.room_id
@@ -186,7 +240,7 @@ const assertUniqueBuildingCharge = async (
   effectiveFrom: string,
   excludeId?: string
 ) => {
-  const { rows } = await client.query(
+  const { rows } = await client.query<{ id: string }>(
     `SELECT id
      FROM building_charge
      WHERE building_id=$1 AND charge_id=$2 AND effective_from=$3 AND ($4::uuid IS NULL OR id<>$4)
@@ -203,7 +257,7 @@ const assertUniqueRoomCharge = async (
   effectiveFrom: string,
   excludeId?: string
 ) => {
-  const { rows } = await client.query(
+  const { rows } = await client.query<{ id: string }>(
     `SELECT id
      FROM room_charge_override
      WHERE room_id=$1 AND charge_id=$2 AND effective_from=$3 AND ($4::uuid IS NULL OR id<>$4)
@@ -220,7 +274,7 @@ const assertUniqueContractCharge = async (
   effectiveFrom: string,
   excludeId?: string
 ) => {
-  const { rows } = await client.query(
+  const { rows } = await client.query<{ id: string }>(
     `SELECT id
      FROM contract_charge_override
      WHERE contract_id=$1 AND charge_id=$2 AND effective_from=$3 AND ($4::uuid IS NULL OR id<>$4)
@@ -231,7 +285,7 @@ const assertUniqueContractCharge = async (
 };
 
 const assertUniqueRoomMonthExtra = async (client: QueryClient, roomId: string, month: string, excludeId?: string) => {
-  const { rows } = await client.query(
+  const { rows } = await client.query<{ id: string }>(
     `SELECT id
      FROM room_month_extra
      WHERE room_id=$1 AND month=$2 AND ($3::uuid IS NULL OR id<>$3)
@@ -260,7 +314,10 @@ export const listChargeCatalog = async (isActive?: boolean) => {
 };
 
 export const getChargeCatalog = async (id: string) => {
-  const { rows } = await query<DbRow>('SELECT * FROM charge_catalog WHERE id=$1', [id]);
+  const { rows } = await query<DbRow>(
+    'SELECT id, code, name, charge_type, is_active, note, created_at, updated_at FROM charge_catalog WHERE id=$1',
+    [id]
+  );
   if (!rows[0]) throw new AppError(404, 'Charge catalog item not found', 'CHARGE_NOT_FOUND');
   return rows[0];
 };
@@ -273,7 +330,7 @@ export const createChargeCatalog = async (payload: ChargeCatalogPayload) =>
     const { rows } = await client.query<DbRow>(
       `INSERT INTO charge_catalog(code,name,charge_type,is_active,note)
        VALUES($1,$2,$3,$4,$5)
-       RETURNING *`,
+       RETURNING id, code, name, charge_type, is_active, note, created_at, updated_at`,
       [code, payload.name.trim(), payload.charge_type, payload.is_active ?? true, payload.note ?? null]
     );
     return rows[0];
@@ -281,7 +338,10 @@ export const createChargeCatalog = async (payload: ChargeCatalogPayload) =>
 
 export const updateChargeCatalog = async (id: string, payload: ChargeCatalogUpdatePayload) =>
   withTransaction(async (client) => {
-    const currentRs = await client.query<DbRow>('SELECT * FROM charge_catalog WHERE id=$1 FOR UPDATE', [id]);
+    const currentRs = await client.query<DbRow>(
+      'SELECT id, code, name, charge_type, is_active, note, created_at, updated_at FROM charge_catalog WHERE id=$1 FOR UPDATE',
+      [id]
+    );
     const current = currentRs.rows[0];
     if (!current) throw new AppError(404, 'Charge catalog item not found', 'CHARGE_NOT_FOUND');
 
@@ -297,7 +357,7 @@ export const updateChargeCatalog = async (id: string, payload: ChargeCatalogUpda
            is_active=$4,
            note=CASE WHEN $5::boolean THEN $6 ELSE note END
        WHERE id=$7
-       RETURNING *`,
+       RETURNING id, code, name, charge_type, is_active, note, created_at, updated_at`,
       [
         code,
         payload.name?.trim() ?? current.name,
@@ -363,7 +423,7 @@ export const createBuildingCharge = async (payload: BuildingChargePayload, manag
     const { rows } = await client.query<DbRow>(
       `INSERT INTO building_charge(building_id,charge_id,unit_price,effective_from,is_active)
        VALUES($1,$2,$3,$4,$5)
-       RETURNING *`,
+       RETURNING id, building_id, charge_id, unit_price, effective_from, is_active, created_at, updated_at`,
       [payload.building_id, payload.charge_id, payload.unit_price, payload.effective_from, payload.is_active ?? true]
     );
     return rows[0];
@@ -372,7 +432,8 @@ export const createBuildingCharge = async (payload: BuildingChargePayload, manag
 export const updateBuildingCharge = async (id: string, payload: BuildingChargeUpdatePayload, managerId: string) =>
   withTransaction(async (client) => {
     const currentRs = await client.query<DbRow>(
-      `SELECT bc.*
+      `SELECT bc.id, bc.building_id, bc.charge_id, bc.unit_price, bc.effective_from,
+              bc.is_active, bc.created_at, bc.updated_at
        FROM building_charge bc
        JOIN building b ON b.id=bc.building_id
        WHERE bc.id=$1 AND b.manager_user_id=$2
@@ -384,7 +445,7 @@ export const updateBuildingCharge = async (id: string, payload: BuildingChargeUp
 
     const buildingId = payload.building_id ?? current.building_id;
     const chargeId = payload.charge_id ?? current.charge_id;
-    const effectiveFrom = payload.effective_from ?? current.effective_from;
+    const effectiveFrom = payload.effective_from ?? toDateString(current.effective_from)!;
     await assertManagerBuilding(client, buildingId, managerId);
     await assertChargeCatalog(client, chargeId);
     await assertUniqueBuildingCharge(client, buildingId, chargeId, effectiveFrom, id);
@@ -393,7 +454,7 @@ export const updateBuildingCharge = async (id: string, payload: BuildingChargeUp
       `UPDATE building_charge
        SET building_id=$1,charge_id=$2,unit_price=$3,effective_from=$4,is_active=$5
        WHERE id=$6
-       RETURNING *`,
+       RETURNING id, building_id, charge_id, unit_price, effective_from, is_active, created_at, updated_at`,
       [
         buildingId,
         chargeId,
@@ -464,7 +525,7 @@ export const createRoomChargeOverride = async (payload: RoomChargeOverridePayloa
     const { rows } = await client.query<DbRow>(
       `INSERT INTO room_charge_override(room_id,charge_id,unit_price,effective_from,is_active)
        VALUES($1,$2,$3,$4,$5)
-       RETURNING *`,
+       RETURNING id, room_id, charge_id, unit_price, effective_from, is_active, created_at, updated_at`,
       [payload.room_id, payload.charge_id, payload.unit_price, payload.effective_from, payload.is_active ?? true]
     );
     return rows[0];
@@ -473,7 +534,8 @@ export const createRoomChargeOverride = async (payload: RoomChargeOverridePayloa
 export const updateRoomChargeOverride = async (id: string, payload: RoomChargeOverrideUpdatePayload, managerId: string) =>
   withTransaction(async (client) => {
     const currentRs = await client.query<DbRow>(
-      `SELECT rco.*
+      `SELECT rco.id, rco.room_id, rco.charge_id, rco.unit_price, rco.effective_from,
+              rco.is_active, rco.created_at, rco.updated_at
        FROM room_charge_override rco
        JOIN room r ON r.id=rco.room_id
        JOIN building b ON b.id=r.building_id
@@ -486,7 +548,7 @@ export const updateRoomChargeOverride = async (id: string, payload: RoomChargeOv
 
     const roomId = payload.room_id ?? current.room_id;
     const chargeId = payload.charge_id ?? current.charge_id;
-    const effectiveFrom = payload.effective_from ?? current.effective_from;
+    const effectiveFrom = payload.effective_from ?? toDateString(current.effective_from)!;
     await assertManagerRoom(client, roomId, managerId);
     await assertChargeCatalog(client, chargeId);
     await assertUniqueRoomCharge(client, roomId, chargeId, effectiveFrom, id);
@@ -495,7 +557,7 @@ export const updateRoomChargeOverride = async (id: string, payload: RoomChargeOv
       `UPDATE room_charge_override
        SET room_id=$1,charge_id=$2,unit_price=$3,effective_from=$4,is_active=$5
        WHERE id=$6
-       RETURNING *`,
+       RETURNING id, room_id, charge_id, unit_price, effective_from, is_active, created_at, updated_at`,
       [roomId, chargeId, payload.unit_price ?? current.unit_price, effectiveFrom, payload.is_active ?? current.is_active, id]
     );
     return rows[0];
@@ -585,7 +647,7 @@ export const createContractChargeOverride = async (payload: ContractChargeOverri
     const { rows } = await client.query<DbRow>(
       `INSERT INTO contract_charge_override(contract_id,charge_id,unit_price,effective_from,effective_to,is_active)
        VALUES($1,$2,$3,$4,$5,$6)
-       RETURNING *`,
+       RETURNING id, contract_id, charge_id, unit_price, effective_from, effective_to, is_active, created_at, updated_at`,
       [payload.contract_id, payload.charge_id, payload.unit_price, payload.effective_from, payload.effective_to ?? null, payload.is_active ?? true]
     );
     return rows[0];
@@ -594,7 +656,8 @@ export const createContractChargeOverride = async (payload: ContractChargeOverri
 export const updateContractChargeOverride = async (id: string, payload: ContractChargeOverrideUpdatePayload, managerId: string) =>
   withTransaction(async (client) => {
     const currentRs = await client.query<DbRow>(
-      `SELECT cco.*
+      `SELECT cco.id, cco.contract_id, cco.charge_id, cco.unit_price, cco.effective_from,
+              cco.effective_to, cco.is_active, cco.created_at, cco.updated_at
        FROM contract_charge_override cco
        JOIN contract c ON c.id=cco.contract_id
        JOIN room r ON r.id=c.room_id
@@ -608,8 +671,10 @@ export const updateContractChargeOverride = async (id: string, payload: Contract
 
     const contractId = payload.contract_id ?? current.contract_id;
     const chargeId = payload.charge_id ?? current.charge_id;
-    const effectiveFrom = payload.effective_from ?? current.effective_from;
-    const effectiveTo = hasOwn(payload, 'effective_to') ? payload.effective_to ?? null : current.effective_to;
+    const effectiveFrom = payload.effective_from ?? toDateString(current.effective_from)!;
+    const effectiveTo = hasOwn(payload, 'effective_to')
+      ? payload.effective_to ?? null
+      : toDateString(current.effective_to);
     assertDateRange(effectiveFrom, effectiveTo);
     await assertManagerContract(client, contractId, managerId);
     await assertChargeCatalog(client, chargeId);
@@ -619,7 +684,7 @@ export const updateContractChargeOverride = async (id: string, payload: Contract
       `UPDATE contract_charge_override
        SET contract_id=$1,charge_id=$2,unit_price=$3,effective_from=$4,effective_to=$5,is_active=$6
        WHERE id=$7
-       RETURNING *`,
+       RETURNING id, contract_id, charge_id, unit_price, effective_from, effective_to, is_active, created_at, updated_at`,
       [contractId, chargeId, payload.unit_price ?? current.unit_price, effectiveFrom, effectiveTo, payload.is_active ?? current.is_active, id]
     );
     return rows[0];
@@ -685,7 +750,8 @@ export const createRoomMonthExtra = async (payload: RoomMonthExtraPayload, manag
     const { rows } = await client.query<DbRow>(
       `INSERT INTO room_month_extra(room_id,month,persons_count,vehicles_count,reported_by_user_id,reported_at,note)
        VALUES($1,$2,$3,$4,$5,now(),$6)
-       RETURNING *`,
+       RETURNING id, room_id, month, persons_count, vehicles_count, reported_by_user_id,
+                 reported_at, note, created_at, updated_at`,
       [payload.room_id, month, payload.persons_count ?? null, payload.vehicles_count ?? null, managerId, payload.note ?? null]
     );
     return rows[0];
@@ -694,7 +760,8 @@ export const createRoomMonthExtra = async (payload: RoomMonthExtraPayload, manag
 export const updateRoomMonthExtra = async (id: string, payload: RoomMonthExtraUpdatePayload, managerId: string) =>
   withTransaction(async (client) => {
     const currentRs = await client.query<DbRow>(
-      `SELECT rme.*
+      `SELECT rme.id, rme.room_id, rme.month, rme.persons_count, rme.vehicles_count,
+              rme.reported_by_user_id, rme.reported_at, rme.note, rme.created_at, rme.updated_at
        FROM room_month_extra rme
        JOIN room r ON r.id=rme.room_id
        JOIN building b ON b.id=r.building_id
@@ -706,7 +773,7 @@ export const updateRoomMonthExtra = async (id: string, payload: RoomMonthExtraUp
     if (!current) throw new AppError(404, 'Room monthly extras not found', 'ROOM_MONTH_EXTRA_NOT_FOUND');
 
     const roomId = payload.room_id ?? current.room_id;
-    const month = payload.month ? firstDayOfMonth(payload.month) : current.month;
+    const month = payload.month ? firstDayOfMonth(payload.month) : toDateString(current.month)!;
     await assertManagerRoom(client, roomId, managerId);
     await assertUniqueRoomMonthExtra(client, roomId, month, id);
 
@@ -723,7 +790,8 @@ export const updateRoomMonthExtra = async (id: string, payload: RoomMonthExtraUp
            reported_at=now(),
            note=CASE WHEN $8::boolean THEN $9 ELSE note END
        WHERE id=$10
-       RETURNING *`,
+       RETURNING id, room_id, month, persons_count, vehicles_count, reported_by_user_id,
+                 reported_at, note, created_at, updated_at`,
       [
         roomId,
         month,
@@ -757,7 +825,8 @@ export const resolveFixedChargesForContract = async (
 ): Promise<ResolvedFixedCharge[]> => {
   const month = firstDayOfMonth(params.month);
   const extraRs = await client.query<DbRow>(
-    `SELECT *
+    `SELECT id, room_id, month, persons_count, vehicles_count, reported_by_user_id,
+            reported_at, note, created_at, updated_at
      FROM room_month_extra
      WHERE room_id=$1 AND month=$2
      LIMIT 1`,
@@ -804,7 +873,7 @@ export const resolveFixedChargesForContract = async (
      FROM charge_ids ci
      JOIN charge_catalog cc ON cc.id=ci.charge_id AND cc.is_active=true
      LEFT JOIN LATERAL (
-       SELECT *
+       SELECT id, unit_price, effective_from, is_active, created_at
        FROM contract_charge_override cco
        WHERE cco.contract_id=$3
          AND cco.charge_id=ci.charge_id
@@ -814,14 +883,14 @@ export const resolveFixedChargesForContract = async (
        LIMIT 1
      ) contract_row ON true
      LEFT JOIN LATERAL (
-       SELECT *
+       SELECT id, unit_price, effective_from, is_active, created_at
        FROM room_charge_override rco
        WHERE rco.room_id=$2 AND rco.charge_id=ci.charge_id AND rco.effective_from <= $4
        ORDER BY rco.effective_from DESC, rco.created_at DESC
        LIMIT 1
      ) room_row ON true
      LEFT JOIN LATERAL (
-       SELECT *
+       SELECT id, unit_price, effective_from, is_active, created_at
        FROM building_charge bc
        WHERE bc.building_id=$1 AND bc.charge_id=ci.charge_id AND bc.effective_from <= $4
        ORDER BY bc.effective_from DESC, bc.created_at DESC
@@ -875,7 +944,7 @@ export const resolveFixedChargesForContract = async (
       charge_type: chargeType,
       source: source.source,
       source_id: source.source_id,
-      effective_from: source.effective_from,
+      effective_from: toDateString(source.effective_from)!,
       quantity,
       unit_price: source.unit_price,
       amount,

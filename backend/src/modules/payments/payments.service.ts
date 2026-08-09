@@ -1,26 +1,118 @@
+import type { PoolClient } from 'pg';
 import { query, withTransaction } from '../../db';
 import { env } from '../../config/env';
 import { AppError } from '../../shared/errors/app-error';
 import { createVietQrPaymentData } from './vietqr.service';
-import { getDocumentRetentionUntil, resolveCloudinaryAsset } from '../uploads/uploads.service';
+import {
+  getDocumentRetentionUntil,
+  resolveCloudinaryAsset,
+  type CloudinaryDeliveryType,
+  type UploadResourceType
+} from '../uploads/uploads.service';
 import { writeAuditLog } from '../../shared/services/audit-log.service';
+import type {
+  DatabaseNumeric,
+  DatabaseTimestamp,
+  InvoiceStatus,
+  PaymentProofStatus,
+  PaymentRequestStatus
+} from '../../shared/types/database';
+import { toDatabaseNumber } from '../../shared/types/database';
 
-type DbRow = Record<string, any>;
+interface PaymentBoundaryRow {
+  id: string;
+  invoice_id: string;
+  payment_request_id: string;
+  original_payment_id: string | null;
+  status: PaymentRequestStatus | PaymentProofStatus | InvoiceStatus | 'SUCCEEDED';
+  invoice_status: InvoiceStatus;
+  tenant_user_id: string;
+  submitted_by_user_id: string;
+  idempotency_key: string | null;
+  amount: DatabaseNumeric;
+  total: DatabaseNumeric;
+  invoice_total: DatabaseNumeric;
+  transfer_amount: DatabaseNumeric;
+  created_at: DatabaseTimestamp;
+  submitted_at: DatabaseTimestamp | null;
+  [column: string]: unknown;
+}
 type AuthScope = { userId: string; role: 'MANAGER' | 'TENANT' };
+
+export interface CreatePaymentRequestPayload {
+  amount?: number | null;
+  currency?: string;
+  bank_code?: string | null;
+  bank_account_no?: string | null;
+  bank_account_name?: string | null;
+  transfer_note?: string | null;
+  expires_at?: string | null;
+}
+
+export interface SubmitPaymentProofPayload {
+  file_name?: string | null;
+  file_url: string;
+  mime_type: string;
+  file_size: number;
+  resource_type?: UploadResourceType;
+  public_id?: string;
+  asset_id?: string;
+  version?: number;
+  format?: string;
+  delivery_type?: CloudinaryDeliveryType;
+  transfer_amount?: number | null;
+  transfer_time?: string | null;
+  payer_note?: string | null;
+}
+
+export interface PaymentRequestDetail {
+  id?: string;
+  proofs: PaymentBoundaryRow[];
+  [column: string]: unknown;
+}
 
 export interface PaymentRequestListFilters {
   month?: string;
   buildingId?: string;
   roomId?: string;
   tenantId?: string;
-  requestStatus?: 'DRAFT' | 'WAITING_TRANSFER' | 'TRANSFER_SUBMITTED' | 'VERIFIED' | 'REJECTED' | 'CANCELLED' | 'EXPIRED';
+  requestStatus?: PaymentRequestStatus;
   latestProofStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'NONE';
 }
 
-const toNumber = (value: unknown) => Number(value ?? 0);
+const toNumber = (value: DatabaseNumeric | null | undefined) => toDatabaseNumber(value);
+
+const sqlColumns = (alias: string, columns: readonly string[]): string => (
+  columns.map((column) => `${alias}.${column}`).join(', ')
+);
+const paymentRequestColumnNames = [
+  'id', 'invoice_id', 'status', 'amount', 'currency', 'qr_content', 'qr_image_url',
+  'bank_code', 'bank_account_no', 'bank_account_name', 'transfer_note', 'expires_at',
+  'sent_at', 'created_by_user_id', 'approved_by_user_id', 'approved_at', 'note',
+  'created_at', 'updated_at'
+] as const;
+const paymentProofColumnNames = [
+  'id', 'payment_request_id', 'status', 'file_name', 'file_url', 'mime_type', 'file_size',
+  'submitted_by_user_id', 'submitted_at', 'approved_by_user_id', 'approved_at',
+  'rejected_by_user_id', 'rejected_at', 'rejection_reason', 'transfer_amount', 'transfer_time',
+  'payer_note', 'manager_note', 'cloudinary_asset_id', 'cloudinary_public_id',
+  'cloudinary_resource_type', 'cloudinary_version', 'cloudinary_format',
+  'cloudinary_delivery_type', 'retention_until', 'idempotency_key', 'created_at', 'updated_at'
+] as const;
+const paymentColumnNames = [
+  'id', 'invoice_id', 'payment_request_id', 'payment_proof_id', 'method', 'status',
+  'amount', 'paid_at', 'reference_code', 'note', 'created_by_user_id', 'entry_type',
+  'original_payment_id', 'reversal_reason', 'idempotency_key', 'created_at', 'updated_at'
+] as const;
+const paymentRequestColumns = sqlColumns('pr', paymentRequestColumnNames);
+const returnedPaymentRequestColumns = paymentRequestColumnNames.join(', ');
+const paymentProofColumns = sqlColumns('pf', paymentProofColumnNames);
+const returnedPaymentProofColumns = paymentProofColumnNames.join(', ');
+const paymentColumns = sqlColumns('p', paymentColumnNames);
+const returnedPaymentColumns = paymentColumnNames.join(', ');
 
 const paymentRequestSummarySelect = `
-  pr.*,
+  ${paymentRequestColumns},
   i.month,
   i.status AS invoice_status,
   i.total::float AS invoice_total,
@@ -70,20 +162,24 @@ const paymentRequestSummaryJoins = `
   ) latest_proof ON true
 `;
 
-const getInvoicePaidAmount = async (client: any, invoiceId: string) => {
-  const rs = await client.query(
+const getInvoicePaidAmount = async (client: PoolClient, invoiceId: string) => {
+  const rs = await client.query<{ paid_amount: DatabaseNumeric }>(
     `SELECT COALESCE(SUM(CASE WHEN entry_type='REVERSAL' THEN -amount ELSE amount END), 0) AS paid_amount
      FROM payment
      WHERE invoice_id=$1 AND status='SUCCEEDED'`,
     [invoiceId]
-  ) as { rows: Array<{ paid_amount: string | number }> };
+  );
   return toNumber(rs.rows[0]?.paid_amount);
 };
 
-export const createPaymentRequest = async (invoiceId: string, managerId: string, payload: any) =>
+export const createPaymentRequest = async (
+  invoiceId: string,
+  managerId: string,
+  payload: CreatePaymentRequestPayload
+) =>
   withTransaction(async (client) => {
-    const invRs = await client.query<DbRow>(
-      `SELECT i.*
+    const invRs = await client.query<PaymentBoundaryRow>(
+      `SELECT i.id, i.contract_id, i.room_id, i.month, i.status, i.total, i.due_date
        FROM invoice i
        JOIN contract c ON c.id=i.contract_id
        JOIN room r ON r.id=c.room_id
@@ -102,8 +198,8 @@ export const createPaymentRequest = async (invoiceId: string, managerId: string,
     const remainingAmount = toNumber(inv.total) - paidAmount;
     if (remainingAmount <= 0) throw new AppError(409, 'Invoice is already fully paid');
 
-    const existing = await client.query<DbRow>(
-      `SELECT * FROM payment_request
+    const existing = await client.query<PaymentBoundaryRow>(
+      `SELECT ${returnedPaymentRequestColumns} FROM payment_request
        WHERE invoice_id=$1 AND status NOT IN ('CANCELLED', 'EXPIRED')`,
       [invoiceId]
     );
@@ -128,10 +224,10 @@ export const createPaymentRequest = async (invoiceId: string, managerId: string,
       transferNote
     });
 
-    const pr = await client.query<DbRow>(
+    const pr = await client.query<PaymentBoundaryRow>(
       `INSERT INTO payment_request(invoice_id,status,amount,currency,qr_content,qr_image_url,bank_code,bank_account_no,bank_account_name,transfer_note,expires_at,sent_at,created_by_user_id)
        VALUES($1,'WAITING_TRANSFER',$2,$3,$4,$5,$6,$7,$8,$9,$10,now(),$11)
-       RETURNING *`,
+       RETURNING ${returnedPaymentRequestColumns}`,
       [
         invoiceId,
         amount,
@@ -151,13 +247,13 @@ export const createPaymentRequest = async (invoiceId: string, managerId: string,
 
 export const submitPaymentProof = async (
   paymentRequestId: string,
-  payload: any,
+  payload: SubmitPaymentProofPayload,
   tenantUserId: string,
   idempotencyKey: string
 ) =>
   withTransaction(async (client) => {
-    const reqRs = await client.query<DbRow>(
-      `SELECT pr.*, i.total invoice_total, i.status invoice_status, t.user_id tenant_user_id
+    const reqRs = await client.query<PaymentBoundaryRow>(
+      `SELECT ${paymentRequestColumns}, i.total invoice_total, i.status invoice_status, t.user_id tenant_user_id
        FROM payment_request pr
        JOIN invoice i ON i.id=pr.invoice_id
        JOIN contract_tenant ct ON ct.contract_id=i.contract_id
@@ -169,8 +265,8 @@ export const submitPaymentProof = async (
     const data = reqRs.rows[0];
     if (!data) throw new AppError(404, 'Payment request not found');
 
-    const existingSubmission = await client.query<DbRow>(
-      `SELECT * FROM payment_proof
+    const existingSubmission = await client.query<PaymentBoundaryRow>(
+      `SELECT ${returnedPaymentProofColumns} FROM payment_proof
        WHERE submitted_by_user_id=$1 AND idempotency_key=$2
        LIMIT 1`,
       [tenantUserId, idempotencyKey]
@@ -191,7 +287,7 @@ export const submitPaymentProof = async (
     }
     if (!['WAITING_TRANSFER', 'REJECTED'].includes(data.status)) throw new AppError(409, 'Payment request not accepting proofs');
 
-    const pending = await client.query(
+    const pending = await client.query<{ id: string }>(
       `SELECT id FROM payment_proof WHERE payment_request_id=$1 AND status='PENDING' LIMIT 1`,
       [paymentRequestId]
     );
@@ -206,7 +302,7 @@ export const submitPaymentProof = async (
     if (transferAmount > remainingAmount) throw new AppError(400, 'Transfer amount cannot exceed remaining balance');
 
     const asset = resolveCloudinaryAsset(payload);
-    const created = await client.query<DbRow>(
+    const created = await client.query<PaymentBoundaryRow>(
       `INSERT INTO payment_proof(
          payment_request_id,status,file_name,file_url,mime_type,file_size,submitted_by_user_id,
          transfer_amount,transfer_time,payer_note,
@@ -215,7 +311,7 @@ export const submitPaymentProof = async (
          idempotency_key
        )
        VALUES($1,'PENDING',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
-       RETURNING *`,
+       RETURNING ${returnedPaymentProofColumns}`,
       [
         paymentRequestId,
         payload.file_name ?? null,
@@ -260,8 +356,8 @@ export const submitPaymentProof = async (
 
 export const reviewPaymentProof = async (proofId: string, approve: boolean, managerId: string, reason?: string) =>
   withTransaction(async (client) => {
-    const pfRs = await client.query<DbRow>(
-      `SELECT pf.*, pr.invoice_id, pr.id payment_request_id, pr.amount request_amount, i.total invoice_total, i.status invoice_status
+    const pfRs = await client.query<PaymentBoundaryRow>(
+      `SELECT ${paymentProofColumns}, pr.invoice_id, pr.id payment_request_id, pr.amount request_amount, i.total invoice_total, i.status invoice_status
        FROM payment_proof pf
        JOIN payment_request pr ON pr.id=pf.payment_request_id
        JOIN invoice i ON i.id=pr.invoice_id
@@ -276,8 +372,8 @@ export const reviewPaymentProof = async (proofId: string, approve: boolean, mana
     if (!proof) throw new AppError(404, 'Proof not found');
 
     if (approve && proof.status === 'APPROVED') {
-      const existingPayment = await client.query<DbRow>(
-        `SELECT * FROM payment
+      const existingPayment = await client.query<PaymentBoundaryRow>(
+        `SELECT ${returnedPaymentColumns} FROM payment
          WHERE payment_proof_id=$1 AND entry_type='PAYMENT'
          LIMIT 1`,
         [proofId]
@@ -298,8 +394,9 @@ export const reviewPaymentProof = async (proofId: string, approve: boolean, mana
     if (proof.status !== 'PENDING') throw new AppError(409, 'Proof already reviewed');
 
     if (!approve) {
-      const rejected = await client.query<DbRow>(
-        `UPDATE payment_proof SET status='REJECTED',rejected_by_user_id=$2,rejected_at=now(),rejection_reason=$3 WHERE id=$1 RETURNING *`,
+      const rejected = await client.query<PaymentBoundaryRow>(
+        `UPDATE payment_proof SET status='REJECTED',rejected_by_user_id=$2,rejected_at=now(),rejection_reason=$3
+         WHERE id=$1 RETURNING ${returnedPaymentProofColumns}`,
         [proofId, managerId, reason ?? 'Rejected by manager']
       );
       await client.query(`UPDATE payment_request SET status='REJECTED' WHERE id=$1`, [proof.payment_request_id]);
@@ -337,18 +434,19 @@ export const reviewPaymentProof = async (proofId: string, approve: boolean, mana
       );
     }
 
-    const approved = await client.query<DbRow>(
-      `UPDATE payment_proof SET status='APPROVED',approved_by_user_id=$2,approved_at=now(),rejection_reason=NULL WHERE id=$1 RETURNING *`,
+    const approved = await client.query<PaymentBoundaryRow>(
+      `UPDATE payment_proof SET status='APPROVED',approved_by_user_id=$2,approved_at=now(),rejection_reason=NULL
+       WHERE id=$1 RETURNING ${returnedPaymentProofColumns}`,
       [proofId, managerId]
     );
 
-    const payment = await client.query<DbRow>(
+    const payment = await client.query<PaymentBoundaryRow>(
       `INSERT INTO payment(
          invoice_id,payment_request_id,payment_proof_id,entry_type,method,status,amount,
          paid_at,created_by_user_id,note,idempotency_key
        )
        VALUES($1,$2,$3,'PAYMENT','BANK_TRANSFER','SUCCEEDED',$4,now(),$5,$6,$7)
-       RETURNING *`,
+       RETURNING ${returnedPaymentColumns}`,
       [
         proof.invoice_id,
         proof.payment_request_id,
@@ -404,8 +502,8 @@ export const reviewPaymentProof = async (proofId: string, approve: boolean, mana
 
 export const reversePayment = async (paymentId: string, managerId: string, reason: string) =>
   withTransaction(async (client) => {
-    const paymentRs = await client.query<DbRow>(
-      `SELECT p.*, i.total AS invoice_total, i.status AS invoice_status
+    const paymentRs = await client.query<PaymentBoundaryRow>(
+      `SELECT ${paymentColumns}, i.total AS invoice_total, i.status AS invoice_status
        FROM payment p
        JOIN invoice i ON i.id=p.invoice_id
        JOIN room r ON r.id=i.room_id
@@ -420,8 +518,8 @@ export const reversePayment = async (paymentId: string, managerId: string, reaso
       throw new AppError(409, 'Only an approved payment can be reversed', 'PAYMENT_NOT_REVERSIBLE');
     }
 
-    const existingRs = await client.query<DbRow>(
-      `SELECT * FROM payment
+    const existingRs = await client.query<PaymentBoundaryRow>(
+      `SELECT ${returnedPaymentColumns} FROM payment
        WHERE original_payment_id=$1 AND entry_type='REVERSAL'
        LIMIT 1`,
       [paymentId]
@@ -438,13 +536,13 @@ export const reversePayment = async (paymentId: string, managerId: string, reaso
       };
     }
 
-    const reversalRs = await client.query<DbRow>(
+    const reversalRs = await client.query<PaymentBoundaryRow>(
       `INSERT INTO payment(
          invoice_id,payment_request_id,payment_proof_id,entry_type,original_payment_id,
          method,status,amount,paid_at,created_by_user_id,note,reversal_reason,idempotency_key
        )
        VALUES($1,$2,NULL,'REVERSAL',$3,$4,'SUCCEEDED',$5,now(),$6,$7,$7,$8)
-       RETURNING *`,
+       RETURNING ${returnedPaymentColumns}`,
       [
         original.invoice_id,
         original.payment_request_id,
@@ -514,14 +612,14 @@ export const reversePayment = async (paymentId: string, managerId: string, reaso
 
 export const getPaymentRequestDetail = async (id: string, scope: AuthScope) => {
   const requestQuery = scope.role === 'MANAGER'
-    ? query(
+    ? query<PaymentBoundaryRow>(
       `SELECT ${paymentRequestSummarySelect}
        FROM payment_request pr
        ${paymentRequestSummaryJoins}
        WHERE pr.id=$1 AND b.manager_user_id=$2`,
       [id, scope.userId]
     )
-    : query(
+    : query<PaymentBoundaryRow>(
       `SELECT ${paymentRequestSummarySelect}
        FROM payment_request pr
        ${paymentRequestSummaryJoins}
@@ -533,9 +631,13 @@ export const getPaymentRequestDetail = async (id: string, scope: AuthScope) => {
 
   const [reqRs, proofs, payment] = await Promise.all([
     requestQuery,
-    query('SELECT * FROM payment_proof WHERE payment_request_id=$1 ORDER BY created_at DESC', [id]),
-    query(
-      `SELECT p.*,
+    query<PaymentBoundaryRow>(
+      `SELECT ${returnedPaymentProofColumns} FROM payment_proof
+       WHERE payment_request_id=$1 ORDER BY created_at DESC`,
+      [id]
+    ),
+    query<PaymentBoundaryRow>(
+      `SELECT ${paymentColumns},
               CASE WHEN p.entry_type='REVERSAL' THEN -p.amount ELSE p.amount END::float AS signed_amount,
               reversal.id AS reversal_payment_id
        FROM payment p
@@ -570,7 +672,7 @@ export const listPaymentRequests = async (scope: AuthScope, filters: PaymentRequ
   if (filters.latestProofStatus === 'NONE') conditions.push('latest_proof.id IS NULL');
   else if (filters.latestProofStatus) addCondition('latest_proof.status=?', filters.latestProofStatus);
 
-  return (await query(
+  return (await query<PaymentBoundaryRow>(
     `SELECT ${paymentRequestSummarySelect}
      FROM payment_request pr
      ${paymentRequestSummaryJoins}
@@ -584,7 +686,7 @@ export const listPaymentRequests = async (scope: AuthScope, filters: PaymentRequ
 
 export const getPaymentRequestForInvoice = async (invoiceId: string, scope: AuthScope) => {
   const requestQuery = scope.role === 'MANAGER'
-    ? query(
+    ? query<PaymentBoundaryRow>(
       `SELECT ${paymentRequestSummarySelect}
        FROM payment_request pr
        ${paymentRequestSummaryJoins}
@@ -594,7 +696,7 @@ export const getPaymentRequestForInvoice = async (invoiceId: string, scope: Auth
        LIMIT 1`,
       [invoiceId, scope.userId]
     )
-    : query(
+    : query<PaymentBoundaryRow>(
       `SELECT ${paymentRequestSummarySelect}
        FROM payment_request pr
        ${paymentRequestSummaryJoins}
@@ -618,8 +720,8 @@ export const updatePaymentRequestStatus = async (
   status: 'CANCELLED' | 'EXPIRED'
 ) =>
   withTransaction(async (client) => {
-    const reqRs = await client.query<DbRow>(
-      `SELECT pr.*
+    const reqRs = await client.query<PaymentBoundaryRow>(
+      `SELECT ${paymentRequestColumns}
        FROM payment_request pr
        JOIN invoice i ON i.id=pr.invoice_id
        JOIN contract c ON c.id=i.contract_id
@@ -635,14 +737,14 @@ export const updatePaymentRequestStatus = async (
       throw new AppError(409, 'Payment request cannot be updated');
     }
 
-    const pending = await client.query(
+    const pending = await client.query<{ id: string }>(
       `SELECT id FROM payment_proof WHERE payment_request_id=$1 AND status='PENDING' LIMIT 1`,
       [paymentRequestId]
     );
     if (pending.rows[0]) throw new AppError(409, 'Resolve pending proof before updating request status');
 
-    const updated = await client.query<DbRow>(
-      `UPDATE payment_request SET status=$2 WHERE id=$1 RETURNING *`,
+    const updated = await client.query<PaymentBoundaryRow>(
+      `UPDATE payment_request SET status=$2 WHERE id=$1 RETURNING ${returnedPaymentRequestColumns}`,
       [paymentRequestId, status]
     );
     return updated.rows[0];

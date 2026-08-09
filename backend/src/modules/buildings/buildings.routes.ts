@@ -5,9 +5,29 @@ import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
 import { parseBody, registerUuidParams } from '../../shared/utils/validation';
+import type { DatabaseTimestamp } from '../../shared/types/database';
 
 const router = Router();
 registerUuidParams(router, ['id']);
+
+interface BuildingRow {
+  id: string;
+  manager_user_id: string;
+  code: string;
+  name: string;
+  address: string;
+  note: string | null;
+  created_at: DatabaseTimestamp;
+  updated_at: DatabaseTimestamp;
+  units?: number;
+  active_units?: number;
+  has_active_rooms?: boolean;
+  manager_name?: string;
+}
+
+interface IdRow {
+  id: string;
+}
 
 const buildingBodySchema = z.object({
   code: z.string().trim().min(1),
@@ -17,9 +37,9 @@ const buildingBodySchema = z.object({
 });
 
 router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  const { rows } = await query(
+  const { rows } = await query<BuildingRow>(
     `SELECT
-       b.*,
+       b.id, b.manager_user_id, b.code, b.name, b.address, b.note, b.created_at, b.updated_at,
        COUNT(r.id)::int AS units,
        COUNT(r.id) FILTER (WHERE r.status = 'ACTIVE')::int AS active_units,
        COALESCE(BOOL_OR(r.status = 'ACTIVE'), false) AS has_active_rooms,
@@ -37,9 +57,9 @@ router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 }));
 
 router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  const { rows } = await query(
+  const { rows } = await query<BuildingRow>(
     `SELECT
-       b.*,
+       b.id, b.manager_user_id, b.code, b.name, b.address, b.note, b.created_at, b.updated_at,
        COUNT(r.id)::int AS units,
        COUNT(r.id) FILTER (WHERE r.status = 'ACTIVE')::int AS active_units,
        COALESCE(BOOL_OR(r.status = 'ACTIVE'), false) AS has_active_rooms,
@@ -58,9 +78,10 @@ router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 
 router.post('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const { code, name, address, note } = parseBody(buildingBodySchema, req.body);
-  const { rows } = await query(
+  const { rows } = await query<BuildingRow>(
     `INSERT INTO building(manager_user_id, code, name, address, note)
-     VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+     VALUES ($1,$2,$3,$4,$5)
+     RETURNING id, manager_user_id, code, name, address, note, created_at, updated_at`,
     [req.auth!.userId, code, name, address, note ?? null]
   );
   res.status(201).json(rows[0]);
@@ -68,8 +89,10 @@ router.post('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 
 router.put('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const { code, name, address, note } = parseBody(buildingBodySchema, req.body);
-  const { rows } = await query(
-    `UPDATE building SET code=$1, name=$2, address=$3, note=$4 WHERE id=$5 AND manager_user_id=$6 RETURNING *`,
+  const { rows } = await query<BuildingRow>(
+    `UPDATE building SET code=$1, name=$2, address=$3, note=$4
+     WHERE id=$5 AND manager_user_id=$6
+     RETURNING id, manager_user_id, code, name, address, note, created_at, updated_at`,
     [code, name, address, note ?? null, req.params.id, req.auth!.userId]
   );
   if (!rows[0]) throw new AppError(404, 'Building not found', 'BUILDING_NOT_FOUND');
@@ -77,10 +100,10 @@ router.put('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 }));
 
 router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  const building = await query('SELECT id FROM building WHERE id=$1 AND manager_user_id=$2', [req.params.id, req.auth!.userId]);
+  const building = await query<IdRow>('SELECT id FROM building WHERE id=$1 AND manager_user_id=$2', [req.params.id, req.auth!.userId]);
   if (!building.rows[0]) throw new AppError(404, 'Building not found', 'BUILDING_NOT_FOUND');
 
-  const contracts = await query(
+  const contracts = await query<IdRow>(
     `SELECT c.id
      FROM contract c
      JOIN room r ON r.id=c.room_id

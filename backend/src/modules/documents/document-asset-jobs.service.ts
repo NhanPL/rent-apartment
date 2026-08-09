@@ -34,6 +34,10 @@ interface AssetJobRow {
   status: AssetJobStatus;
 }
 
+const assetJobColumns = `id, action, source_kind, source_id, public_id, resource_type,
+  delivery_type, asset_version, asset_format, attempts, status, reason, last_error_code,
+  next_attempt_at, completed_at, created_at, updated_at`;
+
 interface StoredAssetRow extends CloudinaryAssetMetadata {
   id: string;
   doc_type?: string | null;
@@ -118,7 +122,7 @@ export const enqueueCloudinaryDeletion = async (
 const claimNextJob = async (): Promise<AssetJobRow | null> => (
   withTransaction(async (client) => {
     const result = await client.query<AssetJobRow>(
-      `SELECT *
+      `SELECT ${assetJobColumns}
        FROM cloudinary_asset_job
        WHERE status IN ('PENDING','RETRY') AND next_attempt_at <= now()
        ORDER BY created_at
@@ -338,7 +342,7 @@ const recordIssue = async (
     data.resourceType ?? null,
     data.deliveryType ?? null
   ];
-  const existing = await query(
+  const existing = await query<{ id: string }>(
     `UPDATE cloudinary_orphan_issue
      SET last_detected_at=now()
      WHERE issue_type=$1

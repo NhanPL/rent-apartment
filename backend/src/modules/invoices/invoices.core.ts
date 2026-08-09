@@ -5,13 +5,99 @@ import { resolveFixedChargesForContract, type ResolvedFixedCharge } from '../fix
 import { env } from '../../config/env';
 import { createVietQrPaymentData } from '../payments/vietqr.service';
 import { writeAuditLog } from '../../shared/services/audit-log.service';
+import type {
+  DatabaseDate,
+  DatabaseNumeric,
+  DatabaseTimestamp,
+  ContractStatus,
+  InvoiceStatus as DatabaseInvoiceStatus,
+  PaymentStatus,
+  UtilityReadingStatus
+} from '../../shared/types/database';
+import { toDatabaseNumber, toDateString } from '../../shared/types/database';
 
 // Internal implementation shared by invoice command, query, and generation services.
 
-type DbRow = Record<string, any>;
+interface InvoiceBoundaryRow {
+  id: string;
+  contract_id: string;
+  room_id: string;
+  utility_reading_id: string | null;
+  replaces_invoice_id: string | null;
+  replacement_invoice_id: string | null;
+  month: DatabaseDate;
+  status: DatabaseInvoiceStatus | ContractStatus | UtilityReadingStatus;
+  issued_at: DatabaseTimestamp | null;
+  due_date: DatabaseDate | null;
+  subtotal: DatabaseNumeric;
+  discount: DatabaseNumeric;
+  total: DatabaseNumeric;
+  void_reason: string | null;
+  note: string | null;
+  created_at: DatabaseTimestamp;
+  updated_at: DatabaseTimestamp;
+  contract_code: string;
+  start_date: DatabaseDate;
+  end_date: DatabaseDate | null;
+  rent_price: DatabaseNumeric;
+  deposit_amount: DatabaseNumeric;
+  billing_day: number;
+  building_id: string;
+  building_name: string;
+  room_code: string;
+  base_rent: DatabaseNumeric;
+  tenant_id: string | null;
+  tenant_name: string | null;
+  electricity_prev: DatabaseNumeric | null;
+  electricity_curr: DatabaseNumeric | null;
+  water_prev: DatabaseNumeric | null;
+  water_curr: DatabaseNumeric | null;
+  electricity_unit_price: DatabaseNumeric;
+  electric_unit_price: DatabaseNumeric;
+  water_unit_price: DatabaseNumeric;
+  rent_amount: DatabaseNumeric;
+  other_fees: DatabaseNumeric;
+  paid_amount: DatabaseNumeric;
+  payment_status: PaymentStatus | null;
+  reading_status: UtilityReadingStatus;
+  quantity: DatabaseNumeric;
+  unit_price: DatabaseNumeric;
+  amount: DatabaseNumeric;
+  code: string;
+  name: string;
+  meta: Record<string, unknown> | null;
+  [column: string]: unknown;
+}
+type DbRow = InvoiceBoundaryRow;
 type AuthScope = { userId: string; role: 'MANAGER' | 'TENANT' };
-type InvoiceStatus = 'DRAFT' | 'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'VOID';
+type InvoiceStatus = DatabaseInvoiceStatus;
 type TxClient = Parameters<Parameters<typeof withTransaction>[0]>[0];
+
+const invoiceColumnNames = [
+  'id', 'contract_id', 'room_id', 'utility_reading_id', 'month', 'status', 'issued_at',
+  'due_date', 'note', 'subtotal', 'discount', 'total', 'approved_by_user_id', 'approved_at',
+  'void_reason', 'voided_by_user_id', 'voided_at', 'adjustment_note', 'replaces_invoice_id',
+  'created_at', 'updated_at'
+] as const;
+const invoiceColumns = (alias?: string) => invoiceColumnNames
+  .map((column) => alias ? `${alias}.${column}` : column)
+  .join(', ');
+const contractColumns = (alias?: string) => [
+  'id', 'room_id', 'contract_code', 'status', 'start_date', 'end_date', 'move_in_date',
+  'move_out_date', 'rent_price', 'deposit_amount', 'billing_day', 'note', 'created_at', 'updated_at'
+].map((column) => alias ? `${alias}.${column}` : column).join(', ');
+const readingColumns = (alias?: string) => [
+  'id', 'room_id', 'month', 'electricity_prev', 'electricity_curr', 'water_prev', 'water_curr',
+  'status', 'reported_by_user_id', 'reported_at', 'submitted_at', 'verified_by_user_id',
+  'verified_at', 'approved_by_user_id', 'approved_at', 'rejected_by_user_id', 'rejected_at',
+  'rejection_reason', 'manager_note', 'note', 'created_at', 'updated_at'
+].map((column) => alias ? `${alias}.${column}` : column).join(', ');
+const rateColumns = (alias?: string) => [
+  'id', 'building_id', 'effective_from', 'electricity_unit_price', 'water_unit_price',
+  'note', 'created_at', 'updated_at'
+].map((column) => alias ? `${alias}.${column}` : column).join(', ');
+const invoiceItemColumns = 'id, invoice_id, code, name, quantity, unit_price, amount, meta, created_at';
+const invoiceAdjustmentColumns = 'id, invoice_id, adjustment_type, amount, reason, created_by_user_id, created_at';
 
 const invoiceAuditSnapshot = (invoice: DbRow): Record<string, unknown> => ({
   contractId: invoice.contract_id,
@@ -65,7 +151,7 @@ export interface InvoiceVoidPayload {
 }
 
 const calc = (q: number, p: number) => Number((q * p).toFixed(2));
-const toNumber = (value: unknown): number => Number(value ?? 0);
+const toNumber = (value: DatabaseNumeric | null | undefined): number => toDatabaseNumber(value);
 const fixedChargeItemCode = (chargeCode: string) => `FIXED_${chargeCode}`.slice(0, 50);
 const invoiceItemsSubtotal = (payload: InvoiceUpsertPayload) => {
   const electricAmount = calc(Math.max(0, payload.electricity_curr - payload.electricity_prev), payload.electric_unit_price);
@@ -77,7 +163,7 @@ const invoiceItemsSubtotal = (payload: InvoiceUpsertPayload) => {
 };
 
 const invoiceListProjection = `
-  i.*,
+  ${invoiceColumns('i')},
   b.id AS building_id,
   b.name AS building_name,
   r.code AS room_code,
@@ -119,19 +205,19 @@ const invoiceListJoins = `
     LIMIT 1
   ) tenant ON true
   LEFT JOIN LATERAL (
-    SELECT * FROM invoice_item WHERE invoice_id=i.id AND code='ROOM_RENT' ORDER BY created_at DESC LIMIT 1
+    SELECT amount FROM invoice_item WHERE invoice_id=i.id AND code='ROOM_RENT' ORDER BY created_at DESC LIMIT 1
   ) room_rent ON true
   LEFT JOIN LATERAL (
-    SELECT * FROM invoice_item WHERE invoice_id=i.id AND code='ELECTRICITY' ORDER BY created_at DESC LIMIT 1
+    SELECT quantity, unit_price, amount, meta FROM invoice_item WHERE invoice_id=i.id AND code='ELECTRICITY' ORDER BY created_at DESC LIMIT 1
   ) electricity ON true
   LEFT JOIN LATERAL (
-    SELECT * FROM invoice_item WHERE invoice_id=i.id AND code='WATER' ORDER BY created_at DESC LIMIT 1
+    SELECT quantity, unit_price, amount, meta FROM invoice_item WHERE invoice_id=i.id AND code='WATER' ORDER BY created_at DESC LIMIT 1
   ) water ON true
   LEFT JOIN LATERAL (
-    SELECT * FROM invoice_item WHERE invoice_id=i.id AND code='OTHER' ORDER BY created_at DESC LIMIT 1
+    SELECT amount FROM invoice_item WHERE invoice_id=i.id AND code='OTHER' ORDER BY created_at DESC LIMIT 1
   ) other_fee ON true
   LEFT JOIN LATERAL (
-    SELECT *
+    SELECT id, building_id, effective_from, electricity_unit_price, water_unit_price
     FROM utility_rate
     WHERE building_id=b.id AND effective_from <= i.month
     ORDER BY effective_from DESC
@@ -153,7 +239,7 @@ const invoiceListJoins = `
 
 const getScopedInvoiceForManager = async (client: TxClient, invoiceId: string, managerId: string) => {
   const { rows } = await client.query<DbRow>(
-    `SELECT i.*
+    `SELECT ${invoiceColumns('i')}
      FROM invoice i
      JOIN room r ON r.id=i.room_id
      JOIN building b ON b.id=r.building_id
@@ -169,7 +255,7 @@ const getScopedInvoiceForManager = async (client: TxClient, invoiceId: string, m
 
 const getContractForInvoicePayload = async (client: TxClient, payload: InvoiceUpsertPayload, managerId: string) => {
   const { rows } = await client.query<DbRow>(
-    `SELECT c.*, r.building_id, r.base_rent
+    `SELECT ${contractColumns('c')}, r.building_id, r.base_rent
      FROM contract c
      JOIN room r ON r.id=c.room_id
      JOIN building b ON b.id=r.building_id
@@ -185,7 +271,7 @@ const getContractForInvoicePayload = async (client: TxClient, payload: InvoiceUp
 };
 
 const assertUniqueInvoiceMonth = async (client: TxClient, contractId: string, month: string, invoiceId?: string) => {
-  const { rows } = await client.query(
+  const { rows } = await client.query<{ id: string }>(
     `SELECT id
      FROM invoice
      WHERE contract_id=$1 AND month=$2 AND status<>'VOID'
@@ -212,8 +298,8 @@ const upsertUtilityReadingForInvoice = async (client: TxClient, payload: Invoice
        SET electricity_prev=$1,electricity_curr=$2,water_prev=$3,water_curr=$4,status='INVOICED',
            verified_by_user_id=$5,verified_at=COALESCE(verified_at, now()),
            approved_by_user_id=$5,approved_at=COALESCE(approved_at, now()),note=$6
-       WHERE id=$7
-       RETURNING *`,
+         WHERE id=$7
+       RETURNING ${readingColumns()}`,
       [payload.electricity_prev, payload.electricity_curr, payload.water_prev, payload.water_curr, managerId, payload.note ?? null, existing.rows[0].id]
     );
     return updated.rows[0];
@@ -223,7 +309,7 @@ const upsertUtilityReadingForInvoice = async (client: TxClient, payload: Invoice
     `INSERT INTO utility_reading(room_id, month, electricity_prev, electricity_curr, water_prev, water_curr, status,
        reported_by_user_id, reported_at, submitted_at, verified_by_user_id, verified_at, approved_by_user_id, approved_at, note)
      VALUES($1,$2,$3,$4,$5,$6,'INVOICED',$7,now(),now(),$7,now(),$7,now(),$8)
-     RETURNING *`,
+     RETURNING ${readingColumns()}`,
     [payload.room_id, month, payload.electricity_prev, payload.electricity_curr, payload.water_prev, payload.water_curr, managerId, payload.note ?? null]
   );
   return created.rows[0];
@@ -287,8 +373,17 @@ const toFixedChargeInvoiceItems = (fixedCharges: ResolvedFixedCharge[]) =>
       }
     ]);
 
-const generateInvoiceForContract = async (client: TxClient, contract: DbRow, month: string, managerId: string) => {
-  const duplicate = await client.query(
+type GenerateInvoiceResult =
+  | { skipped: true; contract_id: string; room_id: string; reason: string }
+  | { skipped: false; invoice: DbRow };
+
+const generateInvoiceForContract = async (
+  client: TxClient,
+  contract: DbRow,
+  month: string,
+  managerId: string
+): Promise<GenerateInvoiceResult> => {
+  const duplicate = await client.query<{ id: string }>(
     `SELECT id FROM invoice WHERE contract_id=$1 AND month=$2 AND status<>'VOID' LIMIT 1`,
     [contract.id, month]
   );
@@ -297,7 +392,7 @@ const generateInvoiceForContract = async (client: TxClient, contract: DbRow, mon
   }
 
   const readingRs = await client.query<DbRow>(
-    `SELECT *
+    `SELECT ${readingColumns()}
      FROM utility_reading
      WHERE room_id=$1 AND month=$2 AND status='APPROVED'
      ORDER BY approved_at DESC NULLS LAST, created_at DESC
@@ -311,7 +406,7 @@ const generateInvoiceForContract = async (client: TxClient, contract: DbRow, mon
   }
 
   const rateRs = await client.query<DbRow>(
-    `SELECT *
+    `SELECT ${rateColumns()}
      FROM utility_rate
      WHERE building_id=$1 AND effective_from <= $2
      ORDER BY effective_from DESC
@@ -340,7 +435,7 @@ const generateInvoiceForContract = async (client: TxClient, contract: DbRow, mon
   const created = await client.query<DbRow>(
     `INSERT INTO invoice(contract_id, room_id, utility_reading_id, month, status, issued_at, due_date, note, subtotal, discount, total, approved_by_user_id, approved_at)
      VALUES($1,$2,$3,$4,'DRAFT',NULL,$5,$6,$7,0,$7,NULL,NULL)
-     RETURNING *`,
+     RETURNING ${invoiceColumns()}`,
     [
       contract.id,
       contract.room_id,
@@ -385,7 +480,7 @@ const getContractsForGeneration = async (client: TxClient, managerId: string, fi
   }
 
   const { rows } = await client.query<DbRow>(
-    `SELECT c.*, r.building_id, r.code AS room_code, b.name AS building_name
+    `SELECT ${contractColumns('c')}, r.building_id, r.code AS room_code, b.name AS building_name
      FROM contract c
      JOIN room r ON r.id=c.room_id
      JOIN building b ON b.id=r.building_id
@@ -406,7 +501,7 @@ export const generateInvoicesForScope = async (payload: InvoiceGeneratePayload, 
     if (!payload.room_id && !payload.building_id && contracts.length === 0) throw new AppError(404, 'No active contracts found', 'CONTRACT_NOT_FOUND');
 
     const generated: DbRow[] = [];
-    const skipped: DbRow[] = [];
+    const skipped: Array<{ skipped: boolean; contract_id: string; room_id: string; reason: string }> = [];
     for (const contract of contracts) {
       const result = await generateInvoiceForContract(client, contract, month, managerId);
       if (result.skipped) skipped.push(result);
@@ -428,7 +523,7 @@ export const updateInvoiceStatus = async (
     let updatedInvoice: DbRow;
     let paymentRequestCreated = false;
     if (action === 'issue') {
-      const existingRequest = await client.query(
+      const existingRequest = await client.query<{ id: string }>(
         `SELECT id FROM payment_request WHERE invoice_id=$1 AND status NOT IN ('CANCELLED','EXPIRED') LIMIT 1`,
         [invoiceId]
       );
@@ -482,7 +577,7 @@ export const updateInvoiceStatus = async (
         `UPDATE invoice
          SET status='ISSUED', issued_at=now(), approved_by_user_id=$2, approved_at=now()
          WHERE id=$1
-         RETURNING *`,
+         RETURNING ${invoiceColumns()}`,
         [invoiceId, managerId]
       );
       updatedInvoice = issued.rows[0];
@@ -506,7 +601,7 @@ export const updateInvoiceStatus = async (
         `UPDATE invoice
          SET status='VOID',void_reason=$2,voided_by_user_id=$3,voided_at=now()
          WHERE id=$1
-         RETURNING *`,
+         RETURNING ${invoiceColumns()}`,
         [invoiceId, reason, managerId]
       );
       updatedInvoice = voided.rows[0];
@@ -547,7 +642,7 @@ export const updateInvoiceStatus = async (
 export const createInvoiceFromReading = async (utilityReadingId: string, managerId: string) =>
   withTransaction(async (client) => {
     const readingScopeRs = await client.query<DbRow>(
-      `SELECT ur.*, b.id building_id FROM utility_reading ur
+      `SELECT ${readingColumns('ur')}, b.id building_id FROM utility_reading ur
        JOIN room r ON r.id=ur.room_id
        JOIN building b ON b.id=r.building_id
        WHERE ur.id=$1 AND b.manager_user_id=$2`,
@@ -557,7 +652,7 @@ export const createInvoiceFromReading = async (utilityReadingId: string, manager
     if (!readingScope) throw new AppError(404, 'Reading not found');
 
     const contractRs = await client.query<DbRow>(
-      `SELECT c.*, r.building_id
+      `SELECT ${contractColumns('c')}, r.building_id
        FROM contract c
        JOIN room r ON r.id=c.room_id
        WHERE c.room_id=$1 AND c.status='ACTIVE'
@@ -570,7 +665,7 @@ export const createInvoiceFromReading = async (utilityReadingId: string, manager
     if (!contract) throw new AppError(409, 'No active contract for room');
 
     const readingRs = await client.query<DbRow>(
-      `SELECT *
+      `SELECT ${readingColumns()}
        FROM utility_reading
        WHERE id=$1 AND room_id=$2
        FOR UPDATE`,
@@ -581,12 +676,13 @@ export const createInvoiceFromReading = async (utilityReadingId: string, manager
     if (reading.status !== 'APPROVED') throw new AppError(409, 'Reading must be APPROVED to invoice');
     reading.building_id = readingScope.building_id;
 
-    const month = firstDayOfMonth(reading.month);
-    const existed = await client.query('SELECT id FROM invoice WHERE contract_id=$1 AND month=$2', [contract.id, month]);
+    const month = firstDayOfMonth(toDateString(reading.month) ?? undefined);
+    const existed = await client.query<{ id: string }>('SELECT id FROM invoice WHERE contract_id=$1 AND month=$2', [contract.id, month]);
     if (existed.rows[0]) throw new AppError(409, 'Invoice already exists for contract/month');
 
     const rateRs = await client.query<DbRow>(
-      `SELECT * FROM utility_rate WHERE building_id=$1 AND effective_from <= $2 ORDER BY effective_from DESC LIMIT 1`,
+      `SELECT ${rateColumns()} FROM utility_rate
+       WHERE building_id=$1 AND effective_from <= $2 ORDER BY effective_from DESC LIMIT 1`,
       [reading.building_id, month]
     );
     const rate = rateRs.rows[0];
@@ -608,7 +704,8 @@ export const createInvoiceFromReading = async (utilityReadingId: string, manager
 
     const invRs = await client.query<DbRow>(
       `INSERT INTO invoice(contract_id, room_id, utility_reading_id, month, status, issued_at, due_date, subtotal, discount, total, approved_by_user_id, approved_at)
-       VALUES($1,$2,$3,$4,'DRAFT',NULL,$5,$6,0,$6,NULL,NULL) RETURNING *`,
+       VALUES($1,$2,$3,$4,'DRAFT',NULL,$5,$6,0,$6,NULL,NULL)
+       RETURNING ${invoiceColumns()}`,
       [contract.id, reading.room_id, reading.id, month, month, rent + elecAmount + waterAmount + fixedChargesAmount]
     );
     const invoice = invRs.rows[0];
@@ -635,7 +732,7 @@ export const createInvoiceFromReading = async (utilityReadingId: string, manager
 export const addInvoiceAdjustment = async (invoiceId: string, amount: number, reason: string, userId: string) => {
   await withTransaction(async (client) => {
     const invRs = await client.query<DbRow>(
-      `SELECT i.*
+      `SELECT ${invoiceColumns('i')}
        FROM invoice i
        JOIN contract c ON c.id=i.contract_id
        JOIN room r ON r.id=c.room_id
@@ -661,7 +758,8 @@ export const addInvoiceAdjustment = async (invoiceId: string, amount: number, re
     const subtotal = Number(inv.subtotal) + (amount > 0 ? amount : 0);
     const discount = Number(inv.discount) + (amount < 0 ? Math.abs(amount) : 0);
     const updated = await client.query<DbRow>(
-      `UPDATE invoice SET subtotal=$1, discount=$2, total=$3, adjustment_note=$4 WHERE id=$5 RETURNING *`,
+      `UPDATE invoice SET subtotal=$1, discount=$2, total=$3, adjustment_note=$4
+       WHERE id=$5 RETURNING ${invoiceColumns()}`,
       [subtotal, discount, total, reason, invoiceId]
     );
     await writeAuditLog(client, {
@@ -702,7 +800,7 @@ export const createReplacementInvoice = async (voidedInvoiceId: string, managerI
          subtotal,discount,total,approved_by_user_id,approved_at,replaces_invoice_id
        )
        VALUES($1,$2,$3,$4,'DRAFT',NULL,$5,$6,$7,$8,$9,NULL,NULL,$10)
-       RETURNING *`,
+       RETURNING ${invoiceColumns()}`,
       [
         original.contract_id,
         original.room_id,
@@ -745,7 +843,7 @@ export const createReplacementInvoice = async (voidedInvoiceId: string, managerI
 
 export const listInvoices = async (scope: AuthScope) => {
   if (scope.role === 'MANAGER') {
-    return (await query(
+    return (await query<DbRow>(
       `SELECT ${invoiceListProjection}
        FROM invoice i
        ${invoiceListJoins}
@@ -755,7 +853,7 @@ export const listInvoices = async (scope: AuthScope) => {
     )).rows;
   }
 
-  return (await query(
+  return (await query<DbRow>(
     `SELECT DISTINCT ${invoiceListProjection}
      FROM invoice i
      ${invoiceListJoins}
@@ -772,14 +870,14 @@ export const listInvoices = async (scope: AuthScope) => {
 
 export const getInvoiceDetail = async (id: string, scope: AuthScope) => {
   const invoiceQuery = scope.role === 'MANAGER'
-    ? query(
+    ? query<DbRow>(
       `SELECT ${invoiceListProjection}
        FROM invoice i
        ${invoiceListJoins}
        WHERE i.id=$1 AND b.manager_user_id=$2`,
       [id, scope.userId]
     )
-    : query(
+    : query<DbRow>(
       `SELECT DISTINCT ${invoiceListProjection}
        FROM invoice i
        ${invoiceListJoins}
@@ -794,8 +892,8 @@ export const getInvoiceDetail = async (id: string, scope: AuthScope) => {
 
   const [invoice, items, adjustments] = await Promise.all([
     invoiceQuery,
-    query('SELECT * FROM invoice_item WHERE invoice_id=$1 ORDER BY created_at', [id]),
-    query('SELECT * FROM invoice_adjustment WHERE invoice_id=$1 ORDER BY created_at', [id])
+    query<DbRow>(`SELECT ${invoiceItemColumns} FROM invoice_item WHERE invoice_id=$1 ORDER BY created_at`, [id]),
+    query<DbRow>(`SELECT ${invoiceAdjustmentColumns} FROM invoice_adjustment WHERE invoice_id=$1 ORDER BY created_at`, [id])
   ]);
   if (!invoice.rows[0]) throw new AppError(404, 'Invoice not found');
   return { ...invoice.rows[0], items: items.rows, adjustments: adjustments.rows };
@@ -813,7 +911,7 @@ export const createManualInvoice = async (payload: InvoiceUpsertPayload, manager
     const created = await client.query<DbRow>(
       `INSERT INTO invoice(contract_id, room_id, utility_reading_id, month, status, issued_at, due_date, note, subtotal, discount, total, approved_by_user_id, approved_at)
        VALUES($1,$2,$3,$4,'DRAFT',NULL,$5,$6,$7,$8,$9,$10,now())
-       RETURNING *`,
+     RETURNING ${invoiceColumns()}`,
       [
         payload.contract_id,
         payload.room_id,
@@ -861,7 +959,7 @@ export const updateManualInvoice = async (invoiceId: string, payload: InvoiceUps
        SET contract_id=$1,room_id=$2,utility_reading_id=$3,month=$4,status='DRAFT',issued_at=NULL,due_date=$5,note=$6,subtotal=$7,discount=$8,total=$9,
            approved_by_user_id=COALESCE(approved_by_user_id, $10), approved_at=COALESCE(approved_at, now())
        WHERE id=$11
-       RETURNING *`,
+       RETURNING ${invoiceColumns()}`,
       [
         payload.contract_id,
         payload.room_id,
@@ -933,7 +1031,8 @@ export const deleteManualInvoice = async (invoiceId: string, managerId: string) 
 export const getInvoicePrefill = async (roomId: string, monthValue: string | undefined, managerId: string) => {
   const month = firstDayOfMonth(monthValue);
   const roomRs = await query<DbRow>(
-    `SELECT r.*
+    `SELECT r.id, r.building_id, r.code, r.floor, r.area_m2, r.status, r.base_rent,
+            r.deposit_default, r.max_occupants, r.note, r.created_at, r.updated_at
      FROM room r
      JOIN building b ON b.id=r.building_id
      WHERE r.id=$1 AND b.manager_user_id=$2`,
@@ -944,7 +1043,7 @@ export const getInvoicePrefill = async (roomId: string, monthValue: string | und
 
   const [contractRs, readingRs, invoiceRs, rateRs] = await Promise.all([
     query<DbRow>(
-      `SELECT c.*, tenant.id AS tenant_id, tenant.full_name AS tenant_name
+      `SELECT ${contractColumns('c')}, tenant.id AS tenant_id, tenant.full_name AS tenant_name
        FROM contract c
        LEFT JOIN LATERAL (
          SELECT t.id, t.full_name
@@ -960,7 +1059,7 @@ export const getInvoicePrefill = async (roomId: string, monthValue: string | und
       [roomId]
     ),
     query<DbRow>(
-      `SELECT *
+      `SELECT ${readingColumns()}
        FROM utility_reading
        WHERE room_id=$1 AND month <= $2
        ORDER BY month DESC, created_at DESC
@@ -977,7 +1076,7 @@ export const getInvoicePrefill = async (roomId: string, monthValue: string | und
       [roomId, month]
     ),
     query<DbRow>(
-      `SELECT *
+      `SELECT ${rateColumns()}
        FROM utility_rate
        WHERE building_id=$1 AND effective_from <= $2
        ORDER BY effective_from DESC

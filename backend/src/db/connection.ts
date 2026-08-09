@@ -29,7 +29,7 @@ export async function assertDatabaseConnection(): Promise<void> {
   try {
     const client = await pool.connect();
     try {
-      await client.query('SELECT 1');
+      await client.query<{ connected: 1 }>('SELECT 1 AS connected');
     } finally {
       client.release();
     }

@@ -7,7 +7,8 @@ import {
   createTenant as createTenantService,
   createTenantContract,
   normalizeTenantContractInput,
-  validateTenantContractRoom
+  validateTenantContractRoom,
+  type TenantContractInputDto
 } from './tenants.service';
 import { assertTenantBelongsToManager } from './tenants.repository';
 import {
@@ -28,6 +29,19 @@ import {
   maskIdentityNumber,
   requestTenantErasure
 } from './tenant-privacy.service';
+import {
+  CONTRACT_STATUSES,
+  TENANT_WRITABLE_STATUSES,
+  type AccountStatus,
+  type ContractStatus,
+  type DatabaseDate,
+  type DatabaseNumeric,
+  type DatabaseTimestamp,
+  type InvoiceStatus,
+  type PaymentEntryType,
+  type PaymentStatus,
+  type TenantStatus
+} from '../../shared/types/database';
 
 const db = { query };
 
@@ -35,27 +49,27 @@ interface TenantListRow {
   id: string;
   user_id: string | null;
   full_name: string;
-  dob: string | null;
+  dob: DatabaseDate | null;
   gender: string | null;
   identity_number: string;
-  identity_issued_date: string | null;
+  identity_issued_date: DatabaseDate | null;
   identity_issued_place: string | null;
   email: string | null;
   phone: string;
   permanent_address: string | null;
-  status: string;
+  status: TenantStatus;
   note: string | null;
   manager_user_id: string;
-  created_at: string;
-  updated_at: string;
+  created_at: DatabaseTimestamp;
+  updated_at: DatabaseTimestamp;
   room_id: string | null;
   room_code: string | null;
   building_id: string | null;
   building_name: string | null;
   contract_id: string | null;
-  start_date: string | null;
-  contract_status: string | null;
-  account_status: 'PENDING_ACTIVATION' | 'ACTIVE' | 'DISABLED' | null;
+  start_date: DatabaseDate | null;
+  contract_status: ContractStatus | null;
+  account_status: AccountStatus | null;
 }
 
 interface CountRow {
@@ -65,10 +79,10 @@ interface CountRow {
 interface TenantDeleteRow {
   id: string;
   user_id: string | null;
-  status: string;
-  privacy_erasure_requested_at: string | null;
-  privacy_erasure_eligible_at: string | null;
-  anonymized_at: string | null;
+  status: TenantStatus;
+  privacy_erasure_requested_at: DatabaseTimestamp | null;
+  privacy_erasure_eligible_at: DatabaseTimestamp | null;
+  anonymized_at: DatabaseTimestamp | null;
   account_status: string | null;
   account_is_active: boolean | null;
 }
@@ -77,11 +91,107 @@ interface TenantUpdateScopeRow {
   id: string;
   user_id: string | null;
   account_email: string | null;
-  account_status: 'PENDING_ACTIVATION' | 'ACTIVE' | 'DISABLED' | null;
+  account_status: AccountStatus | null;
 }
 
+interface TenantContractManagementRow {
+  id: string;
+  contract_id: string;
+  room_id: string;
+  contract_code: string | null;
+  status: ContractStatus;
+  start_date: DatabaseDate;
+  end_date: DatabaseDate | null;
+  move_in_date: DatabaseDate | null;
+  move_out_date: DatabaseDate | null;
+  rent_price: DatabaseNumeric;
+  deposit_amount: DatabaseNumeric;
+  billing_day: number;
+  note: string | null;
+  joined_at: DatabaseDate;
+}
+
+interface TenantInvoiceManagementRow {
+  id: string;
+  contract_id: string;
+  room_id: string;
+  utility_reading_id: string | null;
+  month: DatabaseDate;
+  status: InvoiceStatus;
+  issued_at: DatabaseTimestamp | null;
+  due_date: DatabaseDate | null;
+  subtotal: DatabaseNumeric;
+  discount: DatabaseNumeric;
+  total: DatabaseNumeric;
+  contract_code: string;
+  room_code: string;
+  building_name: string;
+}
+
+interface TenantPaymentManagementRow {
+  id: string;
+  invoice_id: string;
+  payment_request_id: string | null;
+  payment_proof_id: string | null;
+  status: PaymentStatus;
+  amount: DatabaseNumeric;
+  paid_at: DatabaseTimestamp | null;
+  entry_type: PaymentEntryType;
+  signed_amount: DatabaseNumeric;
+  month: DatabaseDate;
+  invoice_total: DatabaseNumeric;
+  invoice_status: InvoiceStatus;
+  due_date: DatabaseDate | null;
+}
+
+interface TenantContractExportRow {
+  tenant_name: string;
+  phone: string;
+  email: string | null;
+  identity_number: string;
+  permanent_address: string | null;
+  contract_code: string;
+  start_date: DatabaseDate;
+  end_date: DatabaseDate | null;
+  rent_price: DatabaseNumeric;
+  deposit_amount: DatabaseNumeric;
+  billing_day: number;
+  contract_note: string | null;
+  room_code: string;
+  floor: number | null;
+  area_m2: DatabaseNumeric | null;
+  building_name: string;
+  address: string;
+}
+
+const tenantContractColumns = `id, room_id, contract_code, status, start_date, end_date,
+  move_in_date, move_out_date, rent_price, deposit_amount, billing_day, note, created_at, updated_at`;
+const tenantColumnNames = [
+  'id', 'user_id', 'manager_user_id', 'full_name', 'dob', 'gender', 'identity_number',
+  'identity_issued_date', 'identity_issued_place', 'email', 'phone', 'permanent_address',
+  'status', 'note', 'privacy_erasure_requested_at', 'privacy_erasure_eligible_at',
+  'anonymized_at', 'created_at', 'updated_at'
+] as const;
+const tenantColumns = (alias?: string) => tenantColumnNames
+  .map((column) => alias ? `${alias}.${column}` : column)
+  .join(', ');
+const contractColumns = (alias: string) => `
+  ${alias}.id, ${alias}.room_id, ${alias}.contract_code, ${alias}.status, ${alias}.start_date,
+  ${alias}.end_date, ${alias}.move_in_date, ${alias}.move_out_date, ${alias}.rent_price,
+  ${alias}.deposit_amount, ${alias}.billing_day, ${alias}.note, ${alias}.created_at, ${alias}.updated_at`;
+const invoiceColumns = (alias: string) => `
+  ${alias}.id, ${alias}.contract_id, ${alias}.room_id, ${alias}.utility_reading_id, ${alias}.month,
+  ${alias}.status, ${alias}.issued_at, ${alias}.due_date, ${alias}.note, ${alias}.subtotal,
+  ${alias}.discount, ${alias}.total, ${alias}.void_reason, ${alias}.voided_at,
+  ${alias}.replaces_invoice_id, ${alias}.created_at, ${alias}.updated_at`;
+const paymentColumns = (alias: string) => `
+  ${alias}.id, ${alias}.invoice_id, ${alias}.payment_request_id, ${alias}.payment_proof_id,
+  ${alias}.method, ${alias}.status, ${alias}.amount, ${alias}.paid_at, ${alias}.reference_code,
+  ${alias}.note, ${alias}.created_by_user_id, ${alias}.entry_type, ${alias}.original_payment_id,
+  ${alias}.reversal_reason, ${alias}.idempotency_key, ${alias}.created_at, ${alias}.updated_at`;
+
 const nullableString = z.string().trim().nullable().optional();
-const tenantWritableStatusSchema = z.enum(['ACTIVE', 'MOVED_OUT', 'BLACKLIST']);
+const tenantWritableStatusSchema = z.enum(TENANT_WRITABLE_STATUSES);
 export const tenantListQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(10),
@@ -94,7 +204,7 @@ export const tenantListQuerySchema = z.object({
 const tenantContractSchema = z.object({
   building_id: z.string().uuid().nullable().optional(),
   room_id: z.string().uuid(),
-  status: z.enum(['DRAFT', 'ACTIVE', 'ENDED', 'CANCELLED']).optional(),
+  status: z.enum(CONTRACT_STATUSES).optional(),
   start_date: z.string().trim().min(1),
   end_date: nullableString,
   move_in_date: nullableString,
@@ -168,13 +278,19 @@ export const tenantPatchSchema = z.union([
   }).strict()
 ]);
 
-const upsertTenantContract = async (client: Parameters<Parameters<typeof withTransaction>[0]>[0], tenantId: string, contractInput: Record<string, unknown> | null, managerId: string) => {
+export type TenantCreateRequest = z.infer<typeof tenantCreateSchema>;
+export type TenantPatchRequest = z.infer<typeof tenantPatchSchema>;
+type TenantUpdateFields = z.infer<typeof tenantUpdatePayloadSchema>;
+
+const upsertTenantContract = async (client: Parameters<Parameters<typeof withTransaction>[0]>[0], tenantId: string, contractInput: TenantContractInputDto | null, managerId: string) => {
   if (!contractInput) return;
 
   const payload = normalizeTenantContractInput(contractInput);
 
-  const activeRs = await client.query<Record<string, any>>(
-    `SELECT c.*, ct.contract_id, ct.joined_at::text
+  const activeRs = await client.query<TenantContractManagementRow>(
+    `SELECT c.id, c.room_id, c.contract_code, c.status, c.start_date::text, c.end_date::text,
+            c.move_in_date::text, c.move_out_date::text, c.rent_price, c.deposit_amount,
+            c.billing_day, c.note, ct.contract_id, ct.joined_at::text
      FROM contract_tenant ct
      JOIN contract c ON c.id=ct.contract_id
      WHERE ct.tenant_id=$1 AND ct.left_at IS NULL AND c.status=$2
@@ -196,11 +312,11 @@ const upsertTenantContract = async (client: Parameters<Parameters<typeof withTra
       'UPDATE contract_tenant SET left_at=$1 WHERE contract_id=$2 AND tenant_id=$3 AND left_at IS NULL',
       [leftAt, current.contract_id, tenantId]
     );
-    const ended = await client.query<Record<string, any>>(
+    const ended = await client.query<TenantContractManagementRow>(
       `UPDATE contract
        SET status='ENDED', end_date=COALESCE(end_date, $1), move_out_date=COALESCE(move_out_date, $1)
        WHERE id=$2
-       RETURNING *`,
+       RETURNING ${tenantContractColumns}`,
       [leftAt, current.contract_id]
     );
     await writeAuditLog(client, {
@@ -217,10 +333,10 @@ const upsertTenantContract = async (client: Parameters<Parameters<typeof withTra
   }
 
   await validateTenantContractRoom(client, payload, managerId, current.contract_id);
-  const updated = await client.query<Record<string, any>>(
+  const updated = await client.query<TenantContractManagementRow>(
     `UPDATE contract SET room_id=$1,status=$2,start_date=$3,end_date=$4,move_in_date=$5,move_out_date=$6,rent_price=$7,deposit_amount=$8,billing_day=$9,note=$10
      WHERE id=$11
-     RETURNING *`,
+     RETURNING ${tenantContractColumns}`,
     [payload.room_id, payload.status, payload.start_date, payload.end_date, payload.move_in_date, payload.move_out_date, payload.rent_price, payload.deposit_amount, payload.billing_day, payload.note, current.contract_id]
   );
   await client.query(
@@ -328,7 +444,7 @@ export const listManagedTenants = async (
   params.push(pageSize, offset);
 
   const dataRs = await query<TenantListRow>(
-    `SELECT t.*, v.room_id, v.room_code, v.building_id, v.building_name, v.contract_id, v.start_date,
+    `SELECT ${tenantColumns('t')}, v.room_id, v.room_code, v.building_id, v.building_name, v.contract_id, v.start_date,
             v.contract_status, au.account_status
      FROM tenant t
      LEFT JOIN app_user au ON au.id=t.user_id
@@ -360,8 +476,8 @@ export const listManagedTenants = async (
 };
 
 export const getManagedTenant = async (tenantId: string, managerId: string) => {
-  const tenantRs = await query(
-    `SELECT t.*, au.account_status,
+  const tenantRs = await query<TenantListRow>(
+    `SELECT ${tenantColumns('t')}, au.account_status,
             consent.policy_version AS privacy_policy_version,
             consent.granted AS privacy_consent_granted,
             consent.recorded_at AS privacy_consent_recorded_at
@@ -383,7 +499,7 @@ export const getManagedTenant = async (tenantId: string, managerId: string) => {
   if (!tenant) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
 
   const [roomRs, contractRs, documentRs] = await Promise.all([
-    query(
+    query<TenantListRow>(
       `SELECT t.id AS tenant_id, t.full_name, t.phone, t.identity_number,
               c.room_id, r.code AS room_code, b.id AS building_id, b.name AS building_name,
               c.id AS contract_id, c.start_date, c.status AS contract_status
@@ -397,8 +513,8 @@ export const getManagedTenant = async (tenantId: string, managerId: string) => {
        LIMIT 1`,
       [tenantId, managerId]
     ),
-    query(
-      `SELECT c.* FROM contract c
+    query<TenantContractManagementRow>(
+      `SELECT ${contractColumns('c')} FROM contract c
        JOIN contract_tenant ct ON ct.contract_id=c.id
        JOIN room r ON r.id=c.room_id
        JOIN building b ON b.id=r.building_id
@@ -424,7 +540,7 @@ export const getManagedTenant = async (tenantId: string, managerId: string) => {
   };
 };
 
-export const createManagedTenant = async (body: Record<string, unknown>, managerId: string) => (
+export const createManagedTenant = async (body: TenantCreateRequest, managerId: string) => (
   createTenantService(body, managerId)
 );
 
@@ -434,13 +550,13 @@ export const resendManagedTenantActivation = (tenantId: string, managerId: strin
 
 export const updateManagedTenant = async (
   tenantId: string,
-  b: Record<string, unknown>,
+  body: TenantPatchRequest,
   managerId: string
 ) => {
-  const tenantPayload = (b.tenant ?? b) as Record<string, unknown>;
-  const allowed = ['full_name', 'dob', 'gender', 'identity_number', 'identity_issued_date', 'identity_issued_place', 'email', 'phone', 'permanent_address', 'status', 'note'];
+  const tenantPayload: TenantUpdateFields = 'tenant' in body ? body.tenant : body;
+  const allowed: Array<keyof TenantUpdateFields> = ['full_name', 'dob', 'gender', 'identity_number', 'identity_issued_date', 'identity_issued_place', 'email', 'phone', 'permanent_address', 'status', 'note'];
   const entries = allowed.filter((field) => Object.prototype.hasOwnProperty.call(tenantPayload, field) && tenantPayload[field] !== undefined);
-  const contractPayload = (b.contract as Record<string, unknown> | null | undefined) ?? null;
+  const contractPayload = body.contract ?? null;
   if (entries.length === 0 && !contractPayload) throw new AppError(400, 'No fields to update', 'VALIDATION_ERROR');
 
   const params: unknown[] = [];
@@ -457,9 +573,9 @@ export const updateManagedTenant = async (
     AND status <> 'DELETED'
   `;
 
-  let result: Record<string, unknown>;
+  let result: TenantListRow;
   try {
-    result = await withTransaction<Record<string, unknown>>(async (client) => {
+    result = await withTransaction<TenantListRow>(async (client) => {
       const currentTenantRs = await client.query<TenantUpdateScopeRow>(
         `SELECT tenant.id, tenant.user_id, app_user.email::text AS account_email,
                 app_user.account_status
@@ -525,12 +641,12 @@ export const updateManagedTenant = async (
 
       const updated =
         entries.length > 0
-          ? await client.query<Record<string, unknown>>(
-            `UPDATE tenant SET ${sets.join(',')} WHERE ${scopedTenantWhere} RETURNING *`,
+          ? await client.query<TenantListRow>(
+            `UPDATE tenant SET ${sets.join(',')} WHERE ${scopedTenantWhere} RETURNING ${tenantColumns()}`,
             params
           )
-          : await client.query<Record<string, unknown>>(
-            `SELECT * FROM tenant
+          : await client.query<TenantListRow>(
+            `SELECT ${tenantColumns()} FROM tenant
              WHERE ${scopedTenantWhere}`,
             params
           );
@@ -678,8 +794,8 @@ export const exportManagedTenantData = async (tenantId: string, managerId: strin
 
 export const listManagedTenantContracts = async (tenantId: string, managerId: string) => {
   await assertTenantBelongsToManager(db, tenantId, managerId);
-  const rs = await query(
-    `SELECT c.*, r.code AS room_code, b.id AS building_id, b.name AS building_name, ct.is_primary, ct.joined_at, ct.left_at
+  const rs = await query<TenantContractManagementRow>(
+    `SELECT ${contractColumns('c')}, r.code AS room_code, b.id AS building_id, b.name AS building_name, ct.is_primary, ct.joined_at, ct.left_at
      FROM contract_tenant ct
      JOIN contract c ON c.id=ct.contract_id
      JOIN room r ON r.id=c.room_id
@@ -692,8 +808,8 @@ export const listManagedTenantContracts = async (tenantId: string, managerId: st
 };
 export const listManagedTenantInvoices = async (tenantId: string, managerId: string) => {
   await assertTenantBelongsToManager(db, tenantId, managerId);
-  const rs = await query(
-    `SELECT i.*, c.contract_code, r.code AS room_code, b.name AS building_name
+  const rs = await query<TenantInvoiceManagementRow>(
+    `SELECT ${invoiceColumns('i')}, c.contract_code, r.code AS room_code, b.name AS building_name
      FROM contract_tenant ct
      JOIN contract c ON c.id=ct.contract_id
      JOIN invoice i ON i.contract_id=c.id
@@ -707,8 +823,8 @@ export const listManagedTenantInvoices = async (tenantId: string, managerId: str
 };
 export const listManagedTenantPayments = async (tenantId: string, managerId: string) => {
   await assertTenantBelongsToManager(db, tenantId, managerId);
-  const rs = await query(
-    `SELECT p.*,
+  const rs = await query<TenantPaymentManagementRow>(
+    `SELECT ${paymentColumns('p')},
             CASE WHEN p.entry_type='REVERSAL' THEN -p.amount ELSE p.amount END::float AS signed_amount,
             i.month, i.total AS invoice_total, i.status AS invoice_status, i.due_date, i.id AS invoice_id
      FROM contract_tenant ct
@@ -725,7 +841,7 @@ export const listManagedTenantPayments = async (tenantId: string, managerId: str
 };
 export const exportManagedTenantContract = async (tenantId: string, managerId: string) => {
   await assertTenantBelongsToManager(db, tenantId, managerId);
-  const detailRs = await query(
+  const detailRs = await query<TenantContractExportRow>(
     `SELECT t.full_name tenant_name,t.phone,t.email,t.identity_number,t.permanent_address,
             c.contract_code,c.start_date,c.end_date,c.rent_price,c.deposit_amount,c.billing_day,c.note contract_note,
             r.code room_code,r.floor,r.area_m2,b.name building_name,b.address
