@@ -6,12 +6,15 @@ import type {
   OccupancyReportRow,
   ReportBuildingOption,
   ReportFilters,
+  ReportDetailItem,
+  ReportDetailParams,
   ReportSection,
   ReportsData,
   ReportsSummary,
   RevenueBuildingRow,
   RevenueMonthRow,
 } from '../pages/reports/types'
+import { appendPaginationParams, type PaginatedResponse } from './pagination'
 
 type NumericSummaryField = keyof ReportsSummary
 type NumericRevenueField = 'invoiceCount' | 'billed' | 'grossPayments' | 'reversals' | 'collected' | 'unpaid'
@@ -37,10 +40,7 @@ interface ReportsApiData {
   filters: ReportFilters
   summary: ReportsApiSummary
   revenueByMonth: RevenueMonthApiRow[]
-  revenueByBuilding: RevenueBuildingApiRow[]
   debtSummary: DebtSummaryApi
-  debtItems: DebtApiRow[]
-  occupancyByBuilding: OccupancyApiRow[]
 }
 
 const toNumber = (value: unknown): number => {
@@ -147,16 +147,34 @@ const toReportsData = (data: ReportsApiData): ReportsData => ({
   filters: data.filters,
   summary: toReportsSummary(data.summary),
   revenueByMonth: data.revenueByMonth.map(toRevenueMonth),
-  revenueByBuilding: data.revenueByBuilding.map(toRevenueBuilding),
+  revenueByBuilding: [],
   debtSummary: toDebtSummary(data.debtSummary),
-  debtItems: data.debtItems.map(toDebtRow),
-  occupancyByBuilding: data.occupancyByBuilding.map(toOccupancyRow),
+  debtItems: [],
+  occupancyByBuilding: [],
 })
 
 export async function getReportsData(filters: ReportFilters): Promise<ReportsData> {
   const params = buildReportsParams(filters)
   const data = await apiRequest<ReportsApiData>(`${API_ROUTES.reports.summary}?${params.toString()}`)
   return toReportsData(data)
+}
+
+export async function getReportDetails(
+  filters: ReportFilters,
+  section: ReportSection,
+  pagination: ReportDetailParams,
+): Promise<PaginatedResponse<ReportDetailItem>> {
+  const params = buildReportsParams(filters, section)
+  appendPaginationParams(params, pagination)
+  const response = await apiRequest<PaginatedResponse<RevenueBuildingApiRow | DebtApiRow | OccupancyApiRow>>(
+    `${API_ROUTES.reports.details}?${params.toString()}`,
+  )
+  const items = section === 'revenue'
+    ? (response.items as RevenueBuildingApiRow[]).map(toRevenueBuilding)
+    : section === 'debt'
+      ? (response.items as DebtApiRow[]).map(toDebtRow)
+      : (response.items as OccupancyApiRow[]).map(toOccupancyRow)
+  return { ...response, items }
 }
 
 export async function exportReportsCsv(filters: ReportFilters, section: ReportSection): Promise<string> {

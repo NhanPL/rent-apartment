@@ -115,6 +115,19 @@ export interface InvoiceListParams {
   building_id?: string
   room_id?: string
   tenant_id?: string
+  page?: number
+  pageSize?: number
+  sortBy?: InvoiceSortBy
+  sortOrder?: 'asc' | 'desc'
+}
+
+export type InvoiceSortBy = 'month' | 'createdAt' | 'dueDate' | 'total' | 'status' | 'building' | 'room' | 'tenant'
+
+export interface InvoiceListResponse {
+  total: number
+  page: number
+  pageSize: number
+  items: InvoiceListItem[]
 }
 
 export interface InvoiceListItem extends Invoice {

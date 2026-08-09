@@ -1,6 +1,12 @@
 import { query } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
 import { toDatabaseNumber, type DatabaseNumeric, type InvoiceStatus } from '../../shared/types/database';
+import {
+  paginationOffset,
+  sqlSortDirection,
+  type PaginatedResult,
+  type PaginationParams
+} from '../../shared/utils/pagination';
 
 
 export interface ReportsFilters {
@@ -9,6 +15,23 @@ export interface ReportsFilters {
   buildingId?: string;
   status?: InvoiceStatus;
 }
+
+export type ReportDetailSection = 'revenue' | 'debt' | 'occupancy';
+export type ReportDetailSortBy =
+  | 'building'
+  | 'month'
+  | 'invoiceCount'
+  | 'billed'
+  | 'collected'
+  | 'unpaid'
+  | 'dueDate'
+  | 'outstandingAmount'
+  | 'totalRooms'
+  | 'occupiedRooms'
+  | 'vacantRooms'
+  | 'activeTenants'
+  | 'occupancyRate';
+export type ReportDetailPagination = PaginationParams<ReportDetailSortBy>;
 
 interface NormalizedReportsFilters {
   monthFrom: string;
@@ -67,6 +90,20 @@ interface OccupancyRow {
   vacant_rooms: number;
   maintenance_rooms: number;
   inactive_rooms: number;
+  active_tenants: number;
+}
+
+interface DebtSummaryRow {
+  unpaid_invoices: number;
+  unpaid_amount: number | string | null;
+  overdue_invoices: number;
+  overdue_amount: number | string | null;
+}
+
+interface OccupancySummaryRow {
+  total_rooms: number;
+  occupied_rooms: number;
+  vacant_rooms: number;
   active_tenants: number;
 }
 
@@ -352,6 +389,28 @@ const getDebtItems = async (managerId: string, filters: NormalizedReportsFilters
   return rows.map(mapDebtRow);
 };
 
+const getDebtSummary = async (managerId: string, filters: NormalizedReportsFilters) => {
+  const scope = buildInvoiceScope(managerId, filters);
+  const { rows } = await query<DebtSummaryRow>(
+    `WITH ${scopedInvoiceCte(scope)},
+     ${invoiceBalanceCte}
+     SELECT
+       COUNT(*) FILTER (WHERE status IN ('ISSUED', 'PARTIALLY_PAID') AND outstanding_amount > 0)::int AS unpaid_invoices,
+       COALESCE(SUM(outstanding_amount) FILTER (WHERE status IN ('ISSUED', 'PARTIALLY_PAID') AND outstanding_amount > 0), 0)::float AS unpaid_amount,
+       COUNT(*) FILTER (WHERE status IN ('ISSUED', 'PARTIALLY_PAID') AND outstanding_amount > 0 AND due_date < CURRENT_DATE)::int AS overdue_invoices,
+       COALESCE(SUM(outstanding_amount) FILTER (WHERE status IN ('ISSUED', 'PARTIALLY_PAID') AND outstanding_amount > 0 AND due_date < CURRENT_DATE), 0)::float AS overdue_amount
+     FROM invoice_balances`,
+    scope.params
+  );
+  const row = rows[0];
+  return {
+    unpaidInvoices: row?.unpaid_invoices ?? 0,
+    unpaidAmount: toNumber(row?.unpaid_amount),
+    overdueInvoices: row?.overdue_invoices ?? 0,
+    overdueAmount: toNumber(row?.overdue_amount)
+  };
+};
+
 const getOccupancyByBuilding = async (managerId: string, filters: NormalizedReportsFilters) => {
   const { rows } = await query<OccupancyRow>(
     `WITH active_room AS (
@@ -382,6 +441,35 @@ const getOccupancyByBuilding = async (managerId: string, filters: NormalizedRepo
   return rows.map(mapOccupancyRow);
 };
 
+const getOccupancySummary = async (managerId: string, filters: NormalizedReportsFilters) => {
+  const { rows } = await query<OccupancySummaryRow>(
+    `WITH active_room AS (
+       SELECT c.room_id, COUNT(DISTINCT ct.tenant_id)::int AS active_tenants
+       FROM contract c
+       LEFT JOIN contract_tenant ct ON ct.contract_id=c.id AND ct.left_at IS NULL
+       WHERE c.status='ACTIVE'
+       GROUP BY c.room_id
+     )
+     SELECT
+       COUNT(r.id)::int AS total_rooms,
+       COUNT(r.id) FILTER (WHERE ar.room_id IS NOT NULL)::int AS occupied_rooms,
+       COUNT(r.id) FILTER (WHERE ar.room_id IS NULL AND r.status='ACTIVE')::int AS vacant_rooms,
+       COALESCE(SUM(ar.active_tenants), 0)::int AS active_tenants
+     FROM building b
+     LEFT JOIN room r ON r.building_id=b.id
+     LEFT JOIN active_room ar ON ar.room_id=r.id
+     WHERE ${scopedBuildingWhere(filters.buildingId)}`,
+    scopedBuildingParams(managerId, filters.buildingId)
+  );
+  const row = rows[0];
+  return {
+    totalRooms: row?.total_rooms ?? 0,
+    occupiedRooms: row?.occupied_rooms ?? 0,
+    vacantRooms: row?.vacant_rooms ?? 0,
+    activeTenants: row?.active_tenants ?? 0
+  };
+};
+
 export const loadReportRows = async (managerId: string, filters: ReportsFilters) => {
   const normalizedFilters = normalizeFilters(filters);
   await ensureBuildingBelongsToManager(managerId, normalizedFilters.buildingId);
@@ -400,4 +488,184 @@ export const loadReportRows = async (managerId: string, filters: ReportsFilters)
     debtItems,
     occupancyByBuilding
   };
+};
+
+export const loadReportSummaryRows = async (managerId: string, filters: ReportsFilters) => {
+  const normalizedFilters = normalizeFilters(filters);
+  await ensureBuildingBelongsToManager(managerId, normalizedFilters.buildingId);
+  const [revenueByMonth, debtSummary, occupancySummary] = await Promise.all([
+    getRevenueByMonth(managerId, normalizedFilters),
+    getDebtSummary(managerId, normalizedFilters),
+    getOccupancySummary(managerId, normalizedFilters)
+  ]);
+  return { filters: normalizedFilters, revenueByMonth, debtSummary, occupancySummary };
+};
+
+const revenueDetailSortColumns: Partial<Record<ReportDetailSortBy, string>> = {
+  building: 'building_name',
+  invoiceCount: 'invoice_count',
+  billed: 'billed',
+  collected: 'collected',
+  unpaid: 'unpaid'
+};
+
+const debtDetailSortColumns: Partial<Record<ReportDetailSortBy, string>> = {
+  building: 'building_name',
+  month: 'month',
+  dueDate: 'due_date',
+  outstandingAmount: 'outstanding_amount'
+};
+
+const occupancyDetailSortColumns: Partial<Record<ReportDetailSortBy, string>> = {
+  building: 'building_name',
+  totalRooms: 'total_rooms',
+  occupiedRooms: 'occupied_rooms',
+  vacantRooms: 'vacant_rooms',
+  activeTenants: 'active_tenants',
+  occupancyRate: '(COUNT(r.id) FILTER (WHERE ar.room_id IS NOT NULL)::numeric / NULLIF(COUNT(r.id), 0))'
+};
+
+const paginatedRevenueByBuilding = async (
+  managerId: string,
+  filters: NormalizedReportsFilters,
+  pagination: ReportDetailPagination
+): Promise<PaginatedResult<ReturnType<typeof mapRevenueBuilding>>> => {
+  const scope = buildInvoiceScope(managerId, filters);
+  const itemParams = [...scope.params, pagination.pageSize, paginationOffset(pagination)];
+  const sortColumn = revenueDetailSortColumns[pagination.sortBy] ?? 'billed';
+  const [countResult, itemResult] = await Promise.all([
+    query<{ total: number }>(
+      `SELECT COUNT(*)::int AS total FROM building b WHERE ${scopedBuildingWhere(filters.buildingId)}`,
+      scopedBuildingParams(managerId, filters.buildingId)
+    ),
+    query<RevenueBuildingRow>(
+      `WITH scoped_buildings AS (
+         SELECT b.id, b.name
+         FROM building b
+         WHERE ${scopedBuildingWhereFromInvoiceScope(filters)}
+       ),
+       ${scopedInvoiceCte(scope)},
+       ${invoiceBalanceCte}
+       SELECT
+         sb.id AS building_id,
+         sb.name AS building_name,
+         COUNT(ib.id) FILTER (WHERE ib.status <> 'VOID')::int AS invoice_count,
+         COALESCE(SUM(ib.total) FILTER (WHERE ib.status <> 'VOID'), 0)::float AS billed,
+         COALESCE(SUM(ib.paid_amount), 0)::float AS collected,
+         COALESCE(SUM(ib.gross_payments), 0)::float AS gross_payments,
+         COALESCE(SUM(ib.reversals), 0)::float AS reversals,
+         COALESCE(SUM(ib.outstanding_amount) FILTER (WHERE ib.status IN ('ISSUED', 'PARTIALLY_PAID')), 0)::float AS unpaid
+       FROM scoped_buildings sb
+       LEFT JOIN invoice_balances ib ON ib.building_id=sb.id
+       GROUP BY sb.id, sb.name
+       ORDER BY ${sortColumn} ${sqlSortDirection(pagination.sortOrder)} NULLS LAST, sb.name, sb.id
+       LIMIT $${itemParams.length - 1} OFFSET $${itemParams.length}`,
+      itemParams
+    )
+  ]);
+  return {
+    total: countResult.rows[0]?.total ?? 0,
+    page: pagination.page,
+    pageSize: pagination.pageSize,
+    items: itemResult.rows.map(mapRevenueBuilding)
+  };
+};
+
+const paginatedDebtItems = async (
+  managerId: string,
+  filters: NormalizedReportsFilters,
+  pagination: ReportDetailPagination
+): Promise<PaginatedResult<ReturnType<typeof mapDebtRow>>> => {
+  const scope = buildInvoiceScope(managerId, filters);
+  const itemParams = [...scope.params, pagination.pageSize, paginationOffset(pagination)];
+  const sortColumn = debtDetailSortColumns[pagination.sortBy] ?? 'due_date';
+  const debtWhere = `status IN ('ISSUED', 'PARTIALLY_PAID') AND outstanding_amount > 0`;
+  const [countResult, itemResult] = await Promise.all([
+    query<{ total: number }>(
+      `WITH ${scopedInvoiceCte(scope)}, ${invoiceBalanceCte}
+       SELECT COUNT(*)::int AS total FROM invoice_balances WHERE ${debtWhere}`,
+      scope.params
+    ),
+    query<DebtRow>(
+      `WITH ${scopedInvoiceCte(scope)}, ${invoiceBalanceCte}
+       SELECT
+         id AS invoice_id, building_id, building_name, room_id, room_code, tenant_name,
+         month, status, due_date, total::float, paid_amount::float, outstanding_amount::float,
+         (due_date IS NOT NULL AND due_date < CURRENT_DATE) AS is_overdue
+       FROM invoice_balances
+       WHERE ${debtWhere}
+       ORDER BY ${sortColumn} ${sqlSortDirection(pagination.sortOrder)} NULLS LAST, month DESC, id
+       LIMIT $${itemParams.length - 1} OFFSET $${itemParams.length}`,
+      itemParams
+    )
+  ]);
+  return {
+    total: countResult.rows[0]?.total ?? 0,
+    page: pagination.page,
+    pageSize: pagination.pageSize,
+    items: itemResult.rows.map(mapDebtRow)
+  };
+};
+
+const paginatedOccupancyByBuilding = async (
+  managerId: string,
+  filters: NormalizedReportsFilters,
+  pagination: ReportDetailPagination
+): Promise<PaginatedResult<ReturnType<typeof mapOccupancyRow>>> => {
+  const baseParams = scopedBuildingParams(managerId, filters.buildingId);
+  const itemParams = [...baseParams, pagination.pageSize, paginationOffset(pagination)];
+  const sortColumn = occupancyDetailSortColumns[pagination.sortBy] ?? occupancyDetailSortColumns.occupancyRate!;
+  const [countResult, itemResult] = await Promise.all([
+    query<{ total: number }>(
+      `SELECT COUNT(*)::int AS total FROM building b WHERE ${scopedBuildingWhere(filters.buildingId)}`,
+      baseParams
+    ),
+    query<OccupancyRow>(
+      `WITH active_room AS (
+         SELECT c.room_id, COUNT(DISTINCT ct.tenant_id)::int AS active_tenants
+         FROM contract c
+         LEFT JOIN contract_tenant ct ON ct.contract_id=c.id AND ct.left_at IS NULL
+         WHERE c.status='ACTIVE'
+         GROUP BY c.room_id
+       )
+       SELECT
+         b.id AS building_id, b.name AS building_name,
+         COUNT(r.id)::int AS total_rooms,
+         COUNT(r.id) FILTER (WHERE ar.room_id IS NOT NULL)::int AS occupied_rooms,
+         COUNT(r.id) FILTER (WHERE ar.room_id IS NULL AND r.status='ACTIVE')::int AS vacant_rooms,
+         COUNT(r.id) FILTER (WHERE ar.room_id IS NULL AND r.status='MAINTENANCE')::int AS maintenance_rooms,
+         COUNT(r.id) FILTER (WHERE ar.room_id IS NULL AND r.status='INACTIVE')::int AS inactive_rooms,
+         COALESCE(SUM(ar.active_tenants), 0)::int AS active_tenants
+       FROM building b
+       LEFT JOIN room r ON r.building_id=b.id
+       LEFT JOIN active_room ar ON ar.room_id=r.id
+       WHERE ${scopedBuildingWhere(filters.buildingId)}
+       GROUP BY b.id, b.name
+       ORDER BY ${sortColumn} ${sqlSortDirection(pagination.sortOrder)} NULLS LAST, b.name, b.id
+       LIMIT $${itemParams.length - 1} OFFSET $${itemParams.length}`,
+      itemParams
+    )
+  ]);
+  return {
+    total: countResult.rows[0]?.total ?? 0,
+    page: pagination.page,
+    pageSize: pagination.pageSize,
+    items: itemResult.rows.map(mapOccupancyRow)
+  };
+};
+
+export const loadReportDetailRows = async (
+  managerId: string,
+  filters: ReportsFilters,
+  section: ReportDetailSection,
+  pagination: ReportDetailPagination
+) => {
+  const normalizedFilters = normalizeFilters(filters);
+  await ensureBuildingBelongsToManager(managerId, normalizedFilters.buildingId);
+
+  switch (section) {
+    case 'revenue': return paginatedRevenueByBuilding(managerId, normalizedFilters, pagination);
+    case 'debt': return paginatedDebtItems(managerId, normalizedFilters, pagination);
+    case 'occupancy': return paginatedOccupancyByBuilding(managerId, normalizedFilters, pagination);
+  }
 };

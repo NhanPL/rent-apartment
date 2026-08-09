@@ -10,7 +10,9 @@ import type {
   UtilityReadingDetail,
   UtilityReadingListItem,
   UtilityReadingListParams,
+  UtilityReadingListResponse,
 } from '../pages/utilities/types'
+import { appendPaginationParams, type PaginatedResponse } from './pagination'
 
 type NumericReadingFields = 'electricity_prev' | 'electricity_curr' | 'water_prev' | 'water_curr' | 'evidence_count'
 type NumericRateFields = 'electricity_unit_price' | 'water_unit_price'
@@ -59,17 +61,19 @@ const toRate = (row: UtilityRateApiRow): UtilityRate => ({
 
 const toReadingQuery = (params: UtilityReadingListParams): string => {
   const searchParams = new URLSearchParams()
+  if (params.search) searchParams.set('search', params.search)
   if (params.building_id) searchParams.set('building_id', params.building_id)
   if (params.room_id) searchParams.set('room_id', params.room_id)
   if (params.month) searchParams.set('month', `${params.month}-01`)
   if (params.status) searchParams.set('status', params.status)
+  appendPaginationParams(searchParams, params)
   const queryString = searchParams.toString()
   return queryString ? `?${queryString}` : ''
 }
 
-export async function listUtilityReadings(params: UtilityReadingListParams = {}): Promise<UtilityReadingListItem[]> {
-  const rows = await apiRequest<UtilityReadingApiRow[]>(`${API_ROUTES.utilityReadings.list}${toReadingQuery(params)}`)
-  return rows.map(toReading)
+export async function listUtilityReadings(params: UtilityReadingListParams = {}): Promise<UtilityReadingListResponse> {
+  const response = await apiRequest<PaginatedResponse<UtilityReadingApiRow>>(`${API_ROUTES.utilityReadings.list}${toReadingQuery(params)}`)
+  return { ...response, items: response.items.map(toReading) }
 }
 
 export async function getUtilityReading(id: string): Promise<UtilityReadingDetail> {

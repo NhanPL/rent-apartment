@@ -622,6 +622,8 @@ const invoicesAndPayments = [
   entry('Tenant filter', 'Lọc theo người thuê'),
   entry('Request status filter', 'Lọc theo trạng thái yêu cầu'),
   entry('Latest proof filter', 'Lọc theo minh chứng mới nhất'),
+  entry('Payment search', 'Tìm kiếm thanh toán'),
+  entry('Building, room, tenant, transfer note', 'Tòa nhà, phòng, người thuê, nội dung chuyển khoản'),
   entry('Select month', 'Chọn tháng'),
   entry('All rooms', 'Tất cả phòng'),
   entry('All tenants', 'Tất cả người thuê'),

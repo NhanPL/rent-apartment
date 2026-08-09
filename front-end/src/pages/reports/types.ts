@@ -8,6 +8,30 @@ export interface ReportFilters {
   status?: ReportInvoiceStatus
 }
 
+export type ReportDetailSortBy =
+  | 'building'
+  | 'month'
+  | 'invoiceCount'
+  | 'billed'
+  | 'collected'
+  | 'unpaid'
+  | 'dueDate'
+  | 'outstandingAmount'
+  | 'totalRooms'
+  | 'occupiedRooms'
+  | 'vacantRooms'
+  | 'activeTenants'
+  | 'occupancyRate'
+
+export interface ReportDetailParams {
+  page?: number
+  pageSize?: number
+  sortBy?: ReportDetailSortBy
+  sortOrder?: 'asc' | 'desc'
+}
+
+export type ReportDetailItem = RevenueBuildingRow | DebtReportRow | OccupancyReportRow
+
 export interface ReportBuildingOption {
   id: string
   name: string

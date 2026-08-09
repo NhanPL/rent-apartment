@@ -11,11 +11,14 @@ import {
   generateInvoicesForScope,
   getInvoiceDetail,
   getInvoicePrefill,
+  getInvoiceSummary,
   listInvoices,
   updateInvoiceStatus,
   updateManualInvoice
 } from './invoices.service';
 import { parseBody, parseEmptyBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
+import { createPaginationQuerySchema } from '../../shared/utils/pagination';
+import { INVOICE_STATUSES, PAYMENT_STATUSES } from '../../shared/types/database';
 
 const router = Router();
 registerUuidParams(router, ['id', 'utilityReadingId']);
@@ -69,8 +72,37 @@ const invoiceVoidSchema = z.object({
   reason: z.string().trim().min(3).max(500)
 });
 
+const invoiceSortFields = [
+  'month', 'createdAt', 'dueDate', 'total', 'status', 'building', 'room', 'tenant'
+] as const;
+const invoiceListQuerySchema = createPaginationQuerySchema(invoiceSortFields, 'month').extend({
+  search: z.string().trim().max(100).optional(),
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional(),
+  invoice_status: z.enum(INVOICE_STATUSES).optional(),
+  payment_status: z.enum(PAYMENT_STATUSES).optional(),
+  building_id: z.string().uuid().optional(),
+  room_id: z.string().uuid().optional(),
+  tenant_id: z.string().uuid().optional()
+});
+const invoiceSummaryQuerySchema = z.object({
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional()
+});
+
 router.get('/', asyncHandler(async (req, res) => {
-  res.json(await listInvoices(req.auth!));
+  const filters = parseQuery(invoiceListQuerySchema, req.query);
+  res.json(await listInvoices(req.auth!, {
+    ...filters,
+    invoiceStatus: filters.invoice_status,
+    paymentStatus: filters.payment_status,
+    buildingId: filters.building_id,
+    roomId: filters.room_id,
+    tenantId: filters.tenant_id
+  }));
+}));
+
+router.get('/summary', asyncHandler(async (req, res) => {
+  const filters = parseQuery(invoiceSummaryQuerySchema, req.query);
+  res.json(await getInvoiceSummary(req.auth!, filters.month));
 }));
 
 router.get('/prefill', requireRole('MANAGER'), asyncHandler(async (req, res) => {

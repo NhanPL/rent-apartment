@@ -60,16 +60,18 @@ describe('UtilitiesPage invoice creation', () => {
     utilityServiceMocks.listBuildings.mockResolvedValue([])
     utilityServiceMocks.listRooms.mockResolvedValue([])
     utilityServiceMocks.listUtilityRates.mockResolvedValue([])
-    utilityServiceMocks.listUtilityReadings.mockResolvedValue([
-      approvedReading,
-      {
+    utilityServiceMocks.listUtilityReadings.mockResolvedValue({
+      page: 1,
+      pageSize: 20,
+      total: 2,
+      items: [approvedReading, {
         ...approvedReading,
         id: '00000000-0000-4000-8000-000000000802',
         room_code: '102',
         status: 'SUBMITTED',
         approved_at: null,
-      },
-    ])
+      }],
+    })
   })
 
   it('shows the action only for approved readings and opens the invoice form route', async () => {

@@ -25,7 +25,11 @@ describe('payment request filters', () => {
         roomId: 'room-id',
         tenantId: 'tenant-id',
         requestStatus: 'TRANSFER_SUBMITTED',
-        latestProofStatus: 'PENDING'
+        latestProofStatus: 'PENDING',
+        page: 1,
+        pageSize: 20,
+        sortBy: 'createdAt',
+        sortOrder: 'desc'
       }
     );
 
@@ -51,7 +55,13 @@ describe('payment request filters', () => {
   it('filters requests that have no payment proof without adding a parameter', async () => {
     await listPaymentRequests(
       { userId: 'manager-user-id', role: 'MANAGER' },
-      { latestProofStatus: 'NONE' }
+      {
+        latestProofStatus: 'NONE',
+        page: 1,
+        pageSize: 20,
+        sortBy: 'createdAt',
+        sortOrder: 'desc'
+      }
     );
 
     const [sql, params] = dbMocks.query.mock.calls[0] as [string, unknown[]];

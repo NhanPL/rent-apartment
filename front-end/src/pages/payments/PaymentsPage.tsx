@@ -48,7 +48,10 @@ const latestProofOptions: Array<{ label: string; value: LatestProofFilter }> = [
   { label: 'No proof', value: 'NONE' },
 ]
 
-const hasFilters = (filters: PaymentRequestListFilters) => Object.values(filters).some(Boolean)
+const hasFilters = (filters: PaymentRequestListFilters) => Boolean(
+  filters.search || filters.month || filters.building_id || filters.room_id || filters.tenant_id
+  || filters.request_status || filters.latest_proof_status
+)
 
 export function PaymentsPage() {
   const screens = Grid.useBreakpoint()
@@ -56,6 +59,7 @@ export function PaymentsPage() {
   const [rejectForm] = Form.useForm<RejectFormValues>()
   const [reverseForm] = Form.useForm<ReverseFormValues>()
   const [items, setItems] = useState<PaymentRequest[]>([])
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -63,7 +67,13 @@ export function PaymentsPage() {
   const [reviewLoading, setReviewLoading] = useState<string | null>(null)
   const [rejectProofId, setRejectProofId] = useState<string | null>(null)
   const [reversePaymentId, setReversePaymentId] = useState<string | null>(null)
-  const [filters, setFilters] = useState<PaymentRequestListFilters>({})
+  const [searchInput, setSearchInput] = useState('')
+  const [filters, setFilters] = useState<PaymentRequestListFilters>({
+    page: 1,
+    pageSize: 20,
+    sortBy: 'createdAt',
+    sortOrder: 'desc',
+  })
   const [filterSourceItems, setFilterSourceItems] = useState<PaymentRequest[]>([])
 
   const pendingProofs = useMemo(() => items.filter((item) => item.latest_proof_status === 'PENDING').length, [items])
@@ -95,14 +105,43 @@ export function PaymentsPage() {
     setLoading(true)
     try {
       const data = await listPaymentRequests(filters)
-      setItems(data)
-      if (!hasFilters(filters)) setFilterSourceItems(data)
+      setItems(data.items)
+      setTotal(data.total)
     } catch (error) {
       message.error(getUserErrorMessage(error, 'Unable to load payment requests.'))
     } finally {
       setLoading(false)
     }
   }, [filters])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setFilters((current) => ({ ...current, search: searchInput.trim() || undefined, page: 1 }))
+    }, 300)
+    return () => window.clearTimeout(timer)
+  }, [searchInput])
+
+  useEffect(() => {
+    let active = true
+    const loadFilterSource = async () => {
+      try {
+        const firstPage = await listPaymentRequests({ page: 1, pageSize: 100, sortBy: 'createdAt', sortOrder: 'desc' })
+        const allItems = [...firstPage.items]
+        const pageCount = Math.ceil(firstPage.total / firstPage.pageSize)
+        for (let page = 2; page <= pageCount; page += 1) {
+          const response = await listPaymentRequests({ page, pageSize: 100, sortBy: 'createdAt', sortOrder: 'desc' })
+          allItems.push(...response.items)
+        }
+        if (active) setFilterSourceItems(allItems)
+      } catch {
+        if (active) setFilterSourceItems([])
+      }
+    }
+    void loadFilterSource()
+    return () => {
+      active = false
+    }
+  }, [])
 
   useEffect(() => {
     void loadData()
@@ -206,17 +245,31 @@ export function PaymentsPage() {
       <Card
         title="Filters"
         extra={hasFilters(filters) ? (
-          <Button icon={<ClearOutlined />} onClick={() => setFilters({})}>Clear filters</Button>
+          <Button icon={<ClearOutlined />} onClick={() => {
+            setSearchInput('')
+            setFilters({ page: 1, pageSize: filters.pageSize, sortBy: 'createdAt', sortOrder: 'desc' })
+          }}>Clear filters</Button>
         ) : null}
       >
         <Row gutter={[12, 12]}>
+          <Col xs={24} sm={12} lg={8} xl={6}>
+            <Typography.Text strong>Search</Typography.Text>
+            <Input
+              allowClear
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+              placeholder="Building, room, tenant, transfer note"
+              aria-label="Payment search"
+              style={{ marginTop: 4 }}
+            />
+          </Col>
           <Col xs={24} sm={12} lg={8} xl={4}>
             <Typography.Text strong>Month</Typography.Text>
             <DatePicker
               picker="month"
               format="MM/YYYY"
               value={filters.month ? dayjs(filters.month) : null}
-              onChange={(value) => setFilters((current) => ({ ...current, month: value?.format('YYYY-MM') }))}
+              onChange={(value) => setFilters((current) => ({ ...current, month: value?.format('YYYY-MM'), page: 1 }))}
               placeholder="Select month"
               aria-label="Month filter"
               style={{ width: '100%', marginTop: 4 }}
@@ -230,7 +283,7 @@ export function PaymentsPage() {
               optionFilterProp="label"
               value={filters.building_id}
               options={buildingOptions}
-              onChange={(value) => setFilters((current) => ({ ...current, building_id: value, room_id: undefined, tenant_id: undefined }))}
+              onChange={(value) => setFilters((current) => ({ ...current, building_id: value, room_id: undefined, tenant_id: undefined, page: 1 }))}
               placeholder="All buildings"
               aria-label="Building filter"
               style={{ width: '100%', marginTop: 4 }}
@@ -244,7 +297,7 @@ export function PaymentsPage() {
               optionFilterProp="label"
               value={filters.room_id}
               options={roomOptions}
-              onChange={(value) => setFilters((current) => ({ ...current, room_id: value, tenant_id: undefined }))}
+              onChange={(value) => setFilters((current) => ({ ...current, room_id: value, tenant_id: undefined, page: 1 }))}
               placeholder="All rooms"
               aria-label="Room filter"
               style={{ width: '100%', marginTop: 4 }}
@@ -258,7 +311,7 @@ export function PaymentsPage() {
               optionFilterProp="label"
               value={filters.tenant_id}
               options={tenantOptions}
-              onChange={(value) => setFilters((current) => ({ ...current, tenant_id: value }))}
+              onChange={(value) => setFilters((current) => ({ ...current, tenant_id: value, page: 1 }))}
               placeholder="All tenants"
               aria-label="Tenant filter"
               style={{ width: '100%', marginTop: 4 }}
@@ -270,7 +323,7 @@ export function PaymentsPage() {
               allowClear
               value={filters.request_status}
               options={requestStatusOptions}
-              onChange={(value) => setFilters((current) => ({ ...current, request_status: value }))}
+              onChange={(value) => setFilters((current) => ({ ...current, request_status: value, page: 1 }))}
               placeholder="All statuses"
               aria-label="Request status filter"
               style={{ width: '100%', marginTop: 4 }}
@@ -282,7 +335,7 @@ export function PaymentsPage() {
               allowClear
               value={filters.latest_proof_status}
               options={latestProofOptions}
-              onChange={(value) => setFilters((current) => ({ ...current, latest_proof_status: value }))}
+              onChange={(value) => setFilters((current) => ({ ...current, latest_proof_status: value, page: 1 }))}
               placeholder="All proof statuses"
               aria-label="Latest proof filter"
               style={{ width: '100%', marginTop: 4 }}
@@ -295,7 +348,7 @@ export function PaymentsPage() {
         <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
           <Space wrap>
             <Tag color={pendingProofs > 0 ? 'gold' : 'green'}>{pendingProofs} pending proof(s)</Tag>
-            <Typography.Text type="secondary">{items.length} payment request(s)</Typography.Text>
+            <Typography.Text type="secondary">{total} payment request(s)</Typography.Text>
           </Space>
           <Button icon={<ReloadOutlined />} onClick={() => void loadData()}>Refresh</Button>
         </Space>
@@ -305,7 +358,26 @@ export function PaymentsPage() {
         {loading ? (
           <Skeleton active paragraph={{ rows: 8 }} />
         ) : (
-          <Table rowKey="id" columns={columns} dataSource={items} scroll={{ x: 1450 }} locale={{ emptyText: <Empty description="No payment requests" /> }} />
+          <Table
+            rowKey="id"
+            columns={columns}
+            dataSource={items}
+            scroll={{ x: 1450 }}
+            pagination={{
+              current: filters.page,
+              pageSize: filters.pageSize,
+              total,
+              showSizeChanger: true,
+              pageSizeOptions: [10, 20, 50, 100],
+              showTotal: (value) => `${value} payment requests`,
+              onChange: (page, pageSize) => setFilters((current) => ({
+                ...current,
+                page: pageSize === current.pageSize ? page : 1,
+                pageSize,
+              })),
+            }}
+            locale={{ emptyText: <Empty description="No payment requests" /> }}
+          />
         )}
       </Card>
 

@@ -20,6 +20,7 @@ export const API_ROUTES = {
   },
   reports: {
     summary: '/reports/summary',
+    details: '/reports/details',
     exportCsv: '/reports/export.csv',
   },
   rooms: {
@@ -54,6 +55,7 @@ export const API_ROUTES = {
   },
   invoices: {
     list: '/invoices',
+    summary: '/invoices/summary',
     detail: (id: string) => `/invoices/${id}`,
     prefill: '/invoices/prefill',
     fromReading: (utilityReadingId: string) => `/invoices/from-reading/${utilityReadingId}`,

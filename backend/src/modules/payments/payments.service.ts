@@ -18,6 +18,12 @@ import type {
   PaymentRequestStatus
 } from '../../shared/types/database';
 import { toDatabaseNumber } from '../../shared/types/database';
+import {
+  paginationOffset,
+  sqlSortDirection,
+  type PaginatedResult,
+  type PaginationParams
+} from '../../shared/utils/pagination';
 
 interface PaymentBoundaryRow {
   id: string;
@@ -71,7 +77,18 @@ export interface PaymentRequestDetail {
   [column: string]: unknown;
 }
 
-export interface PaymentRequestListFilters {
+export type PaymentRequestSortBy =
+  | 'createdAt'
+  | 'month'
+  | 'amount'
+  | 'status'
+  | 'building'
+  | 'room'
+  | 'tenant'
+  | 'latestProofSubmittedAt';
+
+export interface PaymentRequestListFilters extends PaginationParams<PaymentRequestSortBy> {
+  search?: string;
   month?: string;
   buildingId?: string;
   roomId?: string;
@@ -656,14 +673,45 @@ export const getPaymentRequestDetail = async (id: string, scope: AuthScope) => {
   return { ...reqRs.rows[0], proofs: proofs.rows, payments: payment.rows, payment: payment.rows[0] ?? null };
 };
 
-export const listPaymentRequests = async (scope: AuthScope, filters: PaymentRequestListFilters = {}) => {
+const paymentRequestSortColumns: Record<PaymentRequestSortBy, string> = {
+  createdAt: 'pr.created_at',
+  month: 'i.month',
+  amount: 'pr.amount',
+  status: 'pr.status',
+  building: 'b.name',
+  room: 'r.code',
+  tenant: 'tenant_info.tenant_name',
+  latestProofSubmittedAt: 'latest_proof.submitted_at'
+};
+
+export const listPaymentRequests = async (
+  scope: AuthScope,
+  filters: PaymentRequestListFilters
+): Promise<PaginatedResult<PaymentBoundaryRow>> => {
   const params: unknown[] = [scope.userId];
-  const conditions = [scope.role === 'MANAGER' ? 'b.manager_user_id=$1' : 't.user_id=$1'];
+  const conditions = [scope.role === 'MANAGER'
+    ? 'b.manager_user_id=$1'
+    : `EXISTS (
+        SELECT 1
+        FROM contract_tenant ct_scope
+        JOIN tenant t_scope ON t_scope.id=ct_scope.tenant_id
+        WHERE ct_scope.contract_id=i.contract_id AND t_scope.user_id=$1
+      )`];
   const addCondition = (condition: string, value: unknown) => {
     params.push(value);
     conditions.push(condition.replace('?', `$${params.length}`));
   };
 
+  if (filters.search) {
+    addCondition(`(
+      b.name ILIKE '%' || ? || '%'
+      OR r.code ILIKE '%' || ? || '%'
+      OR COALESCE(tenant_info.tenant_name, '') ILIKE '%' || ? || '%'
+      OR COALESCE(pr.transfer_note, '') ILIKE '%' || ? || '%'
+    )`, filters.search);
+    const searchParameter = `$${params.length}`;
+    conditions[conditions.length - 1] = conditions[conditions.length - 1].split('?').join(searchParameter);
+  }
   if (filters.month) addCondition('i.month=?', `${filters.month}-01`);
   if (filters.buildingId) addCondition('b.id=?', filters.buildingId);
   if (filters.roomId) addCondition('r.id=?', filters.roomId);
@@ -672,16 +720,37 @@ export const listPaymentRequests = async (scope: AuthScope, filters: PaymentRequ
   if (filters.latestProofStatus === 'NONE') conditions.push('latest_proof.id IS NULL');
   else if (filters.latestProofStatus) addCondition('latest_proof.status=?', filters.latestProofStatus);
 
-  return (await query<PaymentBoundaryRow>(
-    `SELECT ${paymentRequestSummarySelect}
-     FROM payment_request pr
-     ${paymentRequestSummaryJoins}
-     ${scope.role === 'TENANT' ? `JOIN contract_tenant ct ON ct.contract_id=i.contract_id
-     JOIN tenant t ON t.id=ct.tenant_id` : ''}
-     WHERE ${conditions.join(' AND ')}
-     ORDER BY pr.created_at DESC`,
-    params
-  )).rows;
+  const where = conditions.join(' AND ');
+  const countParams = [...params];
+  const itemParams = [...params, filters.pageSize, paginationOffset(filters)];
+  const sortColumn = paymentRequestSortColumns[filters.sortBy];
+  const direction = sqlSortDirection(filters.sortOrder);
+
+  const [countResult, itemResult] = await Promise.all([
+    query<{ total: number }>(
+      `SELECT COUNT(*)::int AS total
+       FROM payment_request pr
+       ${paymentRequestSummaryJoins}
+       WHERE ${where}`,
+      countParams
+    ),
+    query<PaymentBoundaryRow>(
+      `SELECT ${paymentRequestSummarySelect}
+       FROM payment_request pr
+       ${paymentRequestSummaryJoins}
+       WHERE ${where}
+       ORDER BY ${sortColumn} ${direction} NULLS LAST, pr.created_at DESC, pr.id
+       LIMIT $${itemParams.length - 1} OFFSET $${itemParams.length}`,
+      itemParams
+    )
+  ]);
+
+  return {
+    total: countResult.rows[0]?.total ?? 0,
+    page: filters.page,
+    pageSize: filters.pageSize,
+    items: itemResult.rows
+  };
 };
 
 export const getPaymentRequestForInvoice = async (invoiceId: string, scope: AuthScope) => {
