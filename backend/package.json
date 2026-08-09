@@ -11,7 +11,8 @@
     "test": "vitest run --config vitest.config.ts",
     "audit": "npm audit --audit-level=high",
     "db:migrate": "node scripts/migrate.js",
-    "db:seed": "node scripts/migrate.js --seed"
+    "db:seed": "node scripts/migrate.js --seed",
+    "db:schema:export": "node scripts/export-schema.js --output ../database.sql"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

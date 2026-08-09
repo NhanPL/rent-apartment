@@ -1,6 +1,7 @@
 # Database Migrations
 
-Schema changes are versioned in `migrations/`. Demo data is kept separately in `seeds/` and only runs when explicitly requested.
+`migrations/` is the only source of truth for the database schema. Demo data is
+kept separately in `seeds/` and only runs when explicitly requested.
 
 ## Local Setup
 
@@ -25,16 +26,18 @@ npm run db:seed
 
 Seed data is intended for disposable local databases. Do not run it against shared or production data.
 
-The demo seed creates these local accounts:
+The current local seed creates these accounts:
 
-- `manager@example.com` / `password`
-- `tenant@example.com` / `password`
+- `manager@example.com` / `Local Manager 2026!`
+- `tenant@example.com` / `Local Tenant 2026!`
 
 ## How It Works
 
-The runner applies SQL files by lexical order and records each applied file in `schema_migrations`. Seed files are tracked separately in `seed_migrations`.
+The runner applies SQL files by lexical order and records each applied file in
+`schema_migrations`. Seed files are tracked separately in `seed_migrations`.
 
-Do not edit a migration after it has been applied to a shared database. Add a new file instead, using the naming pattern:
+Do not edit, rename, or delete a migration after it has been applied. Every
+schema change must be a new forward migration using the naming pattern:
 
 ```text
 YYYYMMDD_short_description.sql
@@ -46,6 +49,21 @@ For a local preview without applying changes:
 npm run db:migrate -- --dry-run
 npm run db:seed -- --dry-run
 ```
+
+## Generated Schema Snapshot
+
+No manually maintained `database.sql` is committed or used to create a new
+database. If a tool requires one SQL file, generate a temporary snapshot from
+the migrations:
+
+```sh
+cd backend
+npm run db:schema:export
+```
+
+The generated repository-root `database.sql` is ignored by Git and starts with
+a generated-file warning. It is an inspection/tooling artifact only; do not edit
+it or use it instead of `npm run db:migrate`.
 
 ## Rollback And Restore
 

@@ -9,3 +9,6 @@
 # Private keys must never be stored in the repository.
 *.key
 *.pem
+
+# Generated from migrations with `npm run db:schema:export`.
+/database.sql
