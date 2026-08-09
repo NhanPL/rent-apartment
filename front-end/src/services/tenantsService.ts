@@ -6,6 +6,7 @@ import type {
   RoomOption,
   TenantCreateResult,
   TenantDetail,
+  TenantErasureResult,
   TenantFormPayload,
   TenantIdentityDocumentUpdatePayload,
   TenantIdentityDocuments,
@@ -42,15 +43,19 @@ export function createTenant(payload: TenantFormPayload): Promise<TenantCreateRe
 }
 
 export function updateTenant(id: string, payload: TenantFormPayload): Promise<TenantListItem> {
-  return apiRequest<TenantListItem>(API_ROUTES.tenants.detail(id), { method: 'PATCH', body: payload })
+  return apiRequest<TenantListItem>(API_ROUTES.tenants.detail(id), { method: 'PATCH', body: { tenant: payload.tenant } })
 }
 
 export function updateTenantIdentityDocuments(id: string, payload: TenantIdentityDocumentUpdatePayload): Promise<TenantIdentityDocuments> {
   return apiRequest<TenantIdentityDocuments>(API_ROUTES.tenants.identityDocuments(id), { method: 'PUT', body: payload })
 }
 
-export function deleteTenant(id: string): Promise<void> {
-  return apiRequest<void>(API_ROUTES.tenants.detail(id), { method: 'DELETE' })
+export function deleteTenant(id: string): Promise<TenantErasureResult> {
+  return apiRequest<TenantErasureResult>(API_ROUTES.tenants.detail(id), { method: 'DELETE' })
+}
+
+export function exportTenantData(id: string): Promise<Record<string, unknown>> {
+  return apiRequest<Record<string, unknown>>(`${API_ROUTES.tenants.detail(id)}/data-export`)
 }
 
 export function resendTenantActivation(id: string): Promise<{

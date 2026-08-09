@@ -20,6 +20,7 @@ import { assertRoomCanHostActiveContract, CURRENT_CONTRACT_STATUS, getContractRo
 import { assertTenantBelongsToManager } from '../tenants/tenants.repository';
 import { businessStageSql, getContractBusinessStage } from './business-stage';
 import { writeAuditLog } from '../../shared/services/audit-log.service';
+import { maskIdentityNumber } from '../tenants/tenant-privacy.service';
 
 const router = Router();
 registerUuidParams(router, ['id', 'documentId', 'tenantId']);
@@ -144,8 +145,8 @@ const getScopedContract = async (client: Queryable, contractId: string, managerI
   return contract;
 };
 
-const getContractParticipants = async (client: Queryable, contractId: string) =>
-  (await client.query<DbRow>(
+const getContractParticipants = async (client: Queryable, contractId: string): Promise<DbRow[]> => {
+  const participants = await client.query<DbRow>(
     `SELECT ct.contract_id, ct.tenant_id, ct.is_primary, ct.joined_at, ct.left_at,
             t.full_name, t.phone, t.email, t.identity_number
      FROM contract_tenant ct
@@ -153,7 +154,12 @@ const getContractParticipants = async (client: Queryable, contractId: string) =>
      WHERE ct.contract_id=$1
      ORDER BY ct.left_at NULLS FIRST, ct.is_primary DESC, ct.joined_at, t.full_name`,
     [contractId]
-  )).rows;
+  );
+  return participants.rows.map((tenant): DbRow => ({
+    ...tenant,
+    identity_number: maskIdentityNumber(tenant.identity_number)
+  }));
+};
 
 const assertTenantVisibleToManager = async (client: Queryable, tenantId: string, managerId: string) => {
   const rs = await client.query<{ id: string }>(

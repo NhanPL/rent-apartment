@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { query } from '../../db';
+import { query, withTransaction } from '../../db';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { firstDayOfMonth } from '../../shared/utils/date';
@@ -13,6 +13,8 @@ import {
   uploadResourceTypeValues
 } from '../uploads/uploads.service';
 import { presentDocumentAsset } from '../documents/document-assets.service';
+import { getTenantDataExport } from '../tenants/tenant-privacy.service';
+import { writeAuditLog } from '../../shared/services/audit-log.service';
 
 const router = Router();
 registerUuidParams(router, ['id']);
@@ -153,6 +155,27 @@ router.get('/documents', asyncHandler(async (req, res) => {
   res.json(await Promise.all(
     rows.map((document) => presentDocumentAsset(req, 'TENANT_DOCUMENT', document as { id: string }, req.auth!))
   ));
+}));
+
+router.get('/data-export', asyncHandler(async (req, res) => {
+  const payload = await withTransaction(async (client) => {
+    const tenant = await client.query<{ id: string }>(
+      `SELECT id FROM tenant WHERE user_id=$1 AND status <> 'DELETED' LIMIT 1`,
+      [req.auth!.userId]
+    );
+    if (!tenant.rows[0]) throw new AppError(404, 'Tenant profile not found', 'TENANT_NOT_FOUND');
+    const data = await getTenantDataExport(client, tenant.rows[0].id);
+    await writeAuditLog(client, {
+      actorUserId: req.auth!.userId,
+      action: 'TENANT_DATA_EXPORTED',
+      entityType: 'TENANT',
+      entityId: tenant.rows[0].id,
+      metadata: { scope: 'SELF' }
+    });
+    return data;
+  });
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(payload);
 }));
 
 router.post('/documents', asyncHandler(async (req, res) => {

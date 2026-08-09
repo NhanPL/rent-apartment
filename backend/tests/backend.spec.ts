@@ -827,6 +827,7 @@ describe('backend API smoke tests', () => {
 
     expect(list.body.items.map((item: { id: string }) => item.id)).toContain(ids.tenantA);
     expect(list.body.items.map((item: { id: string }) => item.id)).not.toContain(ids.tenantB);
+    expect(list.body.items.find((item: { id: string }) => item.id === ids.tenantA).identity_number).toBe('****');
 
     await request(app)
       .get(`/api/tenants/${ids.tenantB}`)
@@ -845,7 +846,8 @@ describe('backend API smoke tests', () => {
         identity_number: 'ID-C',
         email: 'charlie@example.com',
         phone: '0933333333',
-        status: 'ACTIVE'
+        status: 'ACTIVE',
+        privacy_consent: true
       })
       .expect(201);
 
@@ -859,6 +861,10 @@ describe('backend API smoke tests', () => {
       is_active: false,
       account_status: 'PENDING_ACTIVATION'
     });
+    expect(fakeDb.tenantPrivacyConsents).toContainEqual(expect.objectContaining({
+      tenant_id: tenantId,
+      granted: true
+    }));
 
     const updated = await request(app)
       .patch(`/api/tenants/${tenantId}`)
@@ -900,7 +906,7 @@ describe('backend API smoke tests', () => {
     await request(app)
       .delete(`/api/tenants/${tenantId}`)
       .set(auth(managerSession.accessToken))
-      .expect(204);
+      .expect(200);
 
     expect(fakeDb.tenants.find((tenant) => tenant.id === tenantId)).toMatchObject({
       status: 'DELETED',
@@ -908,7 +914,6 @@ describe('backend API smoke tests', () => {
     });
     expect(fakeDb.users.find((user) => user.id === created.body.userId)).toBeUndefined();
     expect(fakeDb.tenantDocuments.filter((document) => document.tenant_id === tenantId)).toEqual([]);
-    expect(assetJobMocks.enqueueCloudinaryDeletion).toHaveBeenCalledTimes(2);
     expect(uploadServiceMocks.deleteCloudinaryUpload).not.toHaveBeenCalled();
 
     await request(app)
@@ -919,12 +924,13 @@ describe('backend API smoke tests', () => {
         identity_number: 'ID-C-REPLACEMENT',
         email: 'charlie.updated@example.com',
         phone: '0955555555',
-        status: 'ACTIVE'
+        status: 'ACTIVE',
+        privacy_consent: true
       })
       .expect(201);
   });
 
-  it('keeps tenant data when the durable Cloudinary cleanup job cannot be queued', async () => {
+  it('anonymizes tenant data while Cloudinary cleanup remains asynchronous', async () => {
     const managerSession = await login('manager@example.com');
     const fileUrl = 'https://res.cloudinary.com/demo/image/upload/tenant-documents/free-front.jpg';
     fakeDb.tenantDocuments.push({
@@ -939,18 +945,16 @@ describe('backend API smoke tests', () => {
     const response = await request(app)
       .delete(`/api/tenants/${ids.tenantFree}`)
       .set(auth(managerSession.accessToken))
-      .expect(502);
+      .expect(200);
 
     expect(response.body).toMatchObject({
-      code: 'CLOUDINARY_DELETE_FAILED',
-      message: 'Unable to delete file from Cloudinary'
+      status: 'ANONYMIZED'
     });
     expect(fakeDb.tenants.find((tenant) => tenant.id === ids.tenantFree)).toMatchObject({
-      status: 'ACTIVE'
+      status: 'DELETED',
+      anonymized_at: expect.any(String)
     });
-    expect(fakeDb.tenantDocuments).toEqual([
-      expect.objectContaining({ tenant_id: ids.tenantFree, file_url: fileUrl })
-    ]);
+    expect(fakeDb.tenantDocuments).toEqual([]);
   });
 
   it('returns a meaningful error when a tenant email is already in use', async () => {
@@ -1011,7 +1015,8 @@ describe('backend API smoke tests', () => {
         identity_number: 'ID-ACTIVATION',
         email: 'activation@example.com',
         phone: '0933333344',
-        status: 'ACTIVE'
+        status: 'ACTIVE',
+        privacy_consent: true
       })
       .expect(201);
 
@@ -1088,7 +1093,8 @@ describe('backend API smoke tests', () => {
         identity_number: 'ID-RESEND',
         email: 'resend@example.com',
         phone: '0933333355',
-        status: 'ACTIVE'
+        status: 'ACTIVE',
+        privacy_consent: true
       })
       .expect(201);
 
@@ -1253,7 +1259,8 @@ describe('backend API smoke tests', () => {
           full_name: 'Reservation Cancel Tenant',
           phone: '0955555555',
           identity_number: 'ID-CANCEL',
-          email: 'cancel@example.com'
+          email: 'cancel@example.com',
+          privacy_consent: true
         },
         start_date: '2026-07-15',
         rent_price: 800,

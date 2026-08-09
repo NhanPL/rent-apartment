@@ -34,6 +34,10 @@ export const AUDIT_ACTIONS = [
   'TENANT_IDENTITY_DOCUMENT_DELETED_BY_RETENTION',
   'TENANT_IDENTITY_DOCUMENT_DOWNLOADED',
   'TENANT_IDENTITY_DOCUMENT_VIEWED',
+  'TENANT_PRIVACY_CONSENT_RECORDED',
+  'TENANT_PRIVACY_ERASURE_REQUESTED',
+  'TENANT_ANONYMIZED',
+  'TENANT_DATA_EXPORTED',
   'USER_ACTIVATED',
   'USER_DEACTIVATED',
   'USER_PASSWORD_CHANGED',
@@ -56,7 +60,7 @@ export interface AuditLogPayload {
   after?: Record<string, unknown> | null;
 }
 
-const sensitiveKeyPattern = /(?:password|token|secret|authorization|cookie|credential|file_url|signed_url|access_url|qr_image_url|public_id|asset_id)/i;
+const sensitiveKeyPattern = /(?:password|token|secret|authorization|cookie|credential|file_url|signed_url|access_url|qr_image_url|public_id|asset_id|identity_number|citizen_id)/i;
 const urlPattern = /^https?:\/\//i;
 const MAX_DEPTH = 8;
 const MAX_ARRAY_ITEMS = 100;

@@ -19,7 +19,6 @@ import {
   normalizeStoredUpload
 } from '../uploads/uploads.service';
 import {
-  enqueueCloudinaryDeletion,
   processCloudinaryAssetJobs
 } from '../documents/document-asset-jobs.service';
 import { presentDocumentAsset } from '../documents/document-assets.service';
@@ -29,6 +28,11 @@ import {
   updateTenantIdentityDocuments,
   type TenantIdentityDocumentRow
 } from './tenant-identity-documents.service';
+import {
+  getTenantDataExport,
+  maskIdentityNumber,
+  requestTenantErasure
+} from './tenant-privacy.service';
 
 const router = Router();
 registerUuidParams(router, ['id']);
@@ -68,6 +72,10 @@ interface CountRow {
 interface TenantDeleteRow {
   id: string;
   user_id: string | null;
+  status: string;
+  privacy_erasure_requested_at: string | null;
+  privacy_erasure_eligible_at: string | null;
+  anonymized_at: string | null;
   account_status: string | null;
   account_is_active: boolean | null;
 }
@@ -78,8 +86,6 @@ interface TenantUpdateScopeRow {
   account_email: string | null;
   account_status: 'PENDING_ACTIVATION' | 'ACTIVE' | 'DISABLED' | null;
 }
-
-interface TenantDocumentDeleteRow extends TenantIdentityDocumentRow {}
 
 const nullableString = z.string().trim().nullable().optional();
 const tenantWritableStatusSchema = z.enum(['ACTIVE', 'MOVED_OUT', 'BLACKLIST']);
@@ -146,8 +152,17 @@ const identityDocumentUpdateSchema = z.object({
 );
 
 const tenantCreateSchema = z.union([
-  tenantCreatePayloadSchema.extend({ contract: tenantContractSchema.nullable().optional() }),
-  z.object({ tenant: tenantCreatePayloadSchema, contract: tenantContractSchema.nullable().optional() })
+  tenantCreatePayloadSchema.extend({
+    contract: tenantContractSchema.nullable().optional(),
+    privacy_consent: z.literal(true),
+    privacy_policy_version: z.string().trim().min(1).max(40).optional()
+  }),
+  z.object({
+    tenant: tenantCreatePayloadSchema,
+    contract: tenantContractSchema.nullable().optional(),
+    privacy_consent: z.literal(true),
+    privacy_policy_version: z.string().trim().min(1).max(40).optional()
+  })
 ]);
 
 const tenantPatchSchema = z.union([
@@ -331,6 +346,7 @@ router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 
   const items = dataRs.rows.map((row) => ({
     ...row,
+    identity_number: maskIdentityNumber(row.identity_number),
     current_room: row.room_id
       ? {
           tenant_id: row.id,
@@ -350,9 +366,19 @@ router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 
 router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const tenantRs = await query(
-    `SELECT t.*, au.account_status
+    `SELECT t.*, au.account_status,
+            consent.policy_version AS privacy_policy_version,
+            consent.granted AS privacy_consent_granted,
+            consent.recorded_at AS privacy_consent_recorded_at
      FROM tenant t
      LEFT JOIN app_user au ON au.id=t.user_id
+     LEFT JOIN LATERAL (
+       SELECT policy_version, granted, recorded_at
+       FROM tenant_privacy_consent
+       WHERE tenant_id=t.id
+       ORDER BY recorded_at DESC
+       LIMIT 1
+     ) consent ON true
      WHERE t.id=$1
        AND t.manager_user_id=$2
        AND t.status <> $3`,
@@ -594,9 +620,13 @@ router.put('/:id/identity-documents', requireRole('MANAGER'), asyncHandler(async
 }));
 
 router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  await withTransaction(async (client) => {
+  const result = await withTransaction(async (client) => {
     const tenantRs = await client.query<TenantDeleteRow>(
-      `SELECT tenant.id, tenant.user_id, app_user.account_status,
+      `SELECT tenant.id, tenant.user_id, tenant.status,
+              tenant.privacy_erasure_requested_at,
+              tenant.privacy_erasure_eligible_at,
+              tenant.anonymized_at,
+              app_user.account_status,
               app_user.is_active AS account_is_active
        FROM tenant
        LEFT JOIN app_user ON app_user.id=tenant.user_id
@@ -636,43 +666,7 @@ router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
       throw new AppError(400, 'Không thể xóa người thuê còn hóa đơn chưa thanh toán', 'TENANT_HAS_UNPAID_INVOICE');
     }
 
-    const documentRs = await client.query<TenantDocumentDeleteRow>(
-      `SELECT id, tenant_id, doc_type, file_name, file_url, mime_type, file_size, uploaded_at,
-              cloudinary_asset_id, cloudinary_public_id, cloudinary_resource_type,
-              cloudinary_version, cloudinary_format, cloudinary_delivery_type
-       FROM tenant_document
-       WHERE tenant_id=$1
-       FOR UPDATE`,
-      [tenant.id]
-    );
-    for (const document of documentRs.rows) {
-      await enqueueCloudinaryDeletion(client, 'TENANT_DOCUMENT', document, 'TENANT_DELETED');
-      if (['IDENTITY_FRONT', 'IDENTITY_BACK'].includes(document.doc_type)) {
-        await writeAuditLog(client, {
-          actorUserId: req.auth!.userId,
-          action: 'TENANT_IDENTITY_DOCUMENT_DELETED',
-          entityType: 'tenant_document',
-          entityId: document.id,
-          metadata: { tenantId: tenant.id, documentType: document.doc_type, reason: 'TENANT_DELETED' },
-          before: {
-            tenantId: tenant.id,
-            documentType: document.doc_type,
-            fileName: document.file_name,
-            mimeType: document.mime_type,
-            fileSize: document.file_size,
-            uploadedAt: document.uploaded_at
-          }
-        });
-      }
-    }
-    await client.query('DELETE FROM tenant_document WHERE tenant_id=$1', [tenant.id]);
-
-    await client.query(
-      `UPDATE tenant
-       SET status='DELETED', user_id=NULL
-       WHERE id=$1`,
-      [tenant.id]
-    );
+    const erasure = await requestTenantErasure(client, tenant, req.auth!.userId);
 
     if (tenant.user_id) {
       await writeAuditLog(client, {
@@ -689,10 +683,33 @@ router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
       });
       await client.query('DELETE FROM app_user WHERE id=$1', [tenant.user_id]);
     }
+    return erasure;
   });
 
   void processCloudinaryAssetJobs();
-  res.status(204).send();
+  res.json({
+    message: result.status === 'ANONYMIZED'
+      ? 'Tenant data was anonymized successfully.'
+      : 'Tenant access was removed and anonymization was scheduled after the retention period.',
+    ...result
+  });
+}));
+
+router.get('/:id/data-export', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  const payload = await withTransaction(async (client) => {
+    await assertTenantBelongsToManager(client, req.params.id, req.auth!.userId);
+    const data = await getTenantDataExport(client, req.params.id);
+    await writeAuditLog(client, {
+      actorUserId: req.auth!.userId,
+      action: 'TENANT_DATA_EXPORTED',
+      entityType: 'TENANT',
+      entityId: req.params.id,
+      metadata: { scope: 'MANAGER' }
+    });
+    return data;
+  });
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(payload);
 }));
 
 router.get('/:id/contracts', requireRole('MANAGER'), asyncHandler(async (req, res) => {

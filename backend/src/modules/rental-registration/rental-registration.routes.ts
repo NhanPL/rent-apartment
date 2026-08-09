@@ -7,6 +7,7 @@ import { AppError } from '../../shared/errors/app-error';
 import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 import { businessStageSql, getContractBusinessStage } from '../contracts/business-stage';
 import { writeAuditLog } from '../../shared/services/audit-log.service';
+import { maskIdentityNumber, recordTenantPrivacyConsent } from '../tenants/tenant-privacy.service';
 
 const router = Router();
 registerUuidParams(router, ['contractId']);
@@ -29,7 +30,9 @@ const tenantDraftSchema = z.object({
   identity_issued_date: nullableString,
   identity_issued_place: nullableString,
   permanent_address: nullableString,
-  note: nullableString
+  note: nullableString,
+  privacy_consent: z.literal(true),
+  privacy_policy_version: z.string().trim().min(1).max(40).optional()
 });
 
 const reserveSchema = z.object({
@@ -215,7 +218,10 @@ router.get('/available-tenants', requireRole('MANAGER'), asyncHandler(async (req
     [req.auth!.userId]
   );
 
-  res.json(rows);
+  res.json(rows.map((tenant) => ({
+    ...tenant,
+    identity_number: maskIdentityNumber(tenant.identity_number)
+  })));
 }));
 
 router.post('/reserve', requireRole('MANAGER'), asyncHandler(async (req, res) => {
@@ -258,6 +264,13 @@ router.post('/reserve', requireRole('MANAGER'), asyncHandler(async (req, res) =>
         ]
       );
       tenantId = createdTenant.rows[0].id;
+      await recordTenantPrivacyConsent(
+        client,
+        tenantId,
+        req.auth!.userId,
+        true,
+        body.tenant.privacy_policy_version
+      );
     }
 
     if (!tenantId) throw new AppError(400, 'tenant_id or tenant is required', 'VALIDATION_ERROR');

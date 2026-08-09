@@ -369,7 +369,8 @@ export const normalizeStoredUpload = (
   return resolved;
 };
 
-export const getDocumentRetentionUntil = (context: UploadContext, from = new Date()): Date => {
+export const getDocumentRetentionUntil = (context: UploadContext, from = new Date()): Date | null => {
+  if (context === 'TENANT_DOCUMENT') return null;
   const result = new Date(from);
   result.setUTCDate(result.getUTCDate() + getUploadContextConfig(context).retentionDays);
   return result;

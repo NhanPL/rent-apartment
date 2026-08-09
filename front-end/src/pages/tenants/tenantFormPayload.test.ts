@@ -17,6 +17,7 @@ describe('mapTenantFormValuesToPayload', () => {
     })
 
     expect(payload).toEqual({
+      privacy_consent: false,
       tenant: {
         full_name: 'Nguyen Van A',
         phone: '0900000000',

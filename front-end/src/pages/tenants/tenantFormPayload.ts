@@ -14,6 +14,7 @@ export interface TenantFormValues {
   note?: string
   identity_front?: TenantIdentityDocument | TenantIdentityDocumentFilePayload | File | null
   identity_back?: TenantIdentityDocument | TenantIdentityDocumentFilePayload | File | null
+  privacy_consent?: boolean
 }
 
 export const defaultTenantFormValues: TenantFormValues = {
@@ -23,10 +24,12 @@ export const defaultTenantFormValues: TenantFormValues = {
   status: 'ACTIVE',
   identity_front: null,
   identity_back: null,
+  privacy_consent: false,
 }
 
 export function mapTenantFormValuesToPayload(values: TenantFormValues): TenantFormPayload {
   return {
+    privacy_consent: values.privacy_consent === true,
     tenant: {
       full_name: values.full_name,
       phone: values.phone,

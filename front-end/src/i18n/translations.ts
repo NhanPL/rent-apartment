@@ -297,6 +297,13 @@ const buildingsAndDashboard = [
 ]
 
 const tenantsAndContracts = [
+  entry('Delete tenant data?', 'Xóa dữ liệu người thuê?'),
+  entry('Privacy consent', 'Đồng ý chính sách riêng tư'),
+  entry('Consent recorded', 'Thời điểm ghi nhận đồng ý'),
+  entry('Export tenant data', 'Xuất dữ liệu người thuê'),
+  entry('Tenant data export downloaded.', 'Đã tải dữ liệu người thuê.'),
+  entry('The tenant agreed to the privacy policy and use of personal data.', 'Người thuê đã đồng ý chính sách riêng tư và việc sử dụng dữ liệu cá nhân.'),
+  entry('Login access and Citizen ID images will be removed. Personal data is anonymized immediately when no retained financial history exists; otherwise anonymization is scheduled after the retention period. Financial records are never deleted.', 'Quyền đăng nhập và ảnh CCCD sẽ bị xóa. Dữ liệu cá nhân được ẩn danh ngay nếu không có lịch sử tài chính cần lưu; nếu có, hệ thống sẽ lên lịch ẩn danh sau thời hạn lưu giữ. Dữ liệu tài chính không bị xóa.'),
   entry('Tenant', 'Người thuê'),
   entry('Tenant name', 'Tên người thuê'),
   entry('Tenant full name', 'Họ tên người thuê'),

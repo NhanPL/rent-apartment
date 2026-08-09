@@ -25,6 +25,7 @@ export interface TenantDraftPayload {
   identity_issued_place?: string | null
   permanent_address?: string | null
   note?: string | null
+  privacy_consent: true
 }
 
 export interface ReservePayload {
