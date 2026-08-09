@@ -20,6 +20,9 @@ export interface Tenant {
   note: string | null
   created_at: string
   updated_at: string
+  privacy_erasure_requested_at?: string | null
+  privacy_erasure_eligible_at?: string | null
+  anonymized_at?: string | null
 }
 
 export interface Contract {
@@ -54,6 +57,9 @@ export interface TenantListItem extends Tenant {
 export interface TenantDetail extends TenantListItem {
   current_contract: Contract | null
   identity_documents: TenantIdentityDocuments
+  privacy_policy_version: string | null
+  privacy_consent_granted: boolean | null
+  privacy_consent_recorded_at: string | null
 }
 
 export type TenantIdentityDocumentType = 'IDENTITY_FRONT' | 'IDENTITY_BACK'
@@ -113,6 +119,13 @@ export interface ContractUpsertPayload {
 
 export interface TenantFormPayload {
   tenant: TenantUpsertPayload
+  privacy_consent?: boolean
+}
+
+export interface TenantErasureResult {
+  message: string
+  status: 'ANONYMIZED' | 'SCHEDULED'
+  eligibleAt: string
 }
 
 export interface TenantCreateResult {

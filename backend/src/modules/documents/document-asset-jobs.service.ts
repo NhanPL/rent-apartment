@@ -15,6 +15,7 @@ import {
   type UploadResourceType
 } from '../uploads/uploads.service';
 import type { DocumentKind } from './document-assets.service';
+import { processDueTenantAnonymization } from '../tenants/tenant-privacy.service';
 
 type AssetJobAction = 'DELETE' | 'MIGRATE_AUTHENTICATED';
 type AssetJobStatus = 'PENDING' | 'PROCESSING' | 'RETRY' | 'COMPLETED' | 'FAILED';
@@ -236,14 +237,30 @@ export const processExpiredDocumentRetention = async (limitPerKind = 25): Promis
   let deleted = 0;
   for (const [kind, config] of Object.entries(sourceConfig) as Array<[DocumentKind, typeof sourceConfig[DocumentKind]]>) {
     deleted += await withTransaction(async (client) => {
+      const contractRetentionGuard = kind === 'CONTRACT_DOCUMENT'
+        ? `AND EXISTS (
+             SELECT 1
+             FROM contract retention_contract
+             WHERE retention_contract.id=source.contract_id
+               AND retention_contract.status IN ('ENDED','CANCELLED')
+               AND COALESCE(
+                 retention_contract.end_date::timestamptz,
+                 retention_contract.move_out_date::timestamptz,
+                 retention_contract.updated_at
+               ) + make_interval(days => $2::int) <= now()
+           )`
+        : '';
       const result = await client.query<StoredAssetRow>(
         `SELECT ${assetProjection}${kind === 'TENANT_DOCUMENT' ? ', tenant_id, doc_type' : ''}
-         FROM ${config.table}
+         FROM ${config.table} source
          WHERE retention_until IS NOT NULL AND retention_until <= now()
+         ${contractRetentionGuard}
          ORDER BY retention_until
          FOR UPDATE SKIP LOCKED
          LIMIT $1`,
-        [limitPerKind]
+        kind === 'CONTRACT_DOCUMENT'
+          ? [limitPerKind, config.contextDays]
+          : [limitPerKind]
       );
 
       for (const row of result.rows) {
@@ -265,7 +282,23 @@ export const processExpiredDocumentRetention = async (limitPerKind = 25): Promis
           });
         }
       }
-      if (result.rows.length > 0) {
+      const preservedKinds: DocumentKind[] = ['PAYMENT_PROOF', 'CONTRACT_DOCUMENT'];
+      if (result.rows.length > 0 && preservedKinds.includes(kind)) {
+        await client.query(
+          `UPDATE ${config.table}
+           SET file_url=NULL,
+               cloudinary_asset_id=NULL,
+               cloudinary_public_id=NULL,
+               cloudinary_resource_type=NULL,
+               cloudinary_version=NULL,
+               cloudinary_format=NULL,
+               cloudinary_delivery_type=NULL,
+               retention_until=NULL,
+               asset_purged_at=now()
+           WHERE id = ANY($1::uuid[])`,
+          [result.rows.map((row) => row.id)]
+        );
+      } else if (result.rows.length > 0) {
         await client.query(
           `DELETE FROM ${config.table} WHERE id = ANY($1::uuid[])`,
           [result.rows.map((row) => row.id)]
@@ -280,7 +313,9 @@ export const processExpiredDocumentRetention = async (limitPerKind = 25): Promis
 const loadDatabaseAssets = async (): Promise<Array<StoredAssetRow & { source_kind: DocumentKind }>> => {
   const selects = (Object.entries(sourceConfig) as Array<[DocumentKind, typeof sourceConfig[DocumentKind]]>)
     .map(([kind, config]) => (
-      `SELECT ${assetProjection}, '${kind}'::text AS source_kind FROM ${config.table}`
+      `SELECT ${assetProjection}, '${kind}'::text AS source_kind
+       FROM ${config.table}
+       WHERE cloudinary_public_id IS NOT NULL OR file_url IS NOT NULL`
     ));
   return (await query<StoredAssetRow & { source_kind: DocumentKind }>(selects.join(' UNION ALL '))).rows;
 };
@@ -428,6 +463,7 @@ const runMaintenance = async (): Promise<void> => {
   if (running) return;
   running = true;
   try {
+    await processDueTenantAnonymization();
     await processExpiredDocumentRetention();
     await processCloudinaryAssetJobs();
   } catch (error) {
@@ -449,7 +485,7 @@ const runReconciliation = async (): Promise<void> => {
 };
 
 export const startDocumentAssetScheduler = (): void => {
-  if (scheduler || !isCloudinaryConfigured()) return;
+  if (scheduler) return;
   void runMaintenance();
   void runReconciliation();
   scheduler = setInterval(

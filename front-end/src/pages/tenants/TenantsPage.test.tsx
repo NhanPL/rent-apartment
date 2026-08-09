@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const tenantMocks = vi.hoisted(() => ({
   createTenant: vi.fn(),
   deleteTenant: vi.fn(),
+  exportTenantData: vi.fn(),
   getTenant: vi.fn(),
   listTenants: vi.fn(),
   resendTenantActivation: vi.fn(),
@@ -65,9 +66,17 @@ describe('TenantsPage profile form', () => {
       ...tenant,
       current_contract: null,
       identity_documents: { front: existingFront, back: null },
+      privacy_policy_version: '2026-08-06',
+      privacy_consent_granted: true,
+      privacy_consent_recorded_at: '2026-07-01T00:00:00.000Z',
     })
     tenantMocks.updateTenant.mockResolvedValue(tenant)
-    tenantMocks.deleteTenant.mockResolvedValue(undefined)
+    tenantMocks.deleteTenant.mockResolvedValue({
+      message: 'Tenant data was anonymized successfully.',
+      status: 'ANONYMIZED',
+      eligibleAt: '2026-07-01T00:00:00.000Z',
+    })
+    tenantMocks.exportTenantData.mockResolvedValue({ tenant: { id: 'tenant-1' } })
     tenantMocks.resendTenantActivation.mockResolvedValue({
       message: 'Activation invitation sent successfully',
       emailSent: true,
@@ -96,6 +105,7 @@ describe('TenantsPage profile form', () => {
     await user.type(screen.getByLabelText('Phone'), '0911111111')
     await user.type(screen.getByLabelText('Email'), 'new@example.com')
     await user.type(screen.getByLabelText('Citizen ID number'), '123456789012')
+    await user.click(screen.getByRole('checkbox', { name: /agreed to the privacy policy/i }))
 
     expect(screen.getByText('Citizen ID - Front')).toBeInTheDocument()
     expect(screen.getByText('Citizen ID - Back')).toBeInTheDocument()
@@ -204,6 +214,6 @@ describe('TenantsPage profile form', () => {
     expect(deleteAlerts.some((alert) => (
       alert.textContent?.includes('The file could not be removed from Cloudinary. No data was deleted.')
     ))).toBe(true)
-    expect(screen.getByText('This tenant profile will be removed. This action cannot be undone.')).toBeInTheDocument()
+    expect(screen.getByText(/Login access and Citizen ID images will be removed/)).toBeInTheDocument()
   })
 })

@@ -1,8 +1,9 @@
-import { DeleteOutlined, EditOutlined, EyeOutlined, MailOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons'
+import { DeleteOutlined, DownloadOutlined, EditOutlined, EyeOutlined, MailOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons'
 import {
   Alert,
   Button,
   Card,
+  Checkbox,
   Descriptions,
   Drawer,
   Empty,
@@ -27,6 +28,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   createTenant,
   deleteTenant,
+  exportTenantData,
   getTenant,
   listTenants,
   resendTenantActivation,
@@ -120,6 +122,7 @@ export function TenantsPage() {
   const [resendingTenantId, setResendingTenantId] = useState<string | null>(null)
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null)
   const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null)
+  const [exportingTenantId, setExportingTenantId] = useState<string | null>(null)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(searchInput), 300)
@@ -194,6 +197,7 @@ export function TenantsPage() {
         note: data.note ?? undefined,
         identity_front: data.identity_documents.front,
         identity_back: data.identity_documents.back,
+        privacy_consent: data.privacy_consent_granted ?? false,
       }
       didInitFormRef.current = false
       setDrawerInitialValues(values)
@@ -315,14 +319,14 @@ export function TenantsPage() {
     setDeletingTenantId(tenantId)
     setDeleteErrorMessage(null)
     try {
-      await deleteTenant(tenantId)
+      const result = await deleteTenant(tenantId)
       setItems((currentItems) => currentItems.filter((item) => item.id !== tenantId))
       if (selectedTenant?.id === tenantId) {
         setSelectedTenant(null)
         setDetailOpen(false)
       }
       setDeleteTarget(null)
-      message.success('Tenant deleted successfully.')
+      message.success(result.message)
       await loadTenants()
     } catch (deleteError) {
       const userMessage = getUserErrorMessage(deleteError, 'Unable to delete the tenant.')
@@ -332,6 +336,26 @@ export function TenantsPage() {
       setDeletingTenantId(null)
     }
   }, [deleteTarget, deletingTenantId, loadTenants, selectedTenant?.id])
+
+  const handleExportTenantData = useCallback(async (tenant: TenantDetail) => {
+    if (exportingTenantId) return
+    setExportingTenantId(tenant.id)
+    try {
+      const payload = await exportTenantData(tenant.id)
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `tenant-data-${tenant.id}.json`
+      anchor.click()
+      window.setTimeout(() => URL.revokeObjectURL(url), 0)
+      message.success('Tenant data export downloaded.')
+    } catch (exportError) {
+      message.error(getUserErrorMessage(exportError, 'Unable to export tenant data.'))
+    } finally {
+      setExportingTenantId(null)
+    }
+  }, [exportingTenantId])
 
   const handleView = useCallback(async (id: string) => {
     setDetailOpen(true)
@@ -582,6 +606,20 @@ export function TenantsPage() {
               <Form.Item name="identity_back" label="Citizen ID - Back" className="tenant-identity-form-item">
                 <IdentityDocumentInput disabled={saveLoading} />
               </Form.Item>
+              {drawerMode === 'create' ? (
+                <Form.Item
+                  name="privacy_consent"
+                  valuePropName="checked"
+                  className="tenant-tab-full-row"
+                  rules={[{
+                    validator: (_, value) => value
+                      ? Promise.resolve()
+                      : Promise.reject(new Error('Confirm that the tenant agreed to the privacy policy.')),
+                  }]}
+                >
+                  <Checkbox>The tenant agreed to the privacy policy and use of personal data.</Checkbox>
+                </Form.Item>
+              ) : null}
               <Form.Item name="note" label="Note" className="tenant-tab-full-row">
                 <Input.TextArea rows={3} placeholder="Tenant note" />
               </Form.Item>
@@ -631,7 +669,24 @@ export function TenantsPage() {
               </Descriptions.Item>
               <Descriptions.Item label="Permanent address">{selectedTenant.permanent_address ?? '-'}</Descriptions.Item>
               <Descriptions.Item label="Note">{selectedTenant.note ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label="Privacy consent">
+                {selectedTenant.privacy_consent_granted
+                  ? `Granted (${selectedTenant.privacy_policy_version ?? 'unknown version'})`
+                  : 'Not recorded'}
+              </Descriptions.Item>
+              <Descriptions.Item label="Consent recorded">
+                {selectedTenant.privacy_consent_recorded_at
+                  ? dayjs(selectedTenant.privacy_consent_recorded_at).format('DD/MM/YYYY HH:mm')
+                  : '-'}
+              </Descriptions.Item>
             </Descriptions>
+            <Button
+              icon={<DownloadOutlined />}
+              loading={exportingTenantId === selectedTenant.id}
+              onClick={() => void handleExportTenantData(selectedTenant)}
+            >
+              Export tenant data
+            </Button>
             <div>
               <Typography.Title level={5}>Citizen ID images</Typography.Title>
               <div className="tenant-identity-detail-grid">
@@ -645,7 +700,7 @@ export function TenantsPage() {
 
       <Modal
         open={Boolean(deleteTarget)}
-        title="Delete tenant?"
+        title="Delete tenant data?"
         onCancel={() => {
           setDeleteErrorMessage(null)
           setDeleteTarget(null)
@@ -668,7 +723,7 @@ export function TenantsPage() {
             style={{ marginBottom: 16 }}
           />
         ) : null}
-        This tenant profile will be removed. This action cannot be undone.
+        Login access and Citizen ID images will be removed. Personal data is anonymized immediately when no retained financial history exists; otherwise anonymization is scheduled after the retention period. Financial records are never deleted.
       </Modal>
 
       <Modal

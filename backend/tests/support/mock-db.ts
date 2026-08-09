@@ -64,6 +64,7 @@ class FakeDb {
   authRefreshTokens: Row[] = [];
   loginThrottles: Row[] = [];
   auditLogs: Row[] = [];
+  tenantPrivacyConsents: Row[] = [];
   tenantUpdateFailure: Error | null = null;
 
   private sequence = 9000;
@@ -155,6 +156,7 @@ class FakeDb {
     this.authRefreshTokens = [];
     this.loginThrottles = [];
     this.auditLogs = [];
+    this.tenantPrivacyConsents = [];
     this.tenantUpdateFailure = null;
   }
 
@@ -531,6 +533,21 @@ class FakeDb {
       return result<T>([]);
     }
 
+    if (sql.startsWith('insert into tenant_privacy_consent(')) {
+      const consent = {
+        id: this.newId(),
+        tenant_id: params[0],
+        policy_version: params[1],
+        purpose: 'TENANCY_MANAGEMENT',
+        granted: params[2],
+        recorded_by_user_id: params[3],
+        recorded_at: new Date().toISOString(),
+        withdrawn_at: null
+      };
+      this.tenantPrivacyConsents.push(consent);
+      return result<T>([{ id: consent.id, recorded_at: consent.recorded_at } as T]);
+    }
+
     if (sql.startsWith("select app_user.role::text as actor_role") && sql.includes('left join tenant')) {
       const actor = this.users.find((user) => user.id === params[0]);
       if (!actor) return result<T>([]);
@@ -726,10 +743,17 @@ class FakeDb {
       return result<T>(tenant ? [tenant as T] : []);
     }
 
-    if (sql.startsWith('select t.*, au.account_status from tenant t')) {
+    if (sql.startsWith('select t.*, au.account_status')) {
       const tenant = this.tenants.find((item) => item.id === params[0] && item.manager_user_id === params[1] && item.status !== params[2]);
       const user = tenant?.user_id ? this.users.find((item) => item.id === tenant.user_id) : null;
-      return result<T>(tenant ? [{ ...tenant, account_status: user?.account_status ?? null } as T] : []);
+      const consent = this.tenantPrivacyConsents.filter((item) => item.tenant_id === tenant?.id).at(-1);
+      return result<T>(tenant ? [{
+        ...tenant,
+        account_status: user?.account_status ?? null,
+        privacy_policy_version: consent?.policy_version ?? null,
+        privacy_consent_granted: consent?.granted ?? null,
+        privacy_consent_recorded_at: consent?.recorded_at ?? null
+      } as T] : []);
     }
 
     if (sql.startsWith('select t.id as tenant_id')) {
@@ -791,7 +815,7 @@ class FakeDb {
       } as T] : []);
     }
 
-    if (sql.startsWith('select tenant.id, tenant.user_id, app_user.account_status')) {
+    if (sql.startsWith('select tenant.id, tenant.user_id, tenant.status')) {
       const tenant = this.tenants.find((item) => (
         item.id === params[0] && item.manager_user_id === params[1] && item.status !== params[2]
       ));
@@ -799,6 +823,10 @@ class FakeDb {
       return result<T>(tenant ? [{
         id: tenant.id,
         user_id: tenant.user_id,
+        status: tenant.status,
+        privacy_erasure_requested_at: tenant.privacy_erasure_requested_at ?? null,
+        privacy_erasure_eligible_at: tenant.privacy_erasure_eligible_at ?? null,
+        anonymized_at: tenant.anonymized_at ?? null,
         account_status: user?.account_status ?? null,
         account_is_active: user?.is_active ?? null
       } as T] : []);
@@ -811,7 +839,52 @@ class FakeDb {
     }
 
     if (sql.startsWith('delete from tenant_document where tenant_id=$1')) {
+      const deleted = this.tenantDocuments.filter((document) => document.tenant_id === params[0]);
       this.tenantDocuments = this.tenantDocuments.filter((document) => document.tenant_id !== params[0]);
+      return result<T>(deleted as T[]);
+    }
+
+    if (sql.startsWith('select max(recorded_at)::text as latest_record_at')) {
+      const contractIds = this.contractTenants
+        .filter((item) => item.tenant_id === params[0])
+        .map((item) => item.contract_id);
+      const dates = [
+        ...this.contracts.filter((item) => contractIds.includes(item.id)).map((item) => item.end_date ?? item.updated_at ?? item.created_at),
+        ...this.invoices.filter((item) => contractIds.includes(item.contract_id)).map((item) => item.issued_at ?? item.updated_at ?? item.created_at),
+        ...this.payments.filter((item) => this.invoices.some((invoice) => invoice.id === item.invoice_id && contractIds.includes(invoice.contract_id))).map((item) => item.paid_at ?? item.created_at)
+      ].filter(Boolean).sort();
+      return result<T>([{ latest_record_at: dates.at(-1) ?? null } as T]);
+    }
+
+    if (sql.startsWith('update tenant set privacy_erasure_requested_at=')) {
+      const tenant = this.tenants.find((item) => item.id === params[0]);
+      if (tenant) {
+        tenant.privacy_erasure_requested_at ??= new Date().toISOString();
+        tenant.privacy_erasure_eligible_at = params[1];
+        tenant.status = 'DELETED';
+        tenant.user_id = null;
+      }
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('update tenant set user_id=null,')) {
+      const tenant = this.tenants.find((item) => item.id === params[0]);
+      if (tenant) Object.assign(tenant, {
+        user_id: null,
+        full_name: params[1],
+        dob: null,
+        gender: null,
+        identity_number: params[2],
+        identity_issued_date: null,
+        identity_issued_place: null,
+        email: null,
+        phone: params[3],
+        permanent_address: null,
+        note: null,
+        status: 'DELETED',
+        anonymized_at: new Date().toISOString(),
+        anonymized_by_user_id: params[4]
+      });
       return result<T>([]);
     }
 
@@ -1648,6 +1721,10 @@ class FakeDb {
       note: null,
       created_at: now,
       updated_at: now
+      ,privacy_erasure_requested_at: null
+      ,privacy_erasure_eligible_at: null
+      ,anonymized_at: null
+      ,anonymized_by_user_id: null
     };
   }
 

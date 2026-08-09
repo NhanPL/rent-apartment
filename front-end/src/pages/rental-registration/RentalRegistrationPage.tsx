@@ -9,6 +9,7 @@ import {
 import {
   Alert,
   Button,
+  Checkbox,
   Empty,
   Form,
   Grid,
@@ -70,6 +71,7 @@ interface ReserveFormValues {
   identity_number?: string
   email?: string
   permanent_address?: string
+  privacy_consent?: boolean
   start_date?: string
   end_date?: string
   rent_price?: number
@@ -244,6 +246,7 @@ export function RentalRegistrationPage() {
           identity_number: values.identity_number,
           email: nullableText(values.email),
           permanent_address: nullableText(values.permanent_address),
+          privacy_consent: true,
         }
       } else if (values.tenant_id) {
         payload.tenant_id = values.tenant_id
@@ -596,6 +599,18 @@ export function RentalRegistrationPage() {
                   <Form.Item name="identity_number" label="ID/Passport number" rules={[{ required: true, message: 'Please enter the ID or passport number.' }]}><Input /></Form.Item>
                   <Form.Item name="email" label="Email"><Input /></Form.Item>
                   <Form.Item name="permanent_address" label="Permanent address" className="registration-form-full"><Input /></Form.Item>
+                  <Form.Item
+                    name="privacy_consent"
+                    valuePropName="checked"
+                    className="registration-form-full"
+                    rules={[{
+                      validator: (_, value) => value
+                        ? Promise.resolve()
+                        : Promise.reject(new Error('Confirm that the tenant agreed to the privacy policy.')),
+                    }]}
+                  >
+                    <Checkbox>The tenant agreed to the privacy policy and use of personal data.</Checkbox>
+                  </Form.Item>
                 </div>
               )}
 

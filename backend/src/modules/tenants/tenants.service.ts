@@ -2,6 +2,7 @@ import { PoolClient } from 'pg';
 import { withTransaction } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
 import { writeAuditLog } from '../../shared/services/audit-log.service';
+import { recordTenantPrivacyConsent } from './tenant-privacy.service';
 import {
   createActivationInvitation,
   deliverActivationInvitation
@@ -199,6 +200,16 @@ export const createTenant = async (raw: Record<string, unknown>, managerId: stri
     }
 
     const tenant = await createTenantRecord(client, { ...tenantPayload, manager_user_id: managerId });
+    if (raw.privacy_consent !== true) {
+      throw new AppError(400, 'Tenant privacy consent must be recorded', 'PRIVACY_CONSENT_REQUIRED');
+    }
+    await recordTenantPrivacyConsent(
+      client,
+      tenant.id,
+      managerId,
+      true,
+      typeof raw.privacy_policy_version === 'string' ? raw.privacy_policy_version : undefined
+    );
     const tenantEmail = tenantPayload.email;
     if (!tenantEmail) {
       throw new AppError(400, 'email is required', 'VALIDATION_ERROR');
