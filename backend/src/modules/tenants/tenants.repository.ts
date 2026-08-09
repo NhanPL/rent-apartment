@@ -1,5 +1,9 @@
 import { PoolClient } from 'pg';
 import { AppError } from '../../shared/errors/app-error';
+import { query, withTransaction } from '../../db';
+
+export const tenantQuery = query;
+export const withTenantTransaction = withTransaction;
 
 export interface TenantInsertPayload {
   manager_user_id: string;
