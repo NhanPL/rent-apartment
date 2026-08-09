@@ -13,19 +13,24 @@ Fullstack apartment rental management app built with React, TypeScript, Ant Desi
 
 - `backend`: Express API, PostgreSQL access, auth, business rules
 - `front-end`: Vite React app
-- `database.sql`: current schema bootstrap script
+- `migrations`: ordered SQL schema migrations and the database source of truth
+- `seeds`: optional data for disposable local databases
 - `.env.example`: combined environment reference
 
 ## Database Setup
 
-Create a local database, then apply the schema from the repository root:
+Create a local database, configure `DATABASE_URL` in `backend/.env`, then run the
+versioned migrations:
 
 ```bash
 createdb rent_apartment
-psql -d rent_apartment -f database.sql
+cd backend
+npm run db:migrate
 ```
 
-If your database already exists, run only the schema step. For hosted PostgreSQL or Supabase, use the provider connection string in `DATABASE_URL` and run the same SQL through `psql` or the provider SQL editor.
+Use the same command for an existing, hosted PostgreSQL, or Supabase database.
+The migration ledger skips versions that are already applied and rejects edits
+to applied migrations.
 
 ## Backend Environment
 
@@ -205,6 +210,28 @@ SMTP_FROM_EMAIL=
 
 For production or a shared staging environment, configure all SMTP variables so account invitation emails can be sent. Activation links are single-use and expire after `ACCOUNT_ACTIVATION_EXPIRES_HOURS` (48 hours by default).
 
+## API Documentation
+
+OpenAPI JSON and Swagger UI cover auth, tenants, contracts, utility rates/readings,
+invoices, and payments. Documentation is enabled by default in development and
+staging:
+
+- Swagger UI: `http://localhost:4000/api-docs/`
+- OpenAPI JSON: `http://localhost:4000/api-docs/openapi.json`
+
+Production documentation is disabled by default. If operational access is
+required, protect it with dedicated credentials:
+
+```env
+OPENAPI_DOCS_ENABLED=true
+OPENAPI_DOCS_USERNAME=<documentation_user>
+OPENAPI_DOCS_PASSWORD=<random_password_at_least_16_characters>
+```
+
+Do not reuse application or database credentials. The API major-version policy,
+compatibility rules and external-client migration gate are documented in
+[`docs/api-versioning.md`](docs/api-versioning.md).
+
 ## Frontend Environment
 
 Create `front-end/.env`:
@@ -256,34 +283,25 @@ npm run dev
 
 The frontend runs at `http://localhost:5173`.
 
-## Demo Account And Seed Data
+## Optional Local Seed Data
 
-The repository currently does not include an automated seed script or committed demo account. After applying `database.sql`, create a manager account manually.
-
-Generate a bcrypt password hash:
+After configuring `backend/.env`, load the idempotent local demo data through the
+seed runner:
 
 ```bash
 cd backend
-node -e "const bcrypt=require('bcrypt'); bcrypt.hash('Admin@123', 10).then(console.log)"
+npm run db:seed
 ```
 
-Use the generated hash in SQL:
-
-```sql
-INSERT INTO app_user(role, email, username, password_hash, is_active)
-VALUES ('MANAGER', 'admin@example.com', 'admin@example.com', '<bcrypt_hash>', true)
-RETURNING id;
-
-INSERT INTO manager_profile(user_id, full_name)
-VALUES ('<returned_user_id>', 'Demo Manager');
-```
-
-Then log in with:
+This applies pending migrations first and then creates these local-only accounts:
 
 ```text
-Identifier: admin@example.com
-Password: Admin@123
+Manager: manager@example.com / Local Manager 2026!
+Tenant: tenant@example.com / Local Tenant 2026!
 ```
+
+Seed data is blocked in staging and production. Use it only with a disposable
+local database.
 
 ## Useful Commands
 
@@ -291,6 +309,8 @@ Backend:
 
 ```bash
 cd backend
+npm run db:migrate
+npm run db:seed
 npm run check
 npm run build
 npm start

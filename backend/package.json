@@ -11,7 +11,8 @@
     "test": "vitest run --config vitest.config.ts",
     "audit": "npm audit --audit-level=high",
     "db:migrate": "node scripts/migrate.js",
-    "db:seed": "node scripts/migrate.js --seed"
+    "db:seed": "node scripts/migrate.js --seed",
+    "db:schema:export": "node scripts/export-schema.js --output ../database.sql"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
@@ -22,14 +23,17 @@
     "helmet": "^8.3.0",
     "nodemailer": "^9.0.3",
     "pg": "^8.12.0",
+    "swagger-ui-express": "^5.0.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@apidevtools/swagger-parser": "^12.1.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^4.17.21",
     "@types/node": "^20.14.10",
     "@types/nodemailer": "^8.0.1",
     "@types/supertest": "^7.2.0",
+    "@types/swagger-ui-express": "^4.1.8",
     "supertest": "^7.2.2",
     "tsx": "^4.23.5",
     "typescript": "^5.5.4",

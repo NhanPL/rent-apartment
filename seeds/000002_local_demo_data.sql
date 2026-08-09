@@ -1,13 +1,23 @@
 -- ============================================================
--- 000001_demo_data
--- Optional local demo seed data.
+-- 000002_local_demo_data
+-- Optional seed for disposable local databases only.
+-- Run through `npm run db:seed`; never apply this file directly.
 --
 -- Login credentials:
--- - manager@example.com / password
--- - tenant@example.com / password
+-- - manager@example.com / Local Manager 2026!
+-- - tenant@example.com / Local Tenant 2026!
 -- ============================================================
 
-INSERT INTO app_user (id, role, email, phone, username, password_hash, is_active)
+INSERT INTO app_user (
+  id,
+  role,
+  email,
+  phone,
+  username,
+  password_hash,
+  is_active,
+  account_status
+)
 VALUES
   (
     '10000000-0000-4000-8000-000000000001',
@@ -15,8 +25,9 @@ VALUES
     'manager@example.com',
     NULL,
     'manager',
-    '$2b$04$RZ/Pem/zCCtR4hslSVW4f.XIAVqnbx0rMyLPB5Anboo./Y1bt3cVu',
-    true
+    '$bcrypt-sha256$$2b$10$g0dq/YHyBwUe9rvHKUxUEuBjqIbTwlry2twdxhNS1u31RX0vmXaSS',
+    true,
+    'ACTIVE'
   ),
   (
     '10000000-0000-4000-8000-000000000002',
@@ -24,8 +35,9 @@ VALUES
     'tenant@example.com',
     NULL,
     'tenant',
-    '$2b$04$RZ/Pem/zCCtR4hslSVW4f.XIAVqnbx0rMyLPB5Anboo./Y1bt3cVu',
-    true
+    '$bcrypt-sha256$$2b$10$FfILNj/Y7bu5/I6p8h0NsO8.oMXvFj9sv9tL5Vui.PvkQk/jvVsc2',
+    true,
+    'ACTIVE'
   )
 ON CONFLICT (id) DO UPDATE SET
   role = EXCLUDED.role,
@@ -33,7 +45,8 @@ ON CONFLICT (id) DO UPDATE SET
   phone = EXCLUDED.phone,
   username = EXCLUDED.username,
   password_hash = EXCLUDED.password_hash,
-  is_active = EXCLUDED.is_active;
+  is_active = EXCLUDED.is_active,
+  account_status = EXCLUDED.account_status;
 
 INSERT INTO manager_profile (user_id, full_name, note)
 VALUES
@@ -45,6 +58,7 @@ ON CONFLICT (user_id) DO UPDATE SET
 INSERT INTO tenant (
   id,
   user_id,
+  manager_user_id,
   full_name,
   dob,
   gender,
@@ -60,6 +74,7 @@ INSERT INTO tenant (
 VALUES (
   '10000000-0000-4000-8000-000000000101',
   '10000000-0000-4000-8000-000000000002',
+  '10000000-0000-4000-8000-000000000001',
   'Demo Tenant',
   '1996-05-20',
   'OTHER',
@@ -74,6 +89,7 @@ VALUES (
 )
 ON CONFLICT (id) DO UPDATE SET
   user_id = EXCLUDED.user_id,
+  manager_user_id = EXCLUDED.manager_user_id,
   full_name = EXCLUDED.full_name,
   dob = EXCLUDED.dob,
   gender = EXCLUDED.gender,
@@ -255,3 +271,26 @@ ON CONFLICT (id) DO UPDATE SET
   unit_price = EXCLUDED.unit_price,
   effective_from = EXCLUDED.effective_from,
   is_active = EXCLUDED.is_active;
+
+INSERT INTO tenant_privacy_consent (
+  id,
+  tenant_id,
+  policy_version,
+  purpose,
+  granted,
+  recorded_by_user_id
+)
+VALUES (
+  '10000000-0000-4000-8000-000000000801',
+  '10000000-0000-4000-8000-000000000101',
+  'local-demo-v1',
+  'TENANCY_MANAGEMENT',
+  true,
+  '10000000-0000-4000-8000-000000000001'
+)
+ON CONFLICT (id) DO UPDATE SET
+  tenant_id = EXCLUDED.tenant_id,
+  policy_version = EXCLUDED.policy_version,
+  purpose = EXCLUDED.purpose,
+  granted = EXCLUDED.granted,
+  recorded_by_user_id = EXCLUDED.recorded_by_user_id;

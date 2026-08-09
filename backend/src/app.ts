@@ -29,6 +29,7 @@ import { securityHeaders } from './config/security';
 import { rejectDirectFileUploads } from './shared/middleware/request-hardening';
 import { auditRequestContext } from './shared/middleware/audit-context';
 import { AppError } from './shared/errors/app-error';
+import openApiDocsRoutes from './openapi/docs.routes';
 
 export const app = express();
 const frontendDistPath = path.resolve(__dirname, '../../front-end/dist');
@@ -50,6 +51,9 @@ app.use(express.json({
 }));
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
+if (env.OPENAPI_DOCS_ENABLED) {
+  app.use('/api-docs', globalRateLimit, openApiDocsRoutes);
+}
 app.use('/api/auth', authRoutes);
 app.use('/api/documents', documentDeliveryRoutes);
 app.use('/api', requireAuth);

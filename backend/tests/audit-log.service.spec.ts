@@ -58,14 +58,17 @@ describe('audit log service', () => {
   });
 
   it('defines an immutable audit table in the migration', () => {
-    const migration = fs.readFileSync(
+    const createMigration = fs.readFileSync(
+      path.resolve(__dirname, '../../migrations/20260726_tenant_account_activation.sql'),
+      'utf8'
+    );
+    const immutableMigration = fs.readFileSync(
       path.resolve(__dirname, '../../migrations/20260805b_audit_log.sql'),
       'utf8'
     );
-    const schema = fs.readFileSync(path.resolve(__dirname, '../../database.sql'), 'utf8');
 
-    expect(schema).toContain('CREATE TABLE IF NOT EXISTS audit_log');
-    expect(migration).toContain('BEFORE UPDATE OR DELETE ON audit_log');
-    expect(migration).toContain('RAISE EXCEPTION');
+    expect(createMigration).toContain('CREATE TABLE IF NOT EXISTS audit_log');
+    expect(immutableMigration).toContain('BEFORE UPDATE OR DELETE ON audit_log');
+    expect(immutableMigration).toContain('RAISE EXCEPTION');
   });
 });
