@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
-import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
+import { parseBody, parseEmptyBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 import {
   createUtilityRate,
   deleteUtilityRate,
@@ -50,6 +50,7 @@ router.patch('/:id', asyncHandler(async (req, res) => {
 }));
 
 router.delete('/:id', asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   await deleteUtilityRate(req.params.id, req.auth!.userId);
   res.status(204).send();
 }));

@@ -382,7 +382,8 @@ describe('backend API smoke tests', () => {
       .expect(400);
     expect(invalidPath.body).toMatchObject({
       code: 'VALIDATION_ERROR',
-      message: 'Invalid UUID path parameter: id'
+      message: 'Invalid route parameters',
+      fieldErrors: { id: ['Must be a valid UUID'] }
     });
 
     const invalidQuery = await request(app)
@@ -391,7 +392,8 @@ describe('backend API smoke tests', () => {
       .expect(400);
     expect(invalidQuery.body).toMatchObject({
       code: 'VALIDATION_ERROR',
-      message: 'Invalid request query'
+      message: 'Invalid request query',
+      fieldErrors: { building_id: ['Invalid uuid'] }
     });
   });
 
@@ -976,7 +978,11 @@ describe('backend API smoke tests', () => {
 
     expect(response.body).toEqual({
       code: 'TENANT_EMAIL_EXISTS',
-      message: 'This email address is already used by another account.'
+      message: 'This email address is already used by another account.',
+      fieldErrors: {
+        email: ['This email address is already used by another account.']
+      },
+      requestId: response.headers['x-request-id']
     });
   });
 

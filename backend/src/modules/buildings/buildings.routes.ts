@@ -4,7 +4,7 @@ import { query } from '../../db';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
-import { parseBody, registerUuidParams } from '../../shared/utils/validation';
+import { parseBody, parseEmptyBody, registerUuidParams } from '../../shared/utils/validation';
 import type { DatabaseTimestamp } from '../../shared/types/database';
 
 const router = Router();
@@ -100,6 +100,7 @@ router.put('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 }));
 
 router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   const building = await query<IdRow>('SELECT id FROM building WHERE id=$1 AND manager_user_id=$2', [req.params.id, req.auth!.userId]);
   if (!building.rows[0]) throw new AppError(404, 'Building not found', 'BUILDING_NOT_FOUND');
 

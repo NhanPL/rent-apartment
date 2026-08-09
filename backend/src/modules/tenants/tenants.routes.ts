@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
-import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
+import { parseBody, parseEmptyBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 import { presentDocumentAsset } from '../documents/document-assets.service';
 import {
   createManagedTenant,
@@ -62,6 +62,7 @@ router.post('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 }));
 
 router.post('/:id/resend-activation', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   const result = await resendManagedTenantActivation(req.params.id, req.auth!.userId);
   res.json({
     message: result.emailSent
@@ -97,6 +98,7 @@ router.put('/:id/identity-documents', requireRole('MANAGER'), asyncHandler(async
 }));
 
 router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   const result = await deleteManagedTenant(req.params.id, req.auth!.userId);
   res.json({
     message: result.status === 'ANONYMIZED'
@@ -125,6 +127,7 @@ router.get('/:id/payments', requireRole('MANAGER'), asyncHandler(async (req, res
 }));
 
 router.post('/:id/export-contract', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   res.json(await exportManagedTenantContract(req.params.id, req.auth!.userId));
 }));
 

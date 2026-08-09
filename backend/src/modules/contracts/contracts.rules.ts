@@ -42,7 +42,7 @@ export const getContractRoomForManager = async (
 
   const room = result.rows[0];
   if (!room) {
-    throw new AppError(400, 'Selected room does not exist', 'ROOM_NOT_FOUND');
+    throw new AppError(404, 'Selected room does not exist', 'ROOM_NOT_FOUND');
   }
 
   return room;

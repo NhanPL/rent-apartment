@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
-import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
+import { parseBody, parseEmptyBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 import { presentDocumentAsset } from '../documents/document-assets.service';
 import { CONTRACT_STATUSES } from '../../shared/types/database';
 import {
@@ -117,6 +117,7 @@ router.post('/:id/documents', requireRole('MANAGER'), asyncHandler(async (req, r
 }));
 
 router.delete('/:id/documents/:documentId', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   await deleteContractDocument(req.params.id, req.params.documentId, req.auth!.userId);
   res.status(204).send();
 }));
@@ -130,6 +131,7 @@ router.patch('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 }));
 
 router.post('/:id/activate', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   res.json(await activateContract(req.params.id, req.auth!.userId));
 }));
 
@@ -157,6 +159,7 @@ router.patch('/:id/tenants/:tenantId', requireRole('MANAGER'), asyncHandler(asyn
 }));
 
 router.delete('/:id/tenants/:tenantId', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
   const filters = parseQuery(participantRemovalQuerySchema, req.query);
   await removeContractTenant(req.params.id, req.params.tenantId, filters.left_at, req.auth!.userId);
   res.status(204).send();

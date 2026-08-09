@@ -50,8 +50,10 @@ describe('security headers and request hardening', () => {
       .expect(413);
 
     expect(response.body).toEqual({
+      code: 'PAYLOAD_TOO_LARGE',
       message: 'Request body is too large.',
-      code: 'PAYLOAD_TOO_LARGE'
+      fieldErrors: null,
+      requestId: response.headers['x-request-id']
     });
   });
 
@@ -63,8 +65,10 @@ describe('security headers and request hardening', () => {
       .expect(400);
 
     expect(response.body).toEqual({
+      code: 'INVALID_JSON',
       message: 'Request body contains invalid JSON.',
-      code: 'INVALID_JSON'
+      fieldErrors: null,
+      requestId: response.headers['x-request-id']
     });
   });
 
@@ -116,8 +120,10 @@ describe('security headers and request hardening', () => {
       const response = await request(hardenedApp).get('/error').expect(500);
 
       expect(response.body).toEqual({
+        code: 'INTERNAL_ERROR',
         message: 'Internal server error',
-        code: 'INTERNAL_ERROR'
+        fieldErrors: null,
+        requestId: 'unknown'
       });
       expect(JSON.stringify(response.body)).not.toContain('SELECT');
       expect(response.body).not.toHaveProperty('stack');
