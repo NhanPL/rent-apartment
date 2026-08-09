@@ -205,6 +205,28 @@ SMTP_FROM_EMAIL=
 
 For production or a shared staging environment, configure all SMTP variables so account invitation emails can be sent. Activation links are single-use and expire after `ACCOUNT_ACTIVATION_EXPIRES_HOURS` (48 hours by default).
 
+## API Documentation
+
+OpenAPI JSON and Swagger UI cover auth, tenants, contracts, utility rates/readings,
+invoices, and payments. Documentation is enabled by default in development and
+staging:
+
+- Swagger UI: `http://localhost:4000/api-docs/`
+- OpenAPI JSON: `http://localhost:4000/api-docs/openapi.json`
+
+Production documentation is disabled by default. If operational access is
+required, protect it with dedicated credentials:
+
+```env
+OPENAPI_DOCS_ENABLED=true
+OPENAPI_DOCS_USERNAME=<documentation_user>
+OPENAPI_DOCS_PASSWORD=<random_password_at_least_16_characters>
+```
+
+Do not reuse application or database credentials. The API major-version policy,
+compatibility rules and external-client migration gate are documented in
+[`docs/api-versioning.md`](docs/api-versioning.md).
+
 ## Frontend Environment
 
 Create `front-end/.env`:

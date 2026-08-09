@@ -110,6 +110,33 @@ export const resolveDocumentDeliveryBaseUrl = (
   );
 };
 
+export interface OpenApiDocsSettings {
+  enabled: boolean;
+  requireBasicAuth: boolean;
+  username: string;
+  password: string;
+}
+
+export const resolveOpenApiDocsSettings = (
+  appEnvironment: AppEnvironment,
+  configuredEnabled?: 'true' | 'false',
+  username = '',
+  password = ''
+): OpenApiDocsSettings => {
+  const enabled = configuredEnabled
+    ? configuredEnabled === 'true'
+    : appEnvironment === 'development' || appEnvironment === 'staging';
+  const requireBasicAuth = appEnvironment === 'production' && enabled;
+
+  if (requireBasicAuth && (!username.trim() || password.length < 16)) {
+    throw new Error(
+      'Production OpenAPI docs require OPENAPI_DOCS_USERNAME and an OPENAPI_DOCS_PASSWORD of at least 16 characters'
+    );
+  }
+
+  return { enabled, requireBasicAuth, username: username.trim(), password };
+};
+
 const envSchema = z.object({
   APP_ENV: z.enum(['development', 'test', 'staging', 'production']).default(defaultAppEnv),
   PORT: z.coerce.number().int().positive().default(4000),
@@ -170,6 +197,9 @@ const envSchema = z.object({
   CONTRACT_DOCUMENT_RETENTION_DAYS: z.coerce.number().int().min(1).max(36500).default(3650),
   FINANCIAL_RECORD_RETENTION_DAYS: z.coerce.number().int().min(1825).max(36500).default(3650),
   PRIVACY_POLICY_VERSION: z.string().trim().min(1).max(40).default('2026-08-06'),
+  OPENAPI_DOCS_ENABLED: z.enum(['true', 'false']).optional(),
+  OPENAPI_DOCS_USERNAME: optionalString,
+  OPENAPI_DOCS_PASSWORD: optionalString,
   CORS_ALLOWED_ORIGINS: optionalString,
   FRONTEND_URL: z.string().default('http://localhost:5173'),
   DEFAULT_BANK_CODE: z.string().optional(),
@@ -216,6 +246,12 @@ const documentDeliveryBaseUrl = resolveDocumentDeliveryBaseUrl(
   parsed.data.APP_ENV,
   parsed.data.DOCUMENT_DELIVERY_BASE_URL
 );
+const openApiDocs = resolveOpenApiDocsSettings(
+  parsed.data.APP_ENV,
+  parsed.data.OPENAPI_DOCS_ENABLED,
+  parsed.data.OPENAPI_DOCS_USERNAME,
+  parsed.data.OPENAPI_DOCS_PASSWORD
+);
 
 export const env = {
   ...parsed.data,
@@ -225,5 +261,7 @@ export const env = {
   CORS_ALLOWED_ORIGINS: corsAllowedOrigins,
   TRUST_PROXY_HOPS: trustProxyHops,
   DOCUMENT_DELIVERY_BASE_URL: documentDeliveryBaseUrl,
+  OPENAPI_DOCS_ENABLED: openApiDocs.enabled,
+  OPENAPI_DOCS_REQUIRE_AUTH: openApiDocs.requireBasicAuth,
   AUDIT_IP_HASH_SECRET: parsed.data.AUDIT_IP_HASH_SECRET || parsed.data.JWT_ACCESS_SECRET
 };
