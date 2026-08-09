@@ -5,9 +5,58 @@ import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { AppError } from '../../shared/errors/app-error';
 import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
+import type {
+  DatabaseDate,
+  DatabaseNumeric,
+  DatabaseTimestamp,
+  InvoiceStatus,
+  RoomStatus,
+  UtilityReadingStatus
+} from '../../shared/types/database';
 
 const router = Router();
 registerUuidParams(router, ['id']);
+
+interface RoomBoundaryRow {
+  id: string;
+  building_id: string;
+  building_name?: string;
+  code: string;
+  floor: number | null;
+  area_m2: DatabaseNumeric | null;
+  status: RoomStatus;
+  base_rent: DatabaseNumeric;
+  deposit_default: DatabaseNumeric;
+  max_occupants: number;
+  note: string | null;
+  created_at: DatabaseTimestamp;
+  updated_at: DatabaseTimestamp;
+  occupants_count?: number;
+  active_contract_id?: string | null;
+  latest_invoice_id?: string | null;
+  latest_invoice_month?: DatabaseDate | null;
+  latest_invoice_status?: InvoiceStatus | null;
+  latest_invoice_due_date?: DatabaseDate | null;
+  latest_invoice_total?: DatabaseNumeric | null;
+  latest_reading_id?: string | null;
+  latest_reading_month?: DatabaseDate | null;
+  latest_reading_status?: UtilityReadingStatus | null;
+}
+
+interface RoomOccupancyRow {
+  room_id: string;
+  building_id: string;
+  room_code: string;
+  max_occupants: number;
+  active_contract_id: string | null;
+  start_date: DatabaseDate | null;
+  rent_price: DatabaseNumeric | null;
+  occupants_count: number;
+}
+
+interface IdRow {
+  id: string;
+}
 
 const nullableString = z.string().trim().nullable().optional();
 const roomListQuerySchema = z.object({
@@ -39,7 +88,8 @@ const roomUpdateSchema = z.object({
 });
 
 const roomSummarySelect = `
-  r.*,
+  r.id, r.building_id, r.code, r.floor, r.area_m2, r.status, r.base_rent,
+  r.deposit_default, r.max_occupants, r.note, r.created_at, r.updated_at,
   COALESCE(occupancy.occupants_count, 0)::int AS occupants_count,
   occupancy.active_contract_id,
   latest_invoice.id AS latest_invoice_id,
@@ -84,7 +134,7 @@ router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const filters = parseQuery(roomListQuerySchema, req.query);
   const buildingId = filters.buildingId ?? filters.building_id;
   const { rows } = buildingId
-    ? await query(
+    ? await query<RoomBoundaryRow>(
       `SELECT ${roomSummarySelect}
        FROM room r
        JOIN building b ON b.id = r.building_id
@@ -93,7 +143,7 @@ router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
        ORDER BY r.code`,
       [buildingId, req.auth!.userId]
     )
-    : await query(
+    : await query<RoomBoundaryRow>(
       `SELECT ${roomSummarySelect}
        FROM room r
        JOIN building b ON b.id = r.building_id
@@ -106,7 +156,7 @@ router.get('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 }));
 
 router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  const { rows } = await query(
+  const { rows } = await query<RoomBoundaryRow>(
     `SELECT ${roomSummarySelect}, b.name AS building_name
      FROM room r
      JOIN building b ON b.id = r.building_id
@@ -120,12 +170,14 @@ router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 
 router.post('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const { building_id, code, floor, area_m2, status, base_rent, deposit_default, max_occupants, note } = parseBody(roomCreateSchema, req.body);
-  const building = await query('SELECT id FROM building WHERE id=$1 AND manager_user_id=$2', [building_id, req.auth!.userId]);
+  const building = await query<IdRow>('SELECT id FROM building WHERE id=$1 AND manager_user_id=$2', [building_id, req.auth!.userId]);
   if (!building.rows[0]) throw new AppError(404, 'Building not found', 'BUILDING_NOT_FOUND');
 
-  const { rows } = await query(
+  const { rows } = await query<RoomBoundaryRow>(
     `INSERT INTO room(building_id,code,floor,area_m2,status,base_rent,deposit_default,max_occupants,note)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+     RETURNING id, building_id, code, floor, area_m2, status, base_rent,
+               deposit_default, max_occupants, note, created_at, updated_at`,
     [building_id, code, floor ?? null, area_m2 ?? null, status ?? 'ACTIVE', base_rent ?? 0, deposit_default ?? 0, max_occupants ?? 1, note ?? null]
   );
   res.status(201).json(rows[0]);
@@ -147,12 +199,13 @@ router.put('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
     throw new AppError(409, 'Room max occupants cannot be lower than current active occupants', 'ROOM_MAX_OCCUPANTS_EXCEEDED');
   }
 
-  const { rows } = await query(
+  const { rows } = await query<RoomBoundaryRow>(
     `UPDATE room
      SET code=$1,floor=$2,area_m2=$3,status=$4,base_rent=$5,deposit_default=$6,max_occupants=$7,note=$8
      WHERE id=$9
        AND building_id IN (SELECT id FROM building WHERE manager_user_id=$10)
-     RETURNING *`,
+     RETURNING id, building_id, code, floor, area_m2, status, base_rent,
+               deposit_default, max_occupants, note, created_at, updated_at`,
     [code, floor ?? null, area_m2 ?? null, status, base_rent, deposit_default, max_occupants, note ?? null, req.params.id, req.auth!.userId]
   );
   if (!rows[0]) throw new AppError(404, 'Room not found', 'ROOM_NOT_FOUND');
@@ -160,7 +213,7 @@ router.put('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 }));
 
 router.get('/:id/occupancy', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  const room = await query(
+  const room = await query<IdRow>(
     `SELECT r.id
      FROM room r
      JOIN building b ON b.id = r.building_id
@@ -169,12 +222,17 @@ router.get('/:id/occupancy', requireRole('MANAGER'), asyncHandler(async (req, re
   );
   if (!room.rows[0]) throw new AppError(404, 'Room not found', 'ROOM_NOT_FOUND');
 
-  const { rows } = await query('SELECT * FROM vw_room_occupancy WHERE room_id = $1', [req.params.id]);
+  const { rows } = await query<RoomOccupancyRow>(
+    `SELECT room_id, building_id, room_code, max_occupants, active_contract_id,
+            start_date, rent_price, occupants_count
+     FROM vw_room_occupancy WHERE room_id = $1`,
+    [req.params.id]
+  );
   res.json(rows[0] ?? null);
 }));
 
 router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
-  const room = await query(
+  const room = await query<IdRow>(
     `SELECT r.id
      FROM room r
      JOIN building b ON b.id=r.building_id
@@ -183,7 +241,7 @@ router.delete('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   );
   if (!room.rows[0]) throw new AppError(404, 'Room not found', 'ROOM_NOT_FOUND');
 
-  const contracts = await query('SELECT id FROM contract WHERE room_id=$1 LIMIT 1', [req.params.id]);
+  const contracts = await query<IdRow>('SELECT id FROM contract WHERE room_id=$1 LIMIT 1', [req.params.id]);
   if (contracts.rows[0]) {
     throw new AppError(409, 'Cannot delete room with existing contracts', 'ROOM_HAS_CONTRACTS');
   }

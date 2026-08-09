@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { UTILITY_READING_STATUSES } from '../../shared/types/database';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
@@ -57,7 +58,7 @@ const utilityRejectSchema = z.object({
   reason: z.string().trim().min(1)
 });
 
-const utilityReadingStatusSchema = z.enum(['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'INVOICED']);
+const utilityReadingStatusSchema = z.enum(UTILITY_READING_STATUSES);
 const utilityReadingListQuerySchema = z.object({
   building_id: z.string().uuid().optional(),
   buildingId: z.string().uuid().optional(),

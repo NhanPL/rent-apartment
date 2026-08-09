@@ -1,5 +1,6 @@
 import { AppError } from '../../shared/errors/app-error';
 import { loadDashboardRows } from './dashboard.repository';
+import { toDatabaseNumber, type DatabaseNumeric } from '../../shared/types/database';
 
 export interface DashboardFilters {
   month?: string;
@@ -13,10 +14,7 @@ const roomStatusColors = {
   inactive: '#bfbfbf'
 };
 
-const toNumber = (value: unknown): number => {
-  const numericValue = Number(value ?? 0);
-  return Number.isFinite(numericValue) ? numericValue : 0;
-};
+const toNumber = (value: DatabaseNumeric | null | undefined): number => toDatabaseNumber(value);
 
 const normalizeMonth = (value?: string): string => {
   if (!value) {

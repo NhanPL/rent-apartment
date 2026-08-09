@@ -1,8 +1,25 @@
 import { query, withTransaction } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
+import {
+  toDateString,
+  type DatabaseDate,
+  type DatabaseNumeric,
+  type DatabaseTimestamp
+} from '../../shared/types/database';
 
-type DbRow = Record<string, any>;
 type TxClient = Parameters<Parameters<typeof withTransaction>[0]>[0];
+
+interface UtilityRateRow {
+  id: string;
+  building_id: string;
+  effective_from: DatabaseDate;
+  electricity_unit_price: DatabaseNumeric;
+  water_unit_price: DatabaseNumeric;
+  note: string | null;
+  created_at: DatabaseTimestamp;
+  updated_at: DatabaseTimestamp;
+  building_name?: string;
+}
 
 export interface UtilityRatePayload {
   building_id: string;
@@ -20,10 +37,12 @@ export interface UtilityRateUpdatePayload {
   note?: string | null;
 }
 
-const rateProjection = 'ur.*, b.name AS building_name';
+const rateColumns = `ur.id, ur.building_id, ur.effective_from,
+  ur.electricity_unit_price, ur.water_unit_price, ur.note, ur.created_at, ur.updated_at`;
+const rateProjection = `${rateColumns}, b.name AS building_name`;
 
 const assertManagerBuilding = async (client: Pick<TxClient, 'query'>, buildingId: string, managerId: string) => {
-  const { rows } = await client.query('SELECT id FROM building WHERE id=$1 AND manager_user_id=$2', [buildingId, managerId]);
+  const { rows } = await client.query<{ id: string }>('SELECT id FROM building WHERE id=$1 AND manager_user_id=$2', [buildingId, managerId]);
   if (!rows[0]) throw new AppError(404, 'Building not found', 'BUILDING_NOT_FOUND');
 };
 
@@ -33,7 +52,7 @@ const assertUniqueEffectiveDate = async (
   effectiveFrom: string,
   excludeId?: string
 ) => {
-  const { rows } = await client.query(
+  const { rows } = await client.query<{ id: string }>(
     `SELECT id
      FROM utility_rate
      WHERE building_id=$1 AND effective_from=$2 AND ($3::uuid IS NULL OR id<>$3)
@@ -54,7 +73,7 @@ export const listUtilityRates = async (managerId: string, buildingId?: string) =
     conditions.push(`ur.building_id=$${params.length}`);
   }
 
-  return (await query<DbRow>(
+  return (await query<UtilityRateRow>(
     `SELECT ${rateProjection}
      FROM utility_rate ur
      JOIN building b ON b.id=ur.building_id
@@ -65,7 +84,7 @@ export const listUtilityRates = async (managerId: string, buildingId?: string) =
 };
 
 export const getUtilityRate = async (id: string, managerId: string) => {
-  const { rows } = await query<DbRow>(
+  const { rows } = await query<UtilityRateRow>(
     `SELECT ${rateProjection}
      FROM utility_rate ur
      JOIN building b ON b.id=ur.building_id
@@ -81,10 +100,11 @@ export const createUtilityRate = async (payload: UtilityRatePayload, managerId: 
     await assertManagerBuilding(client, payload.building_id, managerId);
     await assertUniqueEffectiveDate(client, payload.building_id, payload.effective_from);
 
-    const { rows } = await client.query<DbRow>(
+    const { rows } = await client.query<UtilityRateRow>(
       `INSERT INTO utility_rate(building_id,effective_from,electricity_unit_price,water_unit_price,note)
        VALUES($1,$2,$3,$4,$5)
-       RETURNING *`,
+       RETURNING id, building_id, effective_from, electricity_unit_price, water_unit_price,
+                 note, created_at, updated_at`,
       [
         payload.building_id,
         payload.effective_from,
@@ -98,8 +118,8 @@ export const createUtilityRate = async (payload: UtilityRatePayload, managerId: 
 
 export const updateUtilityRate = async (id: string, payload: UtilityRateUpdatePayload, managerId: string) =>
   withTransaction(async (client) => {
-    const currentRs = await client.query<DbRow>(
-      `SELECT ur.*
+    const currentRs = await client.query<UtilityRateRow>(
+      `SELECT ${rateColumns}
        FROM utility_rate ur
        JOIN building b ON b.id=ur.building_id
        WHERE ur.id=$1 AND b.manager_user_id=$2
@@ -110,12 +130,12 @@ export const updateUtilityRate = async (id: string, payload: UtilityRateUpdatePa
     if (!current) throw new AppError(404, 'Utility rate not found', 'UTILITY_RATE_NOT_FOUND');
 
     const buildingId = payload.building_id ?? current.building_id;
-    const effectiveFrom = payload.effective_from ?? current.effective_from;
+    const effectiveFrom = payload.effective_from ?? toDateString(current.effective_from)!;
     if (payload.building_id) await assertManagerBuilding(client, payload.building_id, managerId);
     await assertUniqueEffectiveDate(client, buildingId, effectiveFrom, id);
 
     const hasNote = Object.prototype.hasOwnProperty.call(payload, 'note');
-    const { rows } = await client.query<DbRow>(
+    const { rows } = await client.query<UtilityRateRow>(
       `UPDATE utility_rate
        SET building_id=$1,
            effective_from=$2,
@@ -123,7 +143,8 @@ export const updateUtilityRate = async (id: string, payload: UtilityRateUpdatePa
            water_unit_price=COALESCE($4, water_unit_price),
            note=CASE WHEN $5::boolean THEN $6 ELSE note END
        WHERE id=$7
-       RETURNING *`,
+       RETURNING id, building_id, effective_from, electricity_unit_price, water_unit_price,
+                 note, created_at, updated_at`,
       [
         buildingId,
         effectiveFrom,
@@ -138,7 +159,7 @@ export const updateUtilityRate = async (id: string, payload: UtilityRateUpdatePa
   });
 
 export const deleteUtilityRate = async (id: string, managerId: string) => {
-  const { rows } = await query(
+  const { rows } = await query<{ id: string }>(
     `DELETE FROM utility_rate ur
      USING building b
      WHERE ur.id=$1 AND b.id=ur.building_id AND b.manager_user_id=$2

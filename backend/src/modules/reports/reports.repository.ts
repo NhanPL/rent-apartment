@@ -1,7 +1,7 @@
 import { query } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
+import { toDatabaseNumber, type DatabaseNumeric, type InvoiceStatus } from '../../shared/types/database';
 
-type InvoiceStatus = 'DRAFT' | 'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'VOID';
 
 export interface ReportsFilters {
   monthFrom?: string;
@@ -84,7 +84,8 @@ const invoiceBalanceCte = `
   ),
   invoice_balances AS (
     SELECT
-      si.*,
+      si.id, si.month, si.status, si.total, si.due_date, si.created_at,
+      si.building_id, si.building_name, si.room_id, si.room_code, si.tenant_name,
       LEAST(COALESCE(paid.amount, CASE WHEN si.status='PAID' THEN si.total ELSE 0 END), si.total) AS paid_amount,
       COALESCE(paid.gross_payments, CASE WHEN si.status='PAID' THEN si.total ELSE 0 END) AS gross_payments,
       COALESCE(paid.reversals, 0) AS reversals,
@@ -97,10 +98,7 @@ const invoiceBalanceCte = `
   )
 `;
 
-const toNumber = (value: unknown): number => {
-  const numericValue = Number(value ?? 0);
-  return Number.isFinite(numericValue) ? numericValue : 0;
-};
+const toNumber = (value: DatabaseNumeric | null | undefined): number => toDatabaseNumber(value);
 
 const normalizeMonth = (value: string | undefined, fallback: Date): string => {
   if (!value) {

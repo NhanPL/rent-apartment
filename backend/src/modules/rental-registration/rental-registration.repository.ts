@@ -1,8 +1,72 @@
 import type { PoolClient } from 'pg';
 import { query } from '../../db';
+import type {
+  ContractStatus,
+  DatabaseDate,
+  DatabaseNumeric,
+  DatabaseTimestamp,
+  RoomStatus,
+  TenantStatus
+} from '../../shared/types/database';
 
-export type DbRow = Record<string, any>;
 export type RentalRegistrationClient = Pick<PoolClient, 'query'>;
+
+export interface RentalRegistrationRow {
+  id: string;
+  room_id: string;
+  building_id: string;
+  code: string;
+  room_code: string;
+  building_name: string;
+  floor: number | null;
+  area_m2: DatabaseNumeric | null;
+  base_rent: DatabaseNumeric;
+  deposit_default: DatabaseNumeric;
+  max_occupants: number;
+  contract_code: string | null;
+  status: ContractStatus | RoomStatus | TenantStatus;
+  start_date: DatabaseDate;
+  end_date: DatabaseDate | null;
+  move_in_date: DatabaseDate | null;
+  move_out_date: DatabaseDate | null;
+  rent_price: DatabaseNumeric;
+  deposit_amount: DatabaseNumeric;
+  billing_day: number;
+  note: string | null;
+  full_name: string;
+  phone: string;
+  email: string | null;
+  identity_number: string;
+  signed_document_count: number;
+  created_at: DatabaseTimestamp;
+  updated_at: DatabaseTimestamp;
+}
+
+export interface TenantDraftRecord {
+  full_name: string;
+  phone: string;
+  identity_number: string;
+  email?: string | null;
+  dob?: string | null;
+  gender?: string | null;
+  identity_issued_date?: string | null;
+  identity_issued_place?: string | null;
+  permanent_address?: string | null;
+  note?: string | null;
+  privacy_policy_version?: string;
+}
+
+export interface DraftContractRecord {
+  room_id: string;
+  start_date: string;
+  end_date?: string | null;
+  rent_price: number;
+  deposit_amount: number;
+  billing_day: number;
+}
+
+const contractColumns = `id, room_id, contract_code, status, start_date, end_date,
+  move_in_date, move_out_date, rent_price, deposit_amount, billing_day, note, created_at, updated_at`;
 
 export const listAvailableRooms = async (managerId: string, buildingId?: string) => {
   const params: unknown[] = [managerId];
@@ -11,7 +75,7 @@ export const listAvailableRooms = async (managerId: string, buildingId?: string)
     params.push(buildingId);
     conditions.push(`b.id=$${params.length}`);
   }
-  return (await query<DbRow>(
+  return (await query<RentalRegistrationRow>(
     `SELECT r.id, r.building_id, r.code, r.floor, r.area_m2,
             r.base_rent, r.deposit_default, r.max_occupants,
             b.name AS building_name
@@ -35,7 +99,7 @@ export const listAvailableRooms = async (managerId: string, buildingId?: string)
 };
 
 export const listAvailableTenants = async (managerId: string) => (
-  await query<DbRow>(
+  await query<RentalRegistrationRow>(
     `SELECT t.id, t.full_name, t.phone, t.email, t.identity_number, t.status
      FROM tenant t
      WHERE t.manager_user_id=$1
@@ -56,7 +120,7 @@ export const listAvailableTenants = async (managerId: string) => (
 ).rows;
 
 export const contractCodeExists = async (client: RentalRegistrationClient, code: string) => Boolean(
-  (await client.query('SELECT 1 FROM contract WHERE contract_code = $1 LIMIT 1', [code])).rows[0]
+  (await client.query<{ exists: 1 }>('SELECT 1 FROM contract WHERE contract_code = $1 LIMIT 1', [code])).rows[0]
 );
 
 export const findScopedContract = async (
@@ -64,8 +128,11 @@ export const findScopedContract = async (
   contractId: string,
   managerId: string,
   lock = false
-) => (await client.query<DbRow>(
-  `SELECT c.*, r.code AS room_code, r.max_occupants, b.id AS building_id, b.name AS building_name,
+) => (await client.query<RentalRegistrationRow>(
+  `SELECT c.id, c.room_id, c.contract_code, c.status, c.start_date, c.end_date,
+          c.move_in_date, c.move_out_date, c.rent_price, c.deposit_amount, c.billing_day,
+          c.note, c.created_at, c.updated_at,
+          r.code AS room_code, r.max_occupants, b.id AS building_id, b.name AS building_name,
           COALESCE(contract_docs.signed_document_count, 0)::int AS signed_document_count
    FROM contract c
    JOIN room r ON r.id=c.room_id
@@ -81,8 +148,10 @@ export const findScopedContract = async (
 )).rows[0] ?? null;
 
 export const findRoomForUpdate = async (client: RentalRegistrationClient, roomId: string, managerId: string) => (
-  await client.query<DbRow>(
-    `SELECT r.* FROM room r JOIN building b ON b.id=r.building_id
+  await client.query<RentalRegistrationRow>(
+    `SELECT r.id, r.building_id, r.code, r.floor, r.area_m2, r.status,
+            r.base_rent, r.deposit_default, r.max_occupants, r.note, r.created_at, r.updated_at
+     FROM room r JOIN building b ON b.id=r.building_id
      WHERE r.id=$1 AND b.manager_user_id=$2 FOR UPDATE OF r`,
     [roomId, managerId]
   )
@@ -104,8 +173,11 @@ export const findRoomOccupyingContract = async (
 )).rows[0] ?? null;
 
 export const findTenantForUpdate = async (client: RentalRegistrationClient, tenantId: string, managerId: string) => (
-  await client.query<DbRow>(
-    `SELECT * FROM tenant
+  await client.query<RentalRegistrationRow>(
+    `SELECT id, user_id, manager_user_id, full_name, dob, gender, identity_number,
+            identity_issued_date, identity_issued_place, email, phone, permanent_address,
+            status, note, created_at, updated_at
+     FROM tenant
      WHERE id=$1 AND manager_user_id=$2 AND status <> 'DELETED'
      LIMIT 1 FOR UPDATE`,
     [tenantId, managerId]
@@ -137,7 +209,7 @@ export const findDuplicateTenant = async (
   [managerId, phone, identityNumber]
 )).rows[0] ?? null;
 
-export const insertTenant = async (client: RentalRegistrationClient, managerId: string, tenant: DbRow) => (
+export const insertTenant = async (client: RentalRegistrationClient, managerId: string, tenant: TenantDraftRecord) => (
   await client.query<{ id: string }>(
     `INSERT INTO tenant(manager_user_id,full_name,dob,gender,identity_number,identity_issued_date,identity_issued_place,email,phone,permanent_address,status,note)
      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'ACTIVE',$11)
@@ -148,11 +220,11 @@ export const insertTenant = async (client: RentalRegistrationClient, managerId: 
   )
 ).rows[0];
 
-export const insertDraftContract = async (client: RentalRegistrationClient, payload: DbRow, code: string, note: string) => (
-  await client.query<DbRow>(
+export const insertDraftContract = async (client: RentalRegistrationClient, payload: DraftContractRecord, code: string, note: string) => (
+  await client.query<RentalRegistrationRow>(
     `INSERT INTO contract(room_id,contract_code,status,start_date,end_date,move_in_date,move_out_date,rent_price,deposit_amount,billing_day,note)
      VALUES($1,$2,'DRAFT',$3,$4,NULL,NULL,$5,$6,$7,$8)
-     RETURNING *`,
+     RETURNING ${contractColumns}`,
     [payload.room_id, code, payload.start_date, payload.end_date ?? null, payload.rent_price,
       payload.deposit_amount, payload.billing_day, note]
   )
@@ -170,8 +242,11 @@ export const insertPrimaryTenant = async (
 );
 
 export const listActiveContractTenants = async (client: RentalRegistrationClient, contractId: string) => (
-  await client.query<DbRow>(
-    `SELECT t.* FROM contract_tenant ct JOIN tenant t ON t.id=ct.tenant_id
+  await client.query<RentalRegistrationRow>(
+    `SELECT t.id, t.user_id, t.manager_user_id, t.full_name, t.dob, t.gender,
+            t.identity_number, t.identity_issued_date, t.identity_issued_place,
+            t.email, t.phone, t.permanent_address, t.status, t.note, t.created_at, t.updated_at
+     FROM contract_tenant ct JOIN tenant t ON t.id=ct.tenant_id
      WHERE ct.contract_id=$1 AND ct.left_at IS NULL`,
     [contractId]
   )
@@ -230,10 +305,10 @@ export const activateContract = async (
   contractId: string,
   moveInDate: string,
   note: string | null
-) => (await client.query<DbRow>(
+) => (await client.query<RentalRegistrationRow>(
   `UPDATE contract SET status='ACTIVE', start_date=$2, move_in_date=$2,
      note=CASE WHEN $3::text IS NULL THEN note ELSE CONCAT(COALESCE(note, ''), E'\n', $3::text) END
-   WHERE id=$1 RETURNING *`,
+   WHERE id=$1 RETURNING ${contractColumns}`,
   [contractId, moveInDate, note]
 )).rows[0];
 
@@ -242,10 +317,10 @@ export const cancelContract = async (
   contractId: string,
   closeDate: string,
   reason: string
-) => (await client.query<DbRow>(
+) => (await client.query<RentalRegistrationRow>(
   `UPDATE contract SET status='CANCELLED', move_out_date=$2,
      note=CONCAT(COALESCE(note, ''), E'\nCancel reason: ', $3::text)
-   WHERE id=$1 RETURNING *`,
+   WHERE id=$1 RETURNING ${contractColumns}`,
   [contractId, closeDate, reason]
 )).rows[0];
 

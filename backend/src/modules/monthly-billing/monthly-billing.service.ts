@@ -1,7 +1,33 @@
 import { query } from '../../db';
 import { firstDayOfMonth } from '../../shared/utils/date';
+import type {
+  DatabaseNumeric,
+  InvoiceStatus,
+  PaymentRequestStatus,
+  UtilityReadingStatus
+} from '../../shared/types/database';
+import { assertNever } from '../../shared/types/database';
 
-type DbRow = Record<string, any>;
+interface MonthlyBillingRow {
+  building_id: string;
+  building_name: string;
+  room_id: string;
+  room_code: string;
+  contract_id: string;
+  contract_code: string | null;
+  tenant_id: string | null;
+  primary_tenant: string | null;
+  reading_id: string | null;
+  reading_status: UtilityReadingStatus | null;
+  invoice_id: string | null;
+  invoice_status: InvoiceStatus | null;
+  invoice_total: DatabaseNumeric | null;
+  voided_invoice_id: string | null;
+  payment_request_id: string | null;
+  payment_request_status: PaymentRequestStatus | null;
+  paid_amount: DatabaseNumeric;
+  outstanding_amount: DatabaseNumeric;
+}
 
 export type MonthlyBillingAction =
   | 'ENTER_READING'
@@ -14,16 +40,32 @@ export type MonthlyBillingAction =
   | 'RECONCILE_PAYMENT'
   | 'PAID';
 
-export const getMonthlyBillingAction = (row: DbRow): MonthlyBillingAction => {
-  if (row.invoice_status === 'PAID' || Number(row.outstanding_amount ?? 0) <= 0 && row.invoice_id) return 'PAID';
+export const getMonthlyBillingAction = (row: MonthlyBillingRow): MonthlyBillingAction => {
+  if (Number(row.outstanding_amount ?? 0) <= 0 && row.invoice_id) return 'PAID';
   if (row.payment_request_status === 'TRANSFER_SUBMITTED') return 'RECONCILE_PAYMENT';
-  if (row.invoice_status === 'ISSUED' || row.invoice_status === 'PARTIALLY_PAID') return 'WAITING_PAYMENT';
-  if (row.invoice_status === 'DRAFT') return 'REVIEW_DRAFT';
+
+  const invoiceStatus = row.invoice_status ?? null;
+  switch (invoiceStatus) {
+    case 'PAID': return 'PAID';
+    case 'ISSUED':
+    case 'PARTIALLY_PAID': return 'WAITING_PAYMENT';
+    case 'DRAFT': return 'REVIEW_DRAFT';
+    case 'VOID':
+    case null: break;
+    default: return assertNever(invoiceStatus, 'Unsupported invoice status');
+  }
+
   if (row.voided_invoice_id) return 'REPLACE_VOID_INVOICE';
-  if (row.reading_status === 'APPROVED') return 'GENERATE_INVOICE';
-  if (row.reading_status === 'SUBMITTED') return 'REVIEW_READING';
-  if (row.reading_status === 'REJECTED') return 'CORRECT_READING';
-  return 'ENTER_READING';
+  const readingStatus = row.reading_status ?? null;
+  switch (readingStatus) {
+    case 'APPROVED': return 'GENERATE_INVOICE';
+    case 'SUBMITTED': return 'REVIEW_READING';
+    case 'REJECTED': return 'CORRECT_READING';
+    case 'DRAFT':
+    case 'INVOICED':
+    case null: return 'ENTER_READING';
+    default: return assertNever(readingStatus, 'Unsupported utility reading status');
+  }
 };
 
 export const listMonthlyBilling = async (managerId: string, buildingId: string | undefined, monthValue: string | undefined) => {
@@ -32,7 +74,7 @@ export const listMonthlyBilling = async (managerId: string, buildingId: string |
   const buildingCondition = buildingId ? `AND b.id=$3` : '';
   if (buildingId) params.push(buildingId);
 
-  const { rows } = await query<DbRow>(
+  const { rows } = await query<MonthlyBillingRow>(
     `SELECT b.id AS building_id, b.name AS building_name,
             r.id AS room_id, r.code AS room_code,
             c.id AS contract_id, c.contract_code,

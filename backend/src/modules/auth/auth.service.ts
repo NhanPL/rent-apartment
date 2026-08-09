@@ -1,5 +1,6 @@
 import { query, withTransaction } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
+import type { AccountStatus } from '../../shared/types/database';
 import { AppRole } from '../../shared/middleware/auth';
 import {
   assertPasswordPolicy,
@@ -30,7 +31,6 @@ interface UserRow {
   session_version: number;
 }
 
-type AccountStatus = 'PENDING_ACTIVATION' | 'ACTIVE' | 'DISABLED';
 
 interface UserProfile {
   id: string;

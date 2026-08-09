@@ -1,7 +1,13 @@
 import { query } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
-
-type InvoiceStatus = 'ISSUED' | 'PARTIALLY_PAID';
+import {
+  toDatabaseNumber,
+  type DatabaseDate,
+  type DatabaseNumeric,
+  type DatabaseTimestamp,
+  type InvoiceStatus,
+  type TenantWritableStatus
+} from '../../shared/types/database';
 
 export interface DashboardRepositoryFilters {
   month: string;
@@ -22,21 +28,21 @@ interface TenantCountRow {
 }
 
 interface MonthlyRevenueRow {
-  monthly_revenue: number | string | null;
+  monthly_revenue: DatabaseNumeric | null;
 }
 
 interface InvoiceBalanceRow {
   unpaid_invoices: number;
-  unpaid_amount: number | string | null;
+  unpaid_amount: DatabaseNumeric | null;
   overdue_invoices: number;
-  overdue_amount: number | string | null;
+  overdue_amount: DatabaseNumeric | null;
 }
 
 export interface MonthlyRevenueChartRow {
-  month: string;
-  billed: number | string | null;
-  collected: number | string | null;
-  unpaid: number | string | null;
+  month: DatabaseDate;
+  billed: DatabaseNumeric | null;
+  collected: DatabaseNumeric | null;
+  unpaid: DatabaseNumeric | null;
 }
 
 export interface BuildingDistributionRow {
@@ -52,23 +58,18 @@ export interface RecentTenantRow {
   room_code: string | null;
   building_name: string | null;
   contract_code: string | null;
-  created_at: string;
-  status: 'ACTIVE' | 'MOVED_OUT' | 'BLACKLIST';
+  created_at: DatabaseTimestamp;
+  status: TenantWritableStatus;
 }
 
 export interface RecentUnpaidInvoiceRow {
   id: string;
   room_code: string;
   building_name: string;
-  month: string;
-  status: InvoiceStatus;
-  total: number | string | null;
+  month: DatabaseDate;
+  status: Extract<InvoiceStatus, 'ISSUED' | 'PARTIALLY_PAID'>;
+  total: DatabaseNumeric | null;
 }
-
-const mapDatabaseNumber = (value: unknown): number => {
-  const numericValue = Number(value ?? 0);
-  return Number.isFinite(numericValue) ? numericValue : 0;
-};
 
 const scopedParams = (managerId: string, buildingId?: string): unknown[] =>
   buildingId ? [managerId, buildingId] : [managerId];
@@ -184,7 +185,7 @@ const getMonthlyRevenue = async (managerId: string, month: string, buildingId?: 
     params
   );
 
-  return mapDatabaseNumber(rows[0]?.monthly_revenue);
+  return toDatabaseNumber(rows[0]?.monthly_revenue);
 };
 
 const getInvoiceBalances = async (managerId: string, month: string, buildingId?: string): Promise<InvoiceBalanceRow> => {

@@ -1,6 +1,7 @@
 import { PoolClient } from 'pg';
 import { AppError } from '../../shared/errors/app-error';
 import { query, withTransaction } from '../../db';
+import type { TenantWritableStatus } from '../../shared/types/database';
 
 export const tenantQuery = query;
 export const withTenantTransaction = withTransaction;
@@ -16,7 +17,7 @@ export interface TenantInsertPayload {
   email: string | null;
   phone: string;
   permanent_address: string | null;
-  status: 'ACTIVE' | 'MOVED_OUT' | 'BLACKLIST';
+  status: TenantWritableStatus;
   note: string | null;
 }
 

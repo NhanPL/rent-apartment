@@ -50,7 +50,7 @@ router.get('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
 
 router.post('/', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const result = await createManagedTenant(
-    parseBody(tenantCreateSchema, req.body) as Record<string, unknown>,
+    parseBody(tenantCreateSchema, req.body),
     req.auth!.userId
   );
   res.status(201).json({
@@ -75,7 +75,7 @@ router.post('/:id/resend-activation', requireRole('MANAGER'), asyncHandler(async
 router.patch('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   res.json(await updateManagedTenant(
     req.params.id,
-    parseBody(tenantPatchSchema, req.body) as Record<string, unknown>,
+    parseBody(tenantPatchSchema, req.body),
     req.auth!.userId
   ));
 }));

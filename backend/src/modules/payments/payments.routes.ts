@@ -4,6 +4,7 @@ import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 import { paymentProofRateLimit } from '../../config/rate-limit';
+import { PAYMENT_PROOF_STATUSES, PAYMENT_REQUEST_STATUSES } from '../../shared/types/database';
 import {
   cloudinaryDeliveryTypeValues,
   normalizeStoredUpload,
@@ -18,7 +19,8 @@ import {
   reversePayment,
   reviewPaymentProof,
   submitPaymentProof,
-  updatePaymentRequestStatus
+  updatePaymentRequestStatus,
+  type PaymentRequestDetail
 } from './payments.service';
 
 const router = Router();
@@ -70,18 +72,22 @@ const paymentRequestFiltersSchema = z.object({
   building_id: z.string().uuid().optional(),
   room_id: z.string().uuid().optional(),
   tenant_id: z.string().uuid().optional(),
-  request_status: z.enum(['DRAFT', 'WAITING_TRANSFER', 'TRANSFER_SUBMITTED', 'VERIFIED', 'REJECTED', 'CANCELLED', 'EXPIRED']).optional(),
-  latest_proof_status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'NONE']).optional()
+  request_status: z.enum(PAYMENT_REQUEST_STATUSES).optional(),
+  latest_proof_status: z.enum([...PAYMENT_PROOF_STATUSES, 'NONE']).optional()
 });
 
-const presentPaymentRequestDetail = async (req: Parameters<typeof presentDocumentAsset>[0], detail: any) => {
+const presentPaymentRequestDetail = async (
+  req: Parameters<typeof presentDocumentAsset>[0],
+  detail: PaymentRequestDetail | null
+) => {
   if (!detail) return detail;
   return {
     ...detail,
     proofs: await Promise.all(
-      (detail.proofs ?? []).map((proof: { id: string }) => (
-        presentDocumentAsset(req, 'PAYMENT_PROOF', proof, req.auth!)
-      ))
+      detail.proofs.map((proof) => {
+        if (typeof proof.id !== 'string') throw new Error('Payment proof row is missing id');
+        return presentDocumentAsset(req, 'PAYMENT_PROOF', { ...proof, id: proof.id }, req.auth!);
+      })
     )
   };
 };

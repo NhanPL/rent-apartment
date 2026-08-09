@@ -1,6 +1,7 @@
 import { query } from '../../db';
 import type { AuditActorRole } from '../../shared/middleware/audit-context';
 import type { AuditActionCode } from '../../shared/services/audit-log.service';
+import type { DatabaseTimestamp } from '../../shared/types/database';
 
 export interface AuditLogFilters {
   page: number;
@@ -17,6 +18,24 @@ export interface AuditLogFilters {
 
 interface CountRow {
   total: number;
+}
+
+interface AuditLogRow {
+  id: string;
+  manager_user_id: string | null;
+  actor_user_id: string | null;
+  actor_role: AuditActorRole | null;
+  action: AuditActionCode;
+  entity_type: string;
+  entity_id: string | null;
+  request_id: string | null;
+  client_ip_hash: string | null;
+  user_agent: string | null;
+  before_snapshot: Record<string, unknown> | null;
+  after_snapshot: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+  created_at: DatabaseTimestamp;
+  actor_name: string | null;
 }
 
 export const listAuditLogs = async (managerId: string, filters: AuditLogFilters) => {
@@ -62,8 +81,11 @@ export const listAuditLogs = async (managerId: string, filters: AuditLogFilters)
        WHERE ${where}`,
       countParams
     ),
-    query(
-      `SELECT audit.*,
+    query<AuditLogRow>(
+      `SELECT audit.id, audit.manager_user_id, audit.actor_user_id, audit.actor_role,
+              audit.action, audit.entity_type, audit.entity_id, audit.request_id,
+              audit.client_ip_hash, audit.user_agent, audit.before_snapshot,
+              audit.after_snapshot, audit.metadata, audit.created_at,
               COALESCE(manager_profile.full_name, tenant.full_name, app_user.username::text, app_user.email::text) AS actor_name
        FROM audit_log audit
        ${joins}

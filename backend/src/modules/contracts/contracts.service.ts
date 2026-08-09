@@ -15,10 +15,64 @@ import { assertTenantBelongsToManager } from '../tenants/tenants.repository';
 import { businessStageSql, getContractBusinessStage } from './business-stage';
 import { writeAuditLog } from '../../shared/services/audit-log.service';
 import { maskIdentityNumber } from '../tenants/tenant-privacy.service';
+import type {
+  ContractStatus as DatabaseContractStatus,
+  DatabaseDate,
+  DatabaseNumeric,
+  DatabaseTimestamp,
+  TenantStatus
+} from '../../shared/types/database';
+import { toDateString } from '../../shared/types/database';
 
-type DbRow = Record<string, any>;
+interface ContractBoundaryRow {
+  id: string;
+  room_id: string;
+  building_id: string;
+  room_code: string;
+  building_name: string;
+  max_occupants: number;
+  contract_code: string | null;
+  status: DatabaseContractStatus | TenantStatus;
+  start_date: DatabaseDate;
+  end_date: DatabaseDate | null;
+  move_in_date: DatabaseDate | null;
+  move_out_date: DatabaseDate | null;
+  rent_price: DatabaseNumeric;
+  deposit_amount: DatabaseNumeric;
+  billing_day: number;
+  note: string | null;
+  created_at: DatabaseTimestamp;
+  updated_at: DatabaseTimestamp;
+  contract_id: string;
+  tenant_id: string;
+  is_primary: boolean;
+  joined_at: DatabaseDate;
+  left_at: DatabaseDate | null;
+  full_name: string;
+  phone: string;
+  email: string | null;
+  identity_number: string | null;
+  doc_type: string;
+  file_url: string | null;
+  signed_document_count: number;
+  [column: string]: unknown;
+}
+type DbRow = ContractBoundaryRow;
 type TxClient = Parameters<Parameters<typeof withTransaction>[0]>[0];
 type Queryable = Pick<TxClient, 'query'>;
+
+const contractColumnNames = [
+  'id', 'room_id', 'contract_code', 'status', 'start_date', 'end_date', 'move_in_date',
+  'move_out_date', 'rent_price', 'deposit_amount', 'billing_day', 'note', 'created_at', 'updated_at'
+] as const;
+const contractColumns = (alias?: string) => contractColumnNames
+  .map((column) => alias ? `${alias}.${column}` : column)
+  .join(', ');
+const contractTenantColumns = 'contract_id, tenant_id, is_primary, joined_at, left_at';
+const contractDocumentColumns = `id, contract_id, doc_type, file_name, file_url, mime_type,
+  file_size, uploaded_by_user_id, uploaded_at, note, cloudinary_asset_id,
+  cloudinary_public_id, cloudinary_resource_type, cloudinary_version, cloudinary_format,
+  cloudinary_delivery_type, retention_until, created_at`;
 
 const contractAuditSnapshot = (contract: DbRow): Record<string, unknown> => ({
   roomId: contract.room_id,
@@ -34,7 +88,7 @@ const contractAuditSnapshot = (contract: DbRow): Record<string, unknown> => ({
   note: contract.note
 });
 
-export type ContractStatus = 'DRAFT' | 'ACTIVE' | 'ENDED' | 'CANCELLED';
+export type ContractStatus = DatabaseContractStatus;
 export type ContractBusinessStage = 'RESERVED' | 'WAITING_SIGNATURE' | 'WAITING_HANDOVER' | 'ACTIVE' | 'CANCELLED' | 'ENDED';
 export interface ContractListFilters {
   page: number; pageSize: number; search: string; building_id?: string; room_id?: string;
@@ -66,7 +120,7 @@ const generateContractCode = async (client: Queryable): Promise<string> => {
   for (let i = 0; i < 5; i += 1) {
     const random = Math.floor(1000 + Math.random() * 9000);
     const code = `CONTRACT-${datePart}-${random}`;
-    const exists = await client.query('SELECT 1 FROM contract WHERE contract_code = $1 LIMIT 1', [code]);
+    const exists = await client.query<{ exists: 1 }>('SELECT 1 FROM contract WHERE contract_code = $1 LIMIT 1', [code]);
     if (exists.rows.length === 0) return code;
   }
   throw new AppError(500, 'Unable to generate unique contract code', 'CONTRACT_CODE_ERROR');
@@ -75,7 +129,7 @@ const generateContractCode = async (client: Queryable): Promise<string> => {
 const getScopedContract = async (client: Queryable, contractId: string, managerId: string, lock = false) => {
   const lockClause = lock ? 'FOR UPDATE OF c' : '';
   const rs = await client.query<DbRow>(
-    `SELECT c.*, r.building_id, r.code AS room_code, r.max_occupants, b.name AS building_name
+    `SELECT ${contractColumns('c')}, r.building_id, r.code AS room_code, r.max_occupants, b.name AS building_name
      FROM contract c
      JOIN room r ON r.id=c.room_id
      JOIN building b ON b.id=r.building_id
@@ -218,7 +272,7 @@ const insertOrReactivateParticipant = async (
   await assertNoOtherActiveContract(client, tenant.tenant_id, contractId);
 
   const existing = await client.query<DbRow>(
-    `SELECT *
+    `SELECT ${contractTenantColumns}
      FROM contract_tenant
      WHERE contract_id=$1 AND tenant_id=$2
      FOR UPDATE`,
@@ -324,7 +378,7 @@ export const listContracts = async (filters: ContractListFilters, managerId: str
 
   params.push(pageSize, offset);
   const rows = await query<DbRow>(
-    `SELECT c.*, r.code AS room_code, b.id AS building_id, b.name AS building_name,
+    `SELECT ${contractColumns('c')}, r.code AS room_code, b.id AS building_id, b.name AS building_name,
             primary_tenant.id AS tenant_id, primary_tenant.full_name AS tenant_name,
             COALESCE(tenant_names.names, '') AS tenant_names,
             COALESCE(tenant_names.active_tenants_count, 0) AS active_tenants_count,
@@ -344,8 +398,8 @@ export const getContractDetails = async (contractId: string, managerId: string) 
   const contract = await getScopedContract({ query }, contractId, managerId);
   const [tenants, documents] = await Promise.all([
     getContractParticipants({ query }, contractId),
-    query(
-      `SELECT *
+    query<DbRow>(
+      `SELECT ${contractTenantColumns}
        FROM contract_document
        WHERE contract_id=$1
        ORDER BY uploaded_at DESC NULLS LAST, created_at DESC`,
@@ -377,7 +431,7 @@ export const addContractDocument = async (
        cloudinary_version,cloudinary_format,cloudinary_delivery_type,retention_until
      )
      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-     RETURNING *`,
+     RETURNING ${contractDocumentColumns}`,
     [
       contractId,
       body.doc_type,
@@ -403,7 +457,7 @@ export const addContractDocument = async (
 export const deleteContractDocument = async (contractId: string, documentId: string, managerId: string) => {
   await getScopedContract({ query }, contractId, managerId);
   const document = (await query<DbRow>(
-    `SELECT *
+    `SELECT ${contractDocumentColumns}
      FROM contract_document
      WHERE id=$1 AND contract_id=$2
      LIMIT 1`,
@@ -413,7 +467,7 @@ export const deleteContractDocument = async (contractId: string, documentId: str
 
   await withTransaction(async (client) => {
     const locked = (await client.query<DbRow>(
-      `SELECT *
+      `SELECT ${contractDocumentColumns}
        FROM contract_document
        WHERE id=$1 AND contract_id=$2
        FOR UPDATE`,
@@ -457,7 +511,7 @@ export const createContract = async (body: ContractCreateInput, managerId: strin
     const created = await client.query<DbRow>(
       `INSERT INTO contract(room_id,contract_code,status,start_date,end_date,move_in_date,move_out_date,rent_price,deposit_amount,billing_day,note)
        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-       RETURNING *`,
+       RETURNING ${contractColumns()}`,
       [
         body.room_id,
         contractCode,
@@ -534,7 +588,7 @@ export const updateContract = async (contractId: string, body: ContractUpdateInp
            billing_day=COALESCE($12, billing_day),
            note=CASE WHEN $13::boolean THEN $14 ELSE note END
        WHERE id=$15
-       RETURNING *`,
+       RETURNING ${contractColumns()}`,
       [
         body.room_id ?? null,
         body.contract_code ?? null,
@@ -593,7 +647,7 @@ export const activateContract = async (contractId: string, managerId: string) =>
       `UPDATE contract
        SET status='ACTIVE', move_in_date=COALESCE(move_in_date, start_date)
        WHERE id=$1
-       RETURNING *`,
+       RETURNING ${contractColumns()}`,
       [contractId]
     );
     await writeAuditLog(client, {
@@ -621,7 +675,7 @@ export const endContract = async (contractId: string, body: ContractCloseInput, 
       `UPDATE contract
        SET status='ENDED', end_date=COALESCE($1, end_date), move_out_date=$2, note=COALESCE($3, note)
        WHERE id=$4
-       RETURNING *`,
+       RETURNING ${contractColumns()}`,
       [body.end_date ?? endDate, endDate, body.note ?? null, contractId]
     );
     await client.query(
@@ -655,7 +709,7 @@ export const cancelContract = async (contractId: string, body: ContractCloseInpu
       `UPDATE contract
        SET status='CANCELLED', move_out_date=COALESCE(move_out_date, $1), note=COALESCE($2, note)
        WHERE id=$3
-       RETURNING *`,
+       RETURNING ${contractColumns()}`,
       [closeDate, body.note ?? null, contractId]
     );
     await client.query(
@@ -685,7 +739,10 @@ export const addContractTenant = async (contractId: string, body: ContractTenant
       throw new AppError(409, 'Closed contracts cannot change tenants', 'CONTRACT_CLOSED');
     }
 
-    await insertOrReactivateParticipant(client, contractId, { ...body, joined_at: body.joined_at ?? contract.start_date }, managerId);
+    await insertOrReactivateParticipant(client, contractId, {
+      ...body,
+      joined_at: body.joined_at ?? toDateString(contract.start_date) ?? today()
+    }, managerId);
     await assertParticipantCapacity(client, contractId, managerId);
     await assertPrimaryConsistency(client, contractId);
     if (contract.status === CURRENT_CONTRACT_STATUS) await assertActiveParticipantsReady(client, contractId, managerId);
@@ -709,7 +766,7 @@ export const updateContractTenant = async (
     }
 
     const participant = await client.query<DbRow>(
-      `SELECT *
+      `SELECT ${contractDocumentColumns}
        FROM contract_tenant
        WHERE contract_id=$1 AND tenant_id=$2
        FOR UPDATE`,
@@ -762,7 +819,7 @@ export const removeContractTenant = async (
     }
 
     const participant = await client.query<DbRow>(
-      `SELECT *
+      `SELECT ${contractTenantColumns}
        FROM contract_tenant
        WHERE contract_id=$1 AND tenant_id=$2 AND left_at IS NULL
        FOR UPDATE`,

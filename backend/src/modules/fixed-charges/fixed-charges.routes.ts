@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
+import { CHARGE_TYPES } from '../../shared/types/database';
 import {
   createBuildingCharge,
   createChargeCatalog,
@@ -36,7 +37,7 @@ const router = Router();
 registerUuidParams(router, ['id']);
 router.use(requireRole('MANAGER'));
 
-const chargeTypeSchema = z.enum(['FLAT', 'PER_PERSON', 'PER_VEHICLE']);
+const chargeTypeSchema = z.enum(CHARGE_TYPES);
 const dateString = z.string().trim().min(1);
 const nullableDateString = z.string().trim().nullable().optional();
 

@@ -3,16 +3,149 @@ import { env } from '../../config/env';
 import { withTransaction } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
 import { writeAuditLog } from '../../shared/services/audit-log.service';
+import type {
+  ContractStatus,
+  DatabaseDate,
+  DatabaseNumeric,
+  DatabaseTimestamp,
+  InvoiceStatus,
+  PaymentEntryType,
+  PaymentProofStatus,
+  PaymentRequestStatus,
+  PaymentStatus,
+  TenantStatus
+} from '../../shared/types/database';
 
 type Queryable = Pick<PoolClient, 'query'>;
 
 interface TenantPrivacyRow {
   id: string;
   user_id: string | null;
-  status: string;
-  privacy_erasure_requested_at: string | null;
-  privacy_erasure_eligible_at: string | null;
-  anonymized_at: string | null;
+  status: TenantStatus;
+  privacy_erasure_requested_at: DatabaseTimestamp | null;
+  privacy_erasure_eligible_at: DatabaseTimestamp | null;
+  anonymized_at: DatabaseTimestamp | null;
+}
+
+interface TenantExportProfileRow extends TenantPrivacyRow {
+  full_name: string;
+  dob: DatabaseDate | null;
+  gender: string | null;
+  identity_number: string;
+  identity_issued_date: DatabaseDate | null;
+  identity_issued_place: string | null;
+  email: string | null;
+  phone: string;
+  permanent_address: string | null;
+  created_at: DatabaseTimestamp;
+  updated_at: DatabaseTimestamp;
+}
+
+interface ExportDocumentRow {
+  id: string;
+  doc_type: string;
+  file_name: string | null;
+  mime_type: string | null;
+  file_size: number | null;
+  note: string | null;
+  uploaded_at: DatabaseTimestamp;
+  retention_until: DatabaseTimestamp | null;
+  asset_purged_at: DatabaseTimestamp | null;
+  contract_id?: string;
+}
+
+interface ExportConsentRow {
+  policy_version: string;
+  purpose: string;
+  granted: boolean;
+  recorded_at: DatabaseTimestamp;
+  withdrawn_at: DatabaseTimestamp | null;
+}
+
+interface ExportContractRow {
+  id: string;
+  contract_code: string;
+  status: ContractStatus;
+  start_date: DatabaseDate;
+  end_date: DatabaseDate | null;
+  move_in_date: DatabaseDate | null;
+  move_out_date: DatabaseDate | null;
+  rent_price: DatabaseNumeric;
+  deposit_amount: DatabaseNumeric;
+  billing_day: number;
+  is_primary: boolean;
+  joined_at: DatabaseDate;
+  left_at: DatabaseDate | null;
+  room_code: string;
+  building_name: string;
+}
+
+interface ExportInvoiceRow {
+  id: string;
+  contract_id: string;
+  month: DatabaseDate;
+  status: InvoiceStatus;
+  subtotal: DatabaseNumeric;
+  discount: DatabaseNumeric;
+  total: DatabaseNumeric;
+  due_date: DatabaseDate | null;
+  issued_at: DatabaseTimestamp | null;
+  void_reason: string | null;
+  voided_at: DatabaseTimestamp | null;
+  created_at: DatabaseTimestamp;
+}
+
+interface ExportInvoiceItemRow {
+  invoice_id: string;
+  code: string;
+  name: string;
+  quantity: DatabaseNumeric;
+  unit_price: DatabaseNumeric;
+  amount: DatabaseNumeric;
+}
+
+interface ExportPaymentRequestRow {
+  id: string;
+  invoice_id: string;
+  amount: DatabaseNumeric;
+  currency: string;
+  status: PaymentRequestStatus;
+  expires_at: DatabaseTimestamp | null;
+  sent_at: DatabaseTimestamp | null;
+  note: string | null;
+  created_at: DatabaseTimestamp;
+}
+
+interface ExportPaymentProofRow {
+  id: string;
+  payment_request_id: string;
+  file_name: string | null;
+  mime_type: string | null;
+  file_size: number | null;
+  status: PaymentProofStatus;
+  transfer_amount: DatabaseNumeric | null;
+  transfer_time: DatabaseTimestamp | null;
+  payer_note: string | null;
+  manager_note: string | null;
+  rejection_reason: string | null;
+  submitted_at: DatabaseTimestamp | null;
+  approved_at: DatabaseTimestamp | null;
+  rejected_at: DatabaseTimestamp | null;
+  asset_purged_at: DatabaseTimestamp | null;
+}
+
+interface ExportPaymentRow {
+  id: string;
+  invoice_id: string;
+  payment_request_id: string | null;
+  amount: DatabaseNumeric;
+  method: string;
+  status: PaymentStatus;
+  entry_type: PaymentEntryType;
+  original_payment_id: string | null;
+  reversal_reason: string | null;
+  paid_at: DatabaseTimestamp | null;
+  created_at: DatabaseTimestamp;
 }
 
 export interface TenantErasureResult {
@@ -185,7 +318,7 @@ export const processDueTenantAnonymization = async (limit = 25): Promise<number>
 );
 
 export const getTenantDataExport = async (client: Queryable, tenantId: string) => {
-  const profile = await client.query(
+  const profile = await client.query<TenantExportProfileRow>(
     `SELECT id, full_name, dob, gender, identity_number, identity_issued_date,
             identity_issued_place, email, phone, permanent_address, status,
             created_at, updated_at, privacy_erasure_requested_at,
@@ -196,19 +329,19 @@ export const getTenantDataExport = async (client: Queryable, tenantId: string) =
   if (!profile.rows[0]) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
 
   const [contractDocuments, consents, contracts, invoices, invoiceItems, paymentRequests, paymentProofs, payments, documents] = await Promise.all([
-    client.query(
+    client.query<ExportDocumentRow>(
       `SELECT cd.id, cd.contract_id, cd.doc_type, cd.file_name, cd.mime_type,
               cd.file_size, cd.note, cd.uploaded_at, cd.retention_until, cd.asset_purged_at
        FROM contract_tenant ct JOIN contract_document cd ON cd.contract_id=ct.contract_id
        WHERE ct.tenant_id=$1 ORDER BY cd.uploaded_at`,
       [tenantId]
     ),
-    client.query(
+    client.query<ExportConsentRow>(
       `SELECT policy_version, purpose, granted, recorded_at, withdrawn_at
        FROM tenant_privacy_consent WHERE tenant_id=$1 ORDER BY recorded_at`,
       [tenantId]
     ),
-    client.query(
+    client.query<ExportContractRow>(
       `SELECT c.id, c.contract_code, c.status, c.start_date, c.end_date,
               c.move_in_date, c.move_out_date, c.rent_price, c.deposit_amount,
               c.billing_day, ct.is_primary, ct.joined_at, ct.left_at,
@@ -220,27 +353,27 @@ export const getTenantDataExport = async (client: Queryable, tenantId: string) =
        WHERE ct.tenant_id=$1 ORDER BY c.start_date`,
       [tenantId]
     ),
-    client.query(
+    client.query<ExportInvoiceRow>(
       `SELECT i.id, i.contract_id, i.month, i.status, i.subtotal, i.discount,
               i.total, i.due_date, i.issued_at, i.void_reason, i.voided_at, i.created_at
        FROM contract_tenant ct JOIN invoice i ON i.contract_id=ct.contract_id
        WHERE ct.tenant_id=$1 ORDER BY i.month`,
       [tenantId]
     ),
-    client.query(
-      `SELECT ii.invoice_id, ii.code, ii.description, ii.quantity, ii.unit_price, ii.amount
+    client.query<ExportInvoiceItemRow>(
+      `SELECT ii.invoice_id, ii.code, ii.name, ii.quantity, ii.unit_price, ii.amount
        FROM contract_tenant ct JOIN invoice i ON i.contract_id=ct.contract_id
        JOIN invoice_item ii ON ii.invoice_id=i.id WHERE ct.tenant_id=$1 ORDER BY ii.created_at`,
       [tenantId]
     ),
-    client.query(
+    client.query<ExportPaymentRequestRow>(
       `SELECT pr.id, pr.invoice_id, pr.amount, pr.currency, pr.status,
               pr.expires_at, pr.sent_at, pr.note, pr.created_at
        FROM contract_tenant ct JOIN invoice i ON i.contract_id=ct.contract_id
        JOIN payment_request pr ON pr.invoice_id=i.id WHERE ct.tenant_id=$1 ORDER BY pr.created_at`,
       [tenantId]
     ),
-    client.query(
+    client.query<ExportPaymentProofRow>(
       `SELECT pp.id, pp.payment_request_id, pp.file_name, pp.mime_type, pp.file_size,
               pp.status, pp.transfer_amount, pp.transfer_time, pp.payer_note,
               pp.manager_note, pp.rejection_reason, pp.submitted_at, pp.approved_at,
@@ -250,14 +383,14 @@ export const getTenantDataExport = async (client: Queryable, tenantId: string) =
        WHERE ct.tenant_id=$1 ORDER BY pp.created_at`,
       [tenantId]
     ),
-    client.query(
+    client.query<ExportPaymentRow>(
       `SELECT p.id, p.invoice_id, p.payment_request_id, p.amount, p.method, p.status,
               p.entry_type, p.original_payment_id, p.reversal_reason, p.paid_at, p.created_at
        FROM contract_tenant ct JOIN invoice i ON i.contract_id=ct.contract_id
        JOIN payment p ON p.invoice_id=i.id WHERE ct.tenant_id=$1 ORDER BY p.created_at`,
       [tenantId]
     ),
-    client.query(
+    client.query<ExportDocumentRow>(
       `SELECT id, doc_type, file_name, mime_type, file_size, note, uploaded_at,
               retention_until, asset_purged_at
        FROM tenant_document WHERE tenant_id=$1 ORDER BY uploaded_at`,

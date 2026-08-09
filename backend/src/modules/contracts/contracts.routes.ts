@@ -4,6 +4,7 @@ import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { parseBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 import { presentDocumentAsset } from '../documents/document-assets.service';
+import { CONTRACT_STATUSES } from '../../shared/types/database';
 import {
   cloudinaryDeliveryTypeValues,
   uploadResourceTypeValues
@@ -27,7 +28,7 @@ const router = Router();
 registerUuidParams(router, ['id', 'documentId', 'tenantId']);
 
 const nullableString = z.string().trim().nullable().optional();
-const contractStatusSchema = z.enum(['DRAFT', 'ACTIVE', 'ENDED', 'CANCELLED']);
+const contractStatusSchema = z.enum(CONTRACT_STATUSES);
 const contractBusinessStageSchema = z.enum([
   'RESERVED', 'WAITING_SIGNATURE', 'WAITING_HANDOVER', 'ACTIVE', 'CANCELLED', 'ENDED'
 ]);

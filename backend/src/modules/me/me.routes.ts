@@ -15,10 +15,165 @@ import {
 import { presentDocumentAsset } from '../documents/document-assets.service';
 import { getTenantDataExport } from '../tenants/tenant-privacy.service';
 import { writeAuditLog } from '../../shared/services/audit-log.service';
+import type {
+  ContractStatus,
+  DatabaseDate,
+  DatabaseNumeric,
+  DatabaseTimestamp,
+  InvoiceStatus,
+  PaymentEntryType,
+  PaymentRequestStatus,
+  PaymentStatus,
+  RoomStatus,
+  TenantStatus,
+  UtilityReadingStatus
+} from '../../shared/types/database';
 
 const router = Router();
 registerUuidParams(router, ['id']);
 router.use(requireRole('TENANT'));
+
+interface TenantRoomRow {
+  tenant_id: string;
+  tenant_user_id: string;
+  tenant_name: string;
+  tenant_gender: string | null;
+  tenant_phone: string;
+  tenant_status: TenantStatus;
+  room_id: string;
+  building_id: string;
+  room_code: string;
+  room_floor: number | null;
+  room_area_m2: DatabaseNumeric | null;
+  room_status: RoomStatus;
+  base_rent: DatabaseNumeric;
+  max_occupants: number;
+  room_note: string | null;
+  building_code: string;
+  building_name: string;
+  manager_user_id: string;
+  contract_id: string;
+  contract_status: ContractStatus;
+  start_date: DatabaseDate;
+  move_in_date: DatabaseDate | null;
+  rent_price: DatabaseNumeric;
+}
+
+interface TenantDocumentRow {
+  id: string;
+  tenant_id: string;
+  doc_type: string;
+  file_name: string | null;
+  file_url: string | null;
+  mime_type: string | null;
+  file_size: number | null;
+  uploaded_by_user_id: string;
+  uploaded_at: DatabaseTimestamp;
+  note: string | null;
+  cloudinary_asset_id: string | null;
+  cloudinary_public_id: string | null;
+  cloudinary_resource_type: string | null;
+  cloudinary_version: number | null;
+  cloudinary_format: string | null;
+  cloudinary_delivery_type: string | null;
+  retention_until: DatabaseTimestamp | null;
+  created_at: DatabaseTimestamp;
+}
+
+interface RoommateRow {
+  tenant_id: string;
+  full_name: string;
+  gender: string | null;
+  phone: string;
+  joined_at: DatabaseDate;
+  is_primary: boolean;
+}
+
+interface TenantInvoiceRow {
+  id: string;
+  contract_id: string;
+  room_id: string;
+  utility_reading_id: string | null;
+  month: DatabaseDate;
+  status: InvoiceStatus;
+  issued_at: DatabaseTimestamp | null;
+  due_date: DatabaseDate | null;
+  note: string | null;
+  subtotal: DatabaseNumeric;
+  discount: DatabaseNumeric;
+  total: DatabaseNumeric;
+  void_reason: string | null;
+  voided_at: DatabaseTimestamp | null;
+  replaces_invoice_id: string | null;
+  created_at: DatabaseTimestamp;
+  updated_at: DatabaseTimestamp;
+  rent_amount: DatabaseNumeric;
+  electric_amount: DatabaseNumeric;
+  water_amount: DatabaseNumeric;
+  other_amount: DatabaseNumeric;
+  paid_amount: DatabaseNumeric;
+  payment_status: PaymentStatus | null;
+  paid_at: DatabaseTimestamp | null;
+  payment_request_id: string | null;
+  payment_request_status: PaymentRequestStatus | null;
+}
+
+interface UtilityReadingRow {
+  id: string;
+  room_id: string;
+  month: DatabaseDate;
+  electricity_prev: DatabaseNumeric;
+  electricity_curr: DatabaseNumeric;
+  water_prev: DatabaseNumeric;
+  water_curr: DatabaseNumeric;
+  status: UtilityReadingStatus;
+  created_at: DatabaseTimestamp;
+  updated_at: DatabaseTimestamp;
+}
+
+interface InvoiceItemRow {
+  id: string;
+  invoice_id: string;
+  code: string;
+  name: string;
+  quantity: DatabaseNumeric;
+  unit_price: DatabaseNumeric;
+  amount: DatabaseNumeric;
+  meta: Record<string, unknown> | null;
+  created_at: DatabaseTimestamp;
+}
+
+interface PaymentRow {
+  id: string;
+  invoice_id: string;
+  payment_request_id: string | null;
+  payment_proof_id: string | null;
+  method: string;
+  status: PaymentStatus;
+  amount: DatabaseNumeric;
+  paid_at: DatabaseTimestamp | null;
+  entry_type: PaymentEntryType;
+  signed_amount: DatabaseNumeric;
+}
+
+const invoiceColumns = `i.id, i.contract_id, i.room_id, i.utility_reading_id, i.month,
+  i.status, i.issued_at, i.due_date, i.note, i.subtotal, i.discount, i.total,
+  i.void_reason, i.voided_at, i.replaces_invoice_id, i.created_at, i.updated_at`;
+const tenantDocumentColumns = `id, tenant_id, doc_type, file_name, file_url, mime_type,
+  file_size, uploaded_by_user_id, uploaded_at, note, cloudinary_asset_id,
+  cloudinary_public_id, cloudinary_resource_type, cloudinary_version, cloudinary_format,
+  cloudinary_delivery_type, retention_until, created_at`;
+const utilityReadingColumns = `ur.id, ur.room_id, ur.month, ur.electricity_prev,
+  ur.electricity_curr, ur.water_prev, ur.water_curr, ur.status, ur.reported_by_user_id,
+  ur.reported_at, ur.submitted_at, ur.verified_by_user_id, ur.verified_at,
+  ur.approved_by_user_id, ur.approved_at, ur.rejected_by_user_id, ur.rejected_at,
+  ur.rejection_reason, ur.manager_note, ur.note, ur.created_at, ur.updated_at`;
+const invoiceItemColumns = `id, invoice_id, code, name, quantity, unit_price,
+  amount, meta, created_at`;
+const paymentColumns = `p.id, p.invoice_id, p.payment_request_id, p.payment_proof_id,
+  p.method, p.status, p.amount, p.paid_at, p.reference_code, p.note,
+  p.created_by_user_id, p.entry_type, p.original_payment_id, p.reversal_reason,
+  p.idempotency_key, p.created_at, p.updated_at`;
 
 const tenantDocumentSchema = z.object({
   doc_type: z.enum(['IDENTITY_FRONT', 'IDENTITY_BACK', 'RESIDENCE', 'OTHER']),
@@ -49,7 +204,7 @@ const getCurrentTenantId = async (userId: string): Promise<string> => {
 };
 
 const tenantInvoiceProjection = `
-  i.*,
+  ${invoiceColumns},
   COALESCE(room_rent.amount, 0)::float AS rent_amount,
   COALESCE(electricity.amount, 0)::float AS electric_amount,
   COALESCE(water.amount, 0)::float AS water_amount,
@@ -61,16 +216,16 @@ const tenantInvoiceProjection = `
 
 const tenantInvoiceJoins = `
   LEFT JOIN LATERAL (
-    SELECT * FROM invoice_item WHERE invoice_id=i.id AND code='ROOM_RENT' ORDER BY created_at DESC LIMIT 1
+    SELECT amount FROM invoice_item WHERE invoice_id=i.id AND code='ROOM_RENT' ORDER BY created_at DESC LIMIT 1
   ) room_rent ON true
   LEFT JOIN LATERAL (
-    SELECT * FROM invoice_item WHERE invoice_id=i.id AND code='ELECTRICITY' ORDER BY created_at DESC LIMIT 1
+    SELECT amount FROM invoice_item WHERE invoice_id=i.id AND code='ELECTRICITY' ORDER BY created_at DESC LIMIT 1
   ) electricity ON true
   LEFT JOIN LATERAL (
-    SELECT * FROM invoice_item WHERE invoice_id=i.id AND code='WATER' ORDER BY created_at DESC LIMIT 1
+    SELECT amount FROM invoice_item WHERE invoice_id=i.id AND code='WATER' ORDER BY created_at DESC LIMIT 1
   ) water ON true
   LEFT JOIN LATERAL (
-    SELECT * FROM invoice_item WHERE invoice_id=i.id AND code='OTHER' ORDER BY created_at DESC LIMIT 1
+    SELECT amount FROM invoice_item WHERE invoice_id=i.id AND code='OTHER' ORDER BY created_at DESC LIMIT 1
   ) other_fee ON true
   LEFT JOIN LATERAL (
     SELECT p.status, p.paid_at
@@ -105,7 +260,7 @@ const latestActivePaymentRequestJoin = `
 `;
 
 router.get('/room', asyncHandler(async (req, res) => {
-  const { rows } = await query(
+  const { rows } = await query<TenantRoomRow>(
     `SELECT
        t.id AS tenant_id,
        t.user_id AS tenant_user_id,
@@ -145,8 +300,8 @@ router.get('/room', asyncHandler(async (req, res) => {
 
 router.get('/documents', asyncHandler(async (req, res) => {
   const tenantId = await getCurrentTenantId(req.auth!.userId);
-  const { rows } = await query(
-    `SELECT *
+  const { rows } = await query<TenantDocumentRow>(
+    `SELECT ${tenantDocumentColumns}
      FROM tenant_document
      WHERE tenant_id=$1
      ORDER BY uploaded_at DESC, created_at DESC`,
@@ -183,14 +338,14 @@ router.post('/documents', asyncHandler(async (req, res) => {
   const asset = normalizeStoredUpload('TENANT_DOCUMENT', body, req.auth!.role, req.auth!.userId);
 
   const tenantId = await getCurrentTenantId(req.auth!.userId);
-  const { rows } = await query(
+  const { rows } = await query<TenantDocumentRow>(
     `INSERT INTO tenant_document(
        tenant_id,doc_type,file_name,file_url,mime_type,file_size,uploaded_by_user_id,note,
        cloudinary_asset_id,cloudinary_public_id,cloudinary_resource_type,
        cloudinary_version,cloudinary_format,cloudinary_delivery_type,retention_until
      )
      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-     RETURNING *`,
+     RETURNING ${tenantDocumentColumns}`,
     [
       tenantId,
       body.doc_type,
@@ -218,7 +373,7 @@ router.post('/documents', asyncHandler(async (req, res) => {
 }));
 
 router.get('/roommates', asyncHandler(async (req, res) => {
-  const { rows } = await query(
+  const { rows } = await query<RoommateRow>(
     `SELECT
        t.id AS tenant_id,
        t.full_name,
@@ -243,7 +398,7 @@ router.get('/roommates', asyncHandler(async (req, res) => {
 
 router.get('/current-bill', asyncHandler(async (req, res) => {
   const month = firstDayOfMonth();
-  const { rows } = await query(
+  const { rows } = await query<TenantInvoiceRow>(
     `SELECT ${tenantInvoiceProjection}, pr.id as payment_request_id, pr.status as payment_request_status
      FROM invoice i
      JOIN vw_tenant_current_room v ON v.contract_id=i.contract_id
@@ -256,8 +411,8 @@ router.get('/current-bill', asyncHandler(async (req, res) => {
 }));
 
 router.get('/utility-readings', asyncHandler(async (req, res) => {
-  const { rows } = await query(
-    `SELECT ur.* FROM utility_reading ur
+  const { rows } = await query<UtilityReadingRow>(
+    `SELECT ${utilityReadingColumns} FROM utility_reading ur
      JOIN vw_tenant_current_room v ON v.room_id=ur.room_id
      WHERE v.tenant_id=(SELECT id FROM tenant WHERE user_id=$1)
      ORDER BY month DESC LIMIT 12`,
@@ -267,7 +422,7 @@ router.get('/utility-readings', asyncHandler(async (req, res) => {
 }));
 
 router.get('/payment-status', asyncHandler(async (req, res) => {
-  const { rows } = await query(
+  const { rows } = await query<TenantInvoiceRow>(
     `SELECT ${tenantInvoiceProjection}, pr.id AS payment_request_id, pr.status AS payment_request_status
      FROM invoice i
      JOIN vw_tenant_current_room v ON v.contract_id=i.contract_id
@@ -281,7 +436,7 @@ router.get('/payment-status', asyncHandler(async (req, res) => {
 }));
 
 router.get('/invoices/:id', asyncHandler(async (req, res) => {
-  const { rows } = await query(
+  const { rows } = await query<TenantInvoiceRow>(
     `SELECT ${tenantInvoiceProjection}, pr.id AS payment_request_id, pr.status AS payment_request_status
      FROM invoice i
      JOIN vw_tenant_current_room v ON v.contract_id=i.contract_id
@@ -294,9 +449,9 @@ router.get('/invoices/:id', asyncHandler(async (req, res) => {
   if (!invoice) throw new AppError(404, 'Invoice not found', 'INVOICE_NOT_FOUND');
 
   const [items, payments] = await Promise.all([
-    query('SELECT * FROM invoice_item WHERE invoice_id=$1 ORDER BY created_at', [req.params.id]),
-    query(
-      `SELECT p.*,
+    query<InvoiceItemRow>(`SELECT ${invoiceItemColumns} FROM invoice_item WHERE invoice_id=$1 ORDER BY created_at`, [req.params.id]),
+    query<PaymentRow>(
+      `SELECT ${paymentColumns},
               CASE WHEN p.entry_type='REVERSAL' THEN -p.amount ELSE p.amount END::float AS signed_amount
        FROM payment p
        WHERE invoice_id=$1

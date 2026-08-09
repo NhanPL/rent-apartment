@@ -481,7 +481,7 @@ class FakeDb {
       return result<T>(tenant ? [{ id: tenant.id } as T] : []);
     }
 
-    if (sql.startsWith('select * from tenant where id=$1 and manager_user_id=$2')) {
+    if (sql.includes('from tenant') && sql.includes("where id=$1 and manager_user_id=$2 and status <> 'deleted'")) {
       const tenant = this.tenants.find((item) => item.id === params[0] && item.manager_user_id === params[1] && item.status !== 'DELETED');
       return result<T>(tenant ? [tenant as T] : []);
     }
@@ -734,16 +734,16 @@ class FakeDb {
       return result<T>([{ total: this.visibleTenantsForManager(String(params[0])).length } as T]);
     }
 
-    if (sql.startsWith('select t.*, v.room_id')) {
+    if (sql.startsWith('select t.id,') && sql.includes('v.room_id') && sql.includes('from tenant t')) {
       return result<T>(this.visibleTenantsForManager(String(params[0])).map((tenant) => this.decorateTenantForManager(tenant, String(params[0]))) as T[]);
     }
 
-    if (sql.startsWith('select t.* from tenant t where t.id=$1')) {
+    if (sql.startsWith('select t.id,') && sql.includes('from tenant t where t.id=$1')) {
       const tenant = this.tenants.find((item) => item.id === params[0] && item.manager_user_id === params[1] && item.status !== params[2]);
       return result<T>(tenant ? [tenant as T] : []);
     }
 
-    if (sql.startsWith('select t.*, au.account_status')) {
+    if (sql.startsWith('select t.id,') && sql.includes('au.account_status') && sql.includes('consent.policy_version')) {
       const tenant = this.tenants.find((item) => item.id === params[0] && item.manager_user_id === params[1] && item.status !== params[2]);
       const user = tenant?.user_id ? this.users.find((item) => item.id === tenant.user_id) : null;
       const consent = this.tenantPrivacyConsents.filter((item) => item.tenant_id === tenant?.id).at(-1);
@@ -763,7 +763,7 @@ class FakeDb {
       return result<T>(rental ? [{ tenant_id: tenant.id, full_name: tenant.full_name, phone: tenant.phone, identity_number: tenant.identity_number, ...rental } as T] : []);
     }
 
-    if (sql.startsWith('select c.* from contract c') && sql.includes('where ct.tenant_id=$1 and ct.left_at is null and c.status')) {
+    if (sql.includes('from contract c') && sql.includes('where ct.tenant_id=$1 and ct.left_at is null and c.status')) {
       const rental = this.currentRentalForTenant(String(params[0]), String(params[1]));
       const contract = rental ? this.contracts.find((item) => item.id === rental.contract_id) : null;
       return result<T>(contract ? [contract as T] : []);
@@ -785,11 +785,11 @@ class FakeDb {
       return result<T>(invoice ? [{ id: invoice.id } as T] : []);
     }
 
-    if (sql.startsWith('update tenant set') && sql.includes('returning *')) {
+    if (sql.startsWith('update tenant set') && sql.includes('returning id,')) {
       return this.updateTenant<T>(text, params);
     }
 
-    if (sql.startsWith('select * from tenant where')) {
+    if (sql.startsWith('select id,') && sql.includes('from tenant where')) {
       const tenantId = params[params.length - 2];
       const managerId = String(params[params.length - 1]);
       const tenant = this.tenants.find((item) => item.id === tenantId && item.manager_user_id === managerId && item.status !== 'DELETED');
@@ -902,7 +902,9 @@ class FakeDb {
       return result<T>(room ? [{ id: room.id, building_id: room.building_id, max_occupants: room.max_occupants } as T] : []);
     }
 
-    if (sql.startsWith('select r.* from room r join building b')) {
+    if (sql.startsWith('select r.id,')
+      && sql.includes('from room r join building b')
+      && sql.includes('where r.id=$1 and b.manager_user_id=$2')) {
       const room = this.getRoomForManager(String(params[0]), String(params[1]));
       return result<T>(room ? [room as T] : []);
     }
@@ -973,12 +975,12 @@ class FakeDb {
       return result<T>([row as T]);
     }
 
-    if (sql.startsWith('select c.*, r.building_id, r.code as room_code, r.max_occupants')) {
+    if (sql.startsWith('select c.id,') && sql.includes('r.max_occupants') && sql.includes('contract_docs.signed_document_count')) {
       const contract = this.getContractForManager(String(params[0]), String(params[1]));
       return result<T>(contract ? [this.decorateContract(contract) as T] : []);
     }
 
-    if (sql.startsWith('select c.*, r.code as room_code, r.max_occupants')) {
+    if (sql.startsWith('select c.id,') && sql.includes('r.code as room_code') && sql.includes('r.max_occupants')) {
       const contract = this.getContractForManager(String(params[0]), String(params[1]));
       return result<T>(contract ? [{ ...this.decorateContract(contract), signed_document_count: 0 } as T] : []);
     }
@@ -995,7 +997,7 @@ class FakeDb {
       return result<T>(tenant && this.isTenantVisibleToManager(tenant.id, String(params[1])) ? [{ id: tenant.id } as T] : []);
     }
 
-    if (sql.startsWith('select * from contract_tenant where contract_id=$1 and tenant_id=$2')) {
+    if (sql.startsWith('select contract_id, tenant_id,') && sql.includes('where contract_id=$1 and tenant_id=$2')) {
       const row = this.contractTenants.find((item) => item.contract_id === params[0] && item.tenant_id === params[1]);
       return result<T>(row ? [row as T] : []);
     }
@@ -1019,12 +1021,12 @@ class FakeDb {
       return result<T>([]);
     }
 
-    if (sql.startsWith('select * from contract_document where id=$1')) {
+    if (sql.startsWith('select id, contract_id, doc_type,') && sql.includes('where id=$1')) {
       const document = this.contractDocuments.find((item) => item.id === params[0] && item.contract_id === params[1]);
       return result<T>(document ? [document as T] : []);
     }
 
-    if (sql.startsWith('select * from contract_document')) {
+    if (sql.startsWith('select id, contract_id, doc_type,') && sql.includes('from contract_document')) {
       return result<T>(this.contractDocuments.filter((item) => item.contract_id === params[0]) as T[]);
     }
 
@@ -1110,7 +1112,7 @@ class FakeDb {
       return result<T>(previous ? [{ electricity_curr: previous.electricity_curr, water_curr: previous.water_curr } as T] : []);
     }
 
-    if (sql.startsWith('select * from utility_reading where room_id=$1 and month=$2 for update')) {
+    if (sql.startsWith('select id, room_id, month,') && sql.includes('from utility_reading where room_id=$1 and month=$2 for update')) {
       const reading = this.utilityReadings.find((item) => item.room_id === params[0] && item.month === params[1]);
       return result<T>(reading ? [reading as T] : []);
     }
@@ -1189,7 +1191,7 @@ class FakeDb {
       return result<T>([]);
     }
 
-    if (sql.startsWith('select ur.* from utility_reading ur') && sql.includes('for update of ur')) {
+    if (sql.startsWith('select ur.id,') && sql.includes('from utility_reading ur') && sql.includes('for update of ur')) {
       const reading = this.getReadingForManager(String(params[0]), String(params[1]));
       return result<T>(reading ? [reading as T] : []);
     }
@@ -1221,7 +1223,7 @@ class FakeDb {
       return result<T>(reading ? [reading as T] : []);
     }
 
-    if (sql.startsWith('select t.* from contract_tenant ct join tenant t')) {
+    if (sql.startsWith('select t.id,') && sql.includes('from contract_tenant ct join tenant t')) {
       const rows = this.contractTenants
         .filter((item) => item.contract_id === params[0] && !item.left_at)
         .map((item) => this.tenants.find((tenant) => tenant.id === item.tenant_id)!)
@@ -1268,7 +1270,7 @@ class FakeDb {
       return result<T>([contract as T]);
     }
 
-    if (sql.startsWith('select ur.*,') || sql.startsWith('select distinct ur.*,')) {
+    if ((sql.startsWith('select ur.id,') || sql.startsWith('select distinct ur.id,')) && sql.includes('from utility_reading ur')) {
       if (sql.includes('where ur.id=$1')) {
         const reading = sql.includes('b.manager_user_id=$2')
           ? this.getReadingForManager(String(params[0]), String(params[1]))
@@ -1278,11 +1280,11 @@ class FakeDb {
       return result<T>(this.utilityReadings.map((item) => this.decorateReading(item)) as T[]);
     }
 
-    if (sql.startsWith('select * from utility_reading_evidence')) {
+    if (sql.startsWith('select id, utility_reading_id, evidence_type,') && sql.includes('from utility_reading_evidence')) {
       return result<T>(this.utilityEvidence.filter((item) => item.utility_reading_id === params[0]) as T[]);
     }
 
-    if (sql.startsWith('select c.*, r.building_id, r.code as room_code, b.name as building_name')) {
+    if (sql.startsWith('select c.id,') && sql.includes('r.code as room_code') && sql.includes('b.name as building_name')) {
       const contracts = this.contracts.filter((contract) => {
         if (contract.status !== 'ACTIVE') return false;
         const room = this.rooms.find((item) => item.id === contract.room_id);
@@ -1308,17 +1310,17 @@ class FakeDb {
       return result<T>(invoice ? [{ id: invoice.id } as T] : []);
     }
 
-    if (sql.startsWith("select * from utility_reading where room_id=$1 and month=$2 and status='approved'")) {
+    if (sql.startsWith('select id, room_id, month,') && sql.includes("where room_id=$1 and month=$2 and status='approved'")) {
       const reading = this.utilityReadings.find((item) => item.room_id === params[0] && item.month === params[1] && item.status === 'APPROVED');
       return result<T>(reading ? [reading as T] : []);
     }
 
-    if (sql.startsWith('select * from utility_reading where id=$1 and room_id=$2')) {
+    if (sql.startsWith('select id, room_id, month,') && sql.includes('where id=$1 and room_id=$2')) {
       const reading = this.utilityReadings.find((item) => item.id === params[0] && item.room_id === params[1]);
       return result<T>(reading ? [reading as T] : []);
     }
 
-    if (sql.startsWith('select * from utility_rate where building_id=$1')) {
+    if (sql.startsWith('select id, building_id, effective_from,') && sql.includes('from utility_rate') && sql.includes('where building_id=$1')) {
       const rate = this.utilityRates
         .filter((item) => item.building_id === params[0] && item.effective_from <= params[1])
         .sort((a, b) => String(b.effective_from).localeCompare(String(a.effective_from)))[0];
@@ -1326,7 +1328,8 @@ class FakeDb {
     }
 
     if (sql.startsWith('insert into invoice(')) {
-      const isReplacement = sql.includes('replaces_invoice_id');
+      const insertColumns = sql.slice(0, sql.indexOf('values'));
+      const isReplacement = insertColumns.includes('replaces_invoice_id');
       const row = {
         id: this.newId(),
         contract_id: params[0],
@@ -1384,7 +1387,7 @@ class FakeDb {
       return result<T>([]);
     }
 
-    if ((sql.startsWith('select i.* from invoice i') || sql.startsWith('select i.*, b.id as building_id')) && sql.includes('where i.id=$1 and b.manager_user_id=$2')) {
+    if (sql.startsWith('select i.id,') && sql.includes('from invoice i') && sql.includes('where i.id=$1 and b.manager_user_id=$2')) {
       const invoice = this.getInvoiceForManager(String(params[0]), String(params[1]));
       return result<T>(invoice ? [invoice as T] : []);
     }
@@ -1407,11 +1410,11 @@ class FakeDb {
       return result<T>(invoice ? [invoice as T] : []);
     }
 
-    if (sql.startsWith('select * from invoice_item where invoice_id=$1')) {
+    if (sql.startsWith('select id, invoice_id, code,') && sql.includes('from invoice_item where invoice_id=$1')) {
       return result<T>(this.invoiceItems.filter((item) => item.invoice_id === params[0]) as T[]);
     }
 
-    if (sql.startsWith('select * from invoice_adjustment where invoice_id=$1')) {
+    if (sql.startsWith('select id, invoice_id, adjustment_type, amount,') && sql.includes('from invoice_adjustment where invoice_id=$1')) {
       return result<T>(this.invoiceAdjustments.filter((item) => item.invoice_id === params[0]) as T[]);
     }
 
@@ -1489,7 +1492,7 @@ class FakeDb {
       return result<T>(request ? [{ id: request.id } as T] : []);
     }
 
-    if (sql.startsWith('select * from payment_request') && sql.includes('where invoice_id=$1')) {
+    if (sql.startsWith('select id, invoice_id, status,') && sql.includes('from payment_request') && sql.includes('where invoice_id=$1')) {
       const request = this.paymentRequests.find((item) => item.invoice_id === params[0] && !['CANCELLED', 'EXPIRED'].includes(item.status));
       return result<T>(request ? [request as T] : []);
     }
@@ -1517,12 +1520,12 @@ class FakeDb {
       return result<T>([row as T]);
     }
 
-    if (sql.startsWith('select pr.*, i.total invoice_total')) {
+    if (sql.startsWith('select pr.id,') && sql.includes('i.total invoice_total')) {
       const request = this.getPaymentRequestForTenant(String(params[0]), String(params[1]));
       return result<T>(request ? [request as T] : []);
     }
 
-    if (sql.startsWith('select * from payment_proof where submitted_by_user_id=$1 and idempotency_key=$2')) {
+    if (sql.startsWith('select id, payment_request_id, status,') && sql.includes('from payment_proof') && sql.includes('submitted_by_user_id=$1 and idempotency_key=$2')) {
       const proof = this.paymentProofs.find((item) => item.submitted_by_user_id === params[0] && item.idempotency_key === params[1]);
       return result<T>(proof ? [proof as T] : []);
     }
@@ -1559,7 +1562,7 @@ class FakeDb {
       return result<T>([]);
     }
 
-    if (sql.startsWith('select pf.*, pr.invoice_id')) {
+    if (sql.startsWith('select pf.id,') && sql.includes('pr.invoice_id')) {
       const proof = this.getPaymentProofForManager(String(params[0]), String(params[1]));
       return result<T>(proof ? [proof as T] : []);
     }
@@ -1590,19 +1593,19 @@ class FakeDb {
       return result<T>([proof as T]);
     }
 
-    if (sql.startsWith('select * from payment where payment_proof_id=$1')) {
+    if (sql.startsWith('select id, invoice_id, payment_request_id,') && sql.includes('from payment') && sql.includes('payment_proof_id=$1')) {
       const payment = this.payments.find((item) => item.payment_proof_id === params[0] && (item.entry_type ?? 'PAYMENT') === 'PAYMENT');
       return result<T>(payment ? [payment as T] : []);
     }
 
-    if (sql.startsWith('select p.*, i.total as invoice_total')) {
+    if (sql.startsWith('select p.id,') && sql.includes('i.total as invoice_total')) {
       const payment = this.payments.find((item) => item.id === params[0]);
       if (!payment) return result<T>([]);
       const invoice = this.getInvoiceForManager(String(payment.invoice_id), String(params[1]));
       return result<T>(invoice ? [{ ...payment, invoice_total: invoice.total, invoice_status: invoice.status } as T] : []);
     }
 
-    if (sql.startsWith('select * from payment where original_payment_id=$1')) {
+    if (sql.startsWith('select id, invoice_id, payment_request_id,') && sql.includes('from payment') && sql.includes('original_payment_id=$1')) {
       const reversal = this.payments.find((item) => item.original_payment_id === params[0] && item.entry_type === 'REVERSAL');
       return result<T>(reversal ? [reversal as T] : []);
     }
@@ -1652,7 +1655,7 @@ class FakeDb {
       return result<T>([]);
     }
 
-    if (sql.startsWith("select p.*, case when p.entry_type='reversal'")) {
+    if (sql.startsWith('select p.id,') && sql.includes("case when p.entry_type='reversal'")) {
       const payments = this.payments
         .filter((item) => item.payment_request_id === params[0])
         .map((item) => ({
