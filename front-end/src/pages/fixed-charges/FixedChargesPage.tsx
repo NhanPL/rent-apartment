@@ -573,8 +573,8 @@ export function FixedChargesPage() {
         fixed: 'right',
         render: (_, item) => (
           <Space>
-            <Button type="text" icon={<EditOutlined />} onClick={() => openEditCatalog(item)} />
-            <Button type="text" danger icon={<DeleteOutlined />} onClick={() => confirmDelete('catalog', item.id, item.code)} />
+            <Button type="text" aria-label={`${t("Edit")} ${item.code}`} icon={<EditOutlined />} onClick={() => openEditCatalog(item)} />
+            <Button type="text" danger aria-label={`${t("Delete")} ${item.code}`} icon={<DeleteOutlined />} onClick={() => confirmDelete('catalog', item.id, item.code)} />
           </Space>
         ),
       },
@@ -597,8 +597,8 @@ export function FixedChargesPage() {
         fixed: 'right',
         render: (_, item) => (
           <Space>
-            <Button type="text" icon={<EditOutlined />} onClick={() => openEditBuildingCharge(item)} />
-            <Button type="text" danger icon={<DeleteOutlined />} onClick={() => confirmDelete('building', item.id, item.charge_code)} />
+            <Button type="text" aria-label={`${t("Edit")} ${item.charge_code}`} icon={<EditOutlined />} onClick={() => openEditBuildingCharge(item)} />
+            <Button type="text" danger aria-label={`${t("Delete")} ${item.charge_code}`} icon={<DeleteOutlined />} onClick={() => confirmDelete('building', item.id, item.charge_code)} />
           </Space>
         ),
       },
@@ -622,8 +622,8 @@ export function FixedChargesPage() {
         fixed: 'right',
         render: (_, item) => (
           <Space>
-            <Button type="text" icon={<EditOutlined />} onClick={() => openEditRoomOverride(item)} />
-            <Button type="text" danger icon={<DeleteOutlined />} onClick={() => confirmDelete('room', item.id, item.charge_code)} />
+            <Button type="text" aria-label={`${t("Edit")} ${item.charge_code}`} icon={<EditOutlined />} onClick={() => openEditRoomOverride(item)} />
+            <Button type="text" danger aria-label={`${t("Delete")} ${item.charge_code}`} icon={<DeleteOutlined />} onClick={() => confirmDelete('room', item.id, item.charge_code)} />
           </Space>
         ),
       },
@@ -653,8 +653,8 @@ export function FixedChargesPage() {
         fixed: 'right',
         render: (_, item) => (
           <Space>
-            <Button type="text" icon={<EditOutlined />} onClick={() => openEditContractOverride(item)} />
-            <Button type="text" danger icon={<DeleteOutlined />} onClick={() => confirmDelete('contract', item.id, item.charge_code)} />
+            <Button type="text" aria-label={`${t("Edit")} ${item.charge_code}`} icon={<EditOutlined />} onClick={() => openEditContractOverride(item)} />
+            <Button type="text" danger aria-label={`${t("Delete")} ${item.charge_code}`} icon={<DeleteOutlined />} onClick={() => confirmDelete('contract', item.id, item.charge_code)} />
           </Space>
         ),
       },
@@ -677,8 +677,8 @@ export function FixedChargesPage() {
         fixed: 'right',
         render: (_, item) => (
           <Space>
-            <Button type="text" icon={<EditOutlined />} onClick={() => openEditExtra(item)} />
-            <Button type="text" danger icon={<DeleteOutlined />} onClick={() => confirmDelete('extra', item.id, item.room_code)} />
+            <Button type="text" aria-label={`${t("Edit")} ${item.room_code}`} icon={<EditOutlined />} onClick={() => openEditExtra(item)} />
+            <Button type="text" danger aria-label={`${t("Delete")} ${item.room_code}`} icon={<DeleteOutlined />} onClick={() => confirmDelete('extra', item.id, item.room_code)} />
           </Space>
         ),
       },

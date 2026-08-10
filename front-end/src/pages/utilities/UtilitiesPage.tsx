@@ -434,7 +434,7 @@ export function UtilitiesPage() {
         width: 320,
         render: (_, item) => (
           <Space wrap>
-            <Button type="text" icon={<EyeOutlined />} onClick={() => void openReadingDetail(item.id)} />
+            <Button type="text" aria-label={t("View utility reading")} icon={<EyeOutlined />} onClick={() => void openReadingDetail(item.id)} />
             <Button
               type="link"
               disabled={item.status !== 'SUBMITTED'}
@@ -493,8 +493,8 @@ export function UtilitiesPage() {
         width: 130,
         render: (_, item) => (
           <Space>
-            <Button type="text" icon={<EditOutlined />} onClick={() => void openEditRate(item.id)} />
-            <Button type="text" danger icon={<DeleteOutlined />} onClick={() => confirmDeleteRate(item)} />
+            <Button type="text" aria-label={`${t("Edit")} ${item.building_name}`} icon={<EditOutlined />} onClick={() => void openEditRate(item.id)} />
+            <Button type="text" danger aria-label={`${t("Delete")} ${item.building_name}`} icon={<DeleteOutlined />} onClick={() => confirmDeleteRate(item)} />
           </Space>
         ),
       },

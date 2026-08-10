@@ -1,6 +1,6 @@
 import { DisconnectOutlined, LockOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, UserOutlined } from '@ant-design/icons'
 import { Alert, Button, Drawer, Dropdown, Form, Grid, Input, Layout, Menu, Modal, Typography, message } from 'antd'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { ChangePasswordPayload } from '../features/auth/types/auth'
 import { PASSWORD_MAX_LENGTH, passwordLengthRules } from '../features/auth/passwordPolicy'
@@ -46,10 +46,17 @@ export function AppLayout({
   const [changingPassword, setChangingPassword] = useState(false)
   const [changePasswordError, setChangePasswordError] = useState<string | null>(null)
   const [changePasswordForm] = Form.useForm<ChangePasswordPayload>()
+  const contentRef = useRef<HTMLElement>(null)
+  const previousPath = useRef(pathname)
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_STORAGE_KEY, String(collapsed))
   }, [collapsed])
+
+  useEffect(() => {
+    if (previousPath.current !== pathname) contentRef.current?.focus()
+    previousPath.current = pathname
+  }, [pathname])
 
   const menuItems = useMemo(
     () =>
@@ -63,15 +70,17 @@ export function AppLayout({
   )
 
   const navMenu = (
-    <Menu
-      mode="inline"
-      selectedKeys={[pathname]}
-      items={menuItems}
-      onClick={(info: { key: string }) => {
-        onNavigate(info.key)
-        setMobileOpen(false)
-      }}
-    />
+    <nav aria-label={t("Main navigation")}>
+      <Menu
+        mode="inline"
+        selectedKeys={[pathname]}
+        items={menuItems}
+        onClick={(info: { key: string }) => {
+          onNavigate(info.key)
+          setMobileOpen(false)
+        }}
+      />
+    </nav>
   )
 
   const handleChangePassword = async (values: ChangePasswordPayload) => {
@@ -92,6 +101,7 @@ export function AppLayout({
 
   return (
     <>
+    <a className="skip-link" href="#main-content">{t("Skip to main content")}</a>
     <Layout className="app-layout">
       {isDesktop ? (
         <Sider theme="light" collapsible collapsed={collapsed} trigger={null} width={240} collapsedWidth={80} className="app-sider">
@@ -109,6 +119,7 @@ export function AppLayout({
           <div className="header-main">
             <Button
               type="text"
+              aria-label={t(isDesktop && !collapsed ? 'Collapse navigation' : 'Expand navigation')}
               icon={isDesktop ? (collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />) : <MenuUnfoldOutlined />}
               onClick={() => (isDesktop ? setCollapsed((current) => !current) : setMobileOpen((current) => !current))}
             />
@@ -177,7 +188,8 @@ export function AppLayout({
             </Button>
           </Dropdown>
         </Header>
-        <Content className="app-content">{content}</Content>
+        <div className="sr-only" role="status" aria-live="polite">{pageTitle}</div>
+        <Content ref={contentRef} id="main-content" role="main" tabIndex={-1} className="app-content">{content}</Content>
         <Footer className="app-footer">{t("©")} {new Date().getFullYear()} {t("Rent Apartment Management")}</Footer>
       </Layout>
       <Modal

@@ -242,7 +242,7 @@ export function RoomDetailPage({ roomId }: RoomDetailPageProps) {
                 fixed: 'right',
                 width: 90,
                 render: (_, record) => (
-                  <Button size="small" icon={<EyeOutlined />} onClick={() => openInvoiceDetail(record.id)} />
+                  <Button size="small" aria-label={t("View invoice")} icon={<EyeOutlined />} onClick={() => openInvoiceDetail(record.id)} />
                 ),
               },
             ]}

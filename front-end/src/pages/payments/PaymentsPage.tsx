@@ -477,8 +477,8 @@ export function PaymentsPage() {
                     key: 'review',
                     render: (_, row) => row.status === 'PENDING' ? (
                       <Space size={4}>
-                        <Button size="small" type="primary" icon={<CheckOutlined />} loading={reviewLoading === row.id} onClick={() => void approveProof(row.id)} />
-                        <Button size="small" danger icon={<CloseOutlined />} loading={reviewLoading === row.id} onClick={() => setRejectProofId(row.id)} />
+                        <Button size="small" type="primary" aria-label={t("Approve payment proof")} icon={<CheckOutlined />} loading={reviewLoading === row.id} onClick={() => void approveProof(row.id)} />
+                        <Button size="small" danger aria-label={t("Reject payment proof")} icon={<CloseOutlined />} loading={reviewLoading === row.id} onClick={() => setRejectProofId(row.id)} />
                       </Space>
                     ) : row.rejection_reason ?? '-',
                   },

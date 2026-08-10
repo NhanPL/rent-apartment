@@ -618,8 +618,8 @@ export function ContractsPage() {
         width: 180,
         render: (_, item) => (
           <Space>
-            <Button type="text" icon={<EyeOutlined />} onClick={() => void openDetail(item.id)} />
-            <Button type="text" icon={<EditOutlined />} disabled={closedStatuses.has(item.status)} onClick={() => void openEdit(item.id)} />
+            <Button type="text" aria-label={`${t("View")} ${item.contract_code ?? item.room_code}`} icon={<EyeOutlined />} onClick={() => void openDetail(item.id)} />
+            <Button type="text" aria-label={`${t("Edit")} ${item.contract_code ?? item.room_code}`} icon={<EditOutlined />} disabled={closedStatuses.has(item.status)} onClick={() => void openEdit(item.id)} />
             {item.status === 'DRAFT' ? (
               <Button
                 type="link"
