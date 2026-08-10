@@ -141,6 +141,57 @@ const foreignKeyConstraintErrors: Record<string, MappedDatabaseError> = {
   }
 };
 
+const checkConstraintErrors: Record<string, Omit<MappedDatabaseError, 'statusCode'>> = {
+  ck_contract_dates: {
+    message: 'Contract dates must follow their chronological order.',
+    code: 'CONTRACT_DATES_INVALID'
+  },
+  ck_invoice_due_date: {
+    message: 'Invoice due date cannot be earlier than its issue date.',
+    code: 'INVOICE_DUE_DATE_INVALID',
+    field: 'due_date'
+  },
+  ck_reading_elec: {
+    message: 'Electricity reading cannot decrease unless the meter was reset.',
+    code: 'UTILITY_METER_READING_DECREASED',
+    field: 'electricity_curr'
+  },
+  ck_reading_water: {
+    message: 'Water reading cannot decrease unless the meter was reset.',
+    code: 'UTILITY_METER_READING_DECREASED',
+    field: 'water_curr'
+  },
+  ck_reading_nonnegative: {
+    message: 'Utility meter readings cannot be negative.',
+    code: 'INVALID_UTILITY_READING'
+  },
+  ck_reading_meter_reset_note: {
+    message: 'A meter reset reason is required.',
+    code: 'METER_RESET_NOTE_REQUIRED',
+    field: 'meter_reset_note'
+  },
+  ck_payment_request_amount: {
+    message: 'Payment request amount must be greater than zero.',
+    code: 'PAYMENT_AMOUNT_INVALID',
+    field: 'amount'
+  },
+  ck_payment_proof_amount: {
+    message: 'Payment proof amount must be greater than zero.',
+    code: 'PAYMENT_AMOUNT_INVALID',
+    field: 'transfer_amount'
+  },
+  ck_payment_amount: {
+    message: 'Payment amount must be greater than zero.',
+    code: 'PAYMENT_AMOUNT_INVALID',
+    field: 'amount'
+  },
+  ck_txn_amount: {
+    message: 'Payment transaction amount must be greater than zero.',
+    code: 'PAYMENT_AMOUNT_INVALID',
+    field: 'amount'
+  }
+};
+
 const mappedFieldErrors = (mapped: { field?: string; message: string }) => (
   mapped.field ? { [mapped.field]: [mapped.message] } : null
 );
@@ -207,10 +258,15 @@ export const createErrorHandler = (appEnvironment: AppEnvironment) => (
   }
 
   if (isDatabaseError(err) && err.code === '23514') {
+    const mapped = checkConstraintErrors[err.constraint ?? ''] ?? {
+      message: 'The submitted values violate a business rule.',
+      code: 'BUSINESS_RULE_VIOLATION'
+    };
     res.status(400).json(buildErrorResponse(
       res,
-      'BUSINESS_RULE_VIOLATION',
-      'The submitted values violate a business rule.'
+      mapped.code,
+      mapped.message,
+      mappedFieldErrors(mapped)
     ));
     return;
   }

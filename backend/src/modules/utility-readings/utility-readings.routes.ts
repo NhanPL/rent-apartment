@@ -42,11 +42,22 @@ const utilityReadingCreateSchema = z.object({
   month: z.string().trim().nullable().optional(),
   electricity_curr: z.coerce.number().nonnegative(),
   water_curr: z.coerce.number().nonnegative(),
+  electricity_meter_reset: z.boolean().default(false),
+  water_meter_reset: z.boolean().default(false),
+  meter_reset_note: z.string().trim().max(500).nullable().optional(),
   note: z.string().trim().nullable().optional(),
   evidence: z.object({
     electricity: utilityEvidenceFileSchema,
     water: utilityEvidenceFileSchema
   }).optional()
+}).superRefine((value, context) => {
+  if ((value.electricity_meter_reset || value.water_meter_reset) && !value.meter_reset_note?.trim()) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['meter_reset_note'],
+      message: 'A meter reset reason is required.'
+    });
+  }
 });
 
 const utilityEvidenceSchema = z.object({

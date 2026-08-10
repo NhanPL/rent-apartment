@@ -1,5 +1,5 @@
 import { EyeOutlined, TeamOutlined } from '@ant-design/icons'
-import { Alert, Button, Card, Col, Descriptions, Drawer, Empty, Form, Grid, Input, InputNumber, List, Row, Select, Skeleton, Space, Statistic, Table, Tag, Typography, message } from 'antd'
+import { Alert, Button, Card, Checkbox, Col, Descriptions, Drawer, Empty, Form, Grid, Input, InputNumber, List, Row, Select, Skeleton, Space, Statistic, Table, Tag, Typography, message } from 'antd'
 import dayjs from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
 import {
@@ -167,17 +167,19 @@ export function TenantRoomPage() {
   const monthValue = Form.useWatch('month', form)
   const electricityPrev = Form.useWatch('electricity_prev', form)
   const electricityCurr = Form.useWatch('electricity_curr', form)
+  const electricityMeterReset = Form.useWatch('electricity_meter_reset', form) ?? false
   const waterPrev = Form.useWatch('water_prev', form)
   const waterCurr = Form.useWatch('water_curr', form)
+  const waterMeterReset = Form.useWatch('water_meter_reset', form) ?? false
 
   const electricUsage = useMemo(
-    () => calculateReadingUsage(electricityPrev, electricityCurr),
-    [electricityCurr, electricityPrev],
+    () => calculateReadingUsage(electricityPrev, electricityCurr, electricityMeterReset),
+    [electricityCurr, electricityMeterReset, electricityPrev],
   )
 
   const waterUsage = useMemo(
-    () => calculateReadingUsage(waterPrev, waterCurr),
-    [waterCurr, waterPrev],
+    () => calculateReadingUsage(waterPrev, waterCurr, waterMeterReset),
+    [waterCurr, waterMeterReset, waterPrev],
   )
 
   const currentReading = utilitySnapshot?.current_reading ?? null
@@ -203,6 +205,9 @@ export function TenantRoomPage() {
       electricity_curr: snapshot.electricity_curr_value,
       water_prev: snapshot.water_prev_value,
       water_curr: snapshot.water_curr_value,
+      electricity_meter_reset: snapshot.current_reading?.electricity_meter_reset ?? false,
+      water_meter_reset: snapshot.current_reading?.water_meter_reset ?? false,
+      meter_reset_note: snapshot.current_reading?.meter_reset_note ?? '',
       note: snapshot.current_reading?.note ?? '',
     })
   }
@@ -283,6 +288,8 @@ export function TenantRoomPage() {
         message.warning('This month has already been submitted. You can update it only after the manager rejects it for correction.')
       } else if (validation.reason === 'missing-month') {
         message.error('Vui lòng chọn tháng ghi chỉ số')
+      } else if (validation.reason === 'missing-reset-note') {
+        message.error('Please explain why the meter was reset or replaced.')
       } else {
         message.error('Vui lòng nhập đầy đủ chỉ số điện và nước hiện tại')
       }
@@ -696,6 +703,8 @@ export function TenantRoomPage() {
                 <span>Status:</span>
                 <Tag color={utilityReadingStatusColor[currentReading.status]}>{currentReading.status}</Tag>
                 <span>Evidence: {currentReading.evidence_count}</span>
+                {currentReading.electricity_meter_reset ? <Tag color="orange">Electric meter reset</Tag> : null}
+                {currentReading.water_meter_reset ? <Tag color="orange">Water meter reset</Tag> : null}
               </Space>
             }
             description={currentReading.rejection_reason ?? undefined}
@@ -739,6 +748,9 @@ export function TenantRoomPage() {
             electricity_curr: null,
             water_prev: null,
             water_curr: null,
+            electricity_meter_reset: false,
+            water_meter_reset: false,
+            meter_reset_note: '',
             note: '',
           }}
         >
@@ -760,14 +772,15 @@ export function TenantRoomPage() {
               <Form.Item
                 name="electricity_curr"
                 label="Chỉ số điện tháng này"
-                dependencies={['electricity_prev']}
+                dependencies={['electricity_prev', 'electricity_meter_reset']}
                 rules={[
                   { required: true, type: 'number', message: 'Vui lòng nhập chỉ số điện hiện tại' },
                   { type: 'number', min: 0, message: 'Chỉ số phải >= 0' },
                   ({ getFieldValue }) => ({
                     validator(_, value: number | null) {
                       const prev = getFieldValue('electricity_prev') as number | null
-                      if (value === null || value === undefined || prev === null || prev === undefined || value >= prev) {
+                      const reset = Boolean(getFieldValue('electricity_meter_reset'))
+                      if (value === null || value === undefined || prev === null || prev === undefined || value >= prev || reset) {
                         return Promise.resolve()
                       }
                       return Promise.reject(new Error('Chỉ số điện hiện tại phải lớn hơn hoặc bằng chỉ số tháng trước'))
@@ -776,6 +789,9 @@ export function TenantRoomPage() {
                 ]}
               >
                 <InputNumber style={{ width: '100%' }} precision={0} min={0} />
+              </Form.Item>
+              <Form.Item name="electricity_meter_reset" valuePropName="checked">
+                <Checkbox disabled={readingLocked || submitting}>Electric meter was reset or replaced</Checkbox>
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
@@ -787,14 +803,15 @@ export function TenantRoomPage() {
               <Form.Item
                 name="water_curr"
                 label="Chỉ số nước tháng này"
-                dependencies={['water_prev']}
+                dependencies={['water_prev', 'water_meter_reset']}
                 rules={[
                   { required: true, type: 'number', message: 'Vui lòng nhập chỉ số nước hiện tại' },
                   { type: 'number', min: 0, message: 'Chỉ số phải >= 0' },
                   ({ getFieldValue }) => ({
                     validator(_, value: number | null) {
                       const prev = getFieldValue('water_prev') as number | null
-                      if (value === null || value === undefined || prev === null || prev === undefined || value >= prev) {
+                      const reset = Boolean(getFieldValue('water_meter_reset'))
+                      if (value === null || value === undefined || prev === null || prev === undefined || value >= prev || reset) {
                         return Promise.resolve()
                       }
                       return Promise.reject(new Error('Chỉ số nước hiện tại phải lớn hơn hoặc bằng chỉ số tháng trước'))
@@ -803,6 +820,9 @@ export function TenantRoomPage() {
                 ]}
               >
                 <InputNumber style={{ width: '100%' }} precision={0} min={0} />
+              </Form.Item>
+              <Form.Item name="water_meter_reset" valuePropName="checked">
+                <Checkbox disabled={readingLocked || submitting}>Water meter was reset or replaced</Checkbox>
               </Form.Item>
             </Col>
           </Row>
@@ -815,6 +835,16 @@ export function TenantRoomPage() {
               <Card size="small"><Statistic title="Sản lượng nước (m³)" value={waterUsage ?? '-'} /></Card>
             </Col>
           </Row>
+
+          {electricityMeterReset || waterMeterReset ? (
+            <Form.Item
+              name="meter_reset_note"
+              label="Meter reset reason"
+              rules={[{ required: true, whitespace: true, message: 'Please explain why the meter was reset or replaced.' }]}
+            >
+              <Input.TextArea rows={2} maxLength={500} showCount disabled={readingLocked || submitting} />
+            </Form.Item>
+          ) : null}
 
           <Form.Item name="note" label="Ghi chú" style={{ marginTop: 16 }}>
             <Input.TextArea rows={3} maxLength={500} showCount placeholder="Ghi chú (không bắt buộc)" />

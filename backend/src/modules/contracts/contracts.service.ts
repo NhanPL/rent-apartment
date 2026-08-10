@@ -707,7 +707,12 @@ export const cancelContract = async (contractId: string, body: ContractCloseInpu
 
     const updated = await client.query<DbRow>(
       `UPDATE contract
-       SET status='CANCELLED', move_out_date=COALESCE(move_out_date, $1), note=COALESCE($2, note)
+       SET status='CANCELLED',
+           move_out_date=CASE
+             WHEN move_in_date IS NULL THEN NULL
+             ELSE COALESCE(move_out_date, GREATEST(move_in_date, $1::date))
+           END,
+           note=COALESCE($2, note)
        WHERE id=$3
        RETURNING ${contractColumns()}`,
       [closeDate, body.note ?? null, contractId]

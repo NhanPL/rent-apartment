@@ -33,6 +33,9 @@ describe('tenant utility reading validation', () => {
         month: '2026-06-01',
         electricity_curr: 125,
         water_curr: 27,
+        electricity_meter_reset: false,
+        water_meter_reset: false,
+        meter_reset_note: null,
         note: 'checked by tenant',
       },
     })
@@ -55,6 +58,30 @@ describe('tenant utility reading validation', () => {
   it('calculates usage from previous and current readings', () => {
     expect(calculateReadingUsage(100, 140)).toBe(40)
     expect(calculateReadingUsage(100, 90)).toBe(0)
+    expect(calculateReadingUsage(100, 8, true)).toBe(8)
     expect(calculateReadingUsage(null, 90)).toBeNull()
+  })
+
+  it('requires a reason when either meter was reset', () => {
+    expect(validateTenantUtilityReading({
+      ...baseValues,
+      electricity_curr: 8,
+      electricity_meter_reset: true,
+      meter_reset_note: ' ',
+    }, false)).toEqual({ ok: false, reason: 'missing-reset-note' })
+
+    expect(validateTenantUtilityReading({
+      ...baseValues,
+      electricity_curr: 8,
+      electricity_meter_reset: true,
+      meter_reset_note: 'Meter replaced',
+    }, false)).toMatchObject({
+      ok: true,
+      payload: {
+        electricity_curr: 8,
+        electricity_meter_reset: true,
+        meter_reset_note: 'Meter replaced',
+      },
+    })
   })
 })

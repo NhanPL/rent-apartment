@@ -210,7 +210,7 @@ const utilityPaths = {
         queryParameter('status', { type: 'string', enum: ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'INVOICED'] })
       ], responses: ok('UtilityReadingPage'), errorCodes: ['VALIDATION_ERROR']
     }),
-    post: operation('Utilities', 'Submit utility reading', 'TENANT', { body: requestBody('UtilityReadingInput'), responses: created('UtilityReading'), errorCodes: ['TENANT_ROOM_FORBIDDEN', 'INVALID_UTILITY_READING', 'UTILITY_READING_LOCKED', 'UTILITY_READING_ALREADY_EXISTS'] })
+    post: operation('Utilities', 'Submit utility reading', 'TENANT', { body: requestBody('UtilityReadingInput'), responses: created('UtilityReading'), errorCodes: ['TENANT_ROOM_FORBIDDEN', 'INVALID_UTILITY_READING', 'UTILITY_METER_READING_DECREASED', 'METER_RESET_NOTE_REQUIRED', 'UTILITY_READING_LOCKED', 'UTILITY_READING_ALREADY_EXISTS'] })
   },
   '/utility-readings/{id}': {
     get: operation('Utilities', 'Get utility reading', 'AUTHENTICATED', { parameters: [id], responses: ok('UtilityReading'), errorCodes: ['UTILITY_READING_NOT_FOUND', 'FORBIDDEN'] })

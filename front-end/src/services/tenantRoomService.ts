@@ -63,6 +63,9 @@ export interface UtilityReading {
   electricity_curr: number | null
   water_prev: number | null
   water_curr: number | null
+  electricity_meter_reset: boolean
+  water_meter_reset: boolean
+  meter_reset_note: string | null
   status: UtilityReadingStatus
   reported_by_user_id: string | null
   reported_at: string | null
@@ -143,6 +146,9 @@ export interface UtilityReadingSubmitPayload {
   month: string
   electricity_curr: number
   water_curr: number
+  electricity_meter_reset?: boolean
+  water_meter_reset?: boolean
+  meter_reset_note?: string | null
   note: string | null
   evidence?: {
     electricity: UtilityEvidenceFilePayload
@@ -407,6 +413,16 @@ export async function getCurrentAndPreviousUtilityReadings(roomId: string, month
   const ordered = [...normalizedRows].sort((left, right) => dayjs(right.month).valueOf() - dayjs(left.month).valueOf())
   const current = ordered.find((row) => row.room_id === roomId && dayjs(row.month).isSame(selectedMonth, 'month')) ?? null
   const previous = ordered.find((row) => row.room_id === roomId && dayjs(row.month).isBefore(selectedMonth, 'month')) ?? null
+  const electricityUsage = current && current.electricity_prev !== null && current.electricity_curr !== null
+    ? current.electricity_meter_reset
+      ? Math.max(0, current.electricity_curr)
+      : Math.max(0, current.electricity_curr - current.electricity_prev)
+    : null
+  const waterUsage = current && current.water_prev !== null && current.water_curr !== null
+    ? current.water_meter_reset
+      ? Math.max(0, current.water_curr)
+      : Math.max(0, current.water_curr - current.water_prev)
+    : null
 
   return {
     month,
@@ -414,13 +430,10 @@ export async function getCurrentAndPreviousUtilityReadings(roomId: string, month
     previous_reading: previous,
     electricity_prev_value: current?.electricity_prev ?? previous?.electricity_curr ?? null,
     electricity_curr_value: current?.electricity_curr ?? null,
-    electricity_usage:
-      current?.electricity_prev !== null && current?.electricity_curr !== null
-        ? Math.max(0, (current?.electricity_curr ?? 0) - (current?.electricity_prev ?? 0))
-        : null,
+    electricity_usage: electricityUsage,
     water_prev_value: current?.water_prev ?? previous?.water_curr ?? null,
     water_curr_value: current?.water_curr ?? null,
-    water_usage: current?.water_prev !== null && current?.water_curr !== null ? Math.max(0, (current?.water_curr ?? 0) - (current?.water_prev ?? 0)) : null,
+    water_usage: waterUsage,
   }
 }
 
@@ -432,6 +445,9 @@ export async function upsertMyUtilityReading(roomId: string, payload: UtilityRea
       month: payload.month,
       electricity_curr: payload.electricity_curr,
       water_curr: payload.water_curr,
+      electricity_meter_reset: payload.electricity_meter_reset ?? false,
+      water_meter_reset: payload.water_meter_reset ?? false,
+      meter_reset_note: payload.meter_reset_note ?? null,
       note: payload.note,
       evidence: payload.evidence,
     },

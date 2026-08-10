@@ -29,6 +29,9 @@ interface UtilityReadingBoundaryRow {
   electricity_curr: DatabaseNumeric | null;
   water_prev: DatabaseNumeric | null;
   water_curr: DatabaseNumeric | null;
+  electricity_meter_reset: boolean;
+  water_meter_reset: boolean;
+  meter_reset_note: string | null;
   status: UtilityReadingStatus;
   rejection_reason: string | null;
   note: string | null;
@@ -78,6 +81,7 @@ interface UtilityEvidenceRow {
 
 const readingColumnNames = [
   'id', 'room_id', 'month', 'electricity_prev', 'electricity_curr', 'water_prev', 'water_curr',
+  'electricity_meter_reset', 'water_meter_reset', 'meter_reset_note',
   'status', 'reported_by_user_id', 'reported_at', 'submitted_at', 'verified_by_user_id',
   'verified_at', 'approved_by_user_id', 'approved_at', 'rejected_by_user_id', 'rejected_at',
   'rejection_reason', 'manager_note', 'note', 'created_at', 'updated_at'
@@ -103,6 +107,9 @@ const utilityAuditSnapshot = (reading: DbRow): Record<string, unknown> => ({
   electricityCurrent: reading.electricity_curr,
   waterPrevious: reading.water_prev,
   waterCurrent: reading.water_curr,
+  electricityMeterReset: reading.electricity_meter_reset,
+  waterMeterReset: reading.water_meter_reset,
+  meterResetNote: reading.meter_reset_note,
   rejectionReason: reading.rejection_reason,
   note: reading.note
 });
@@ -129,6 +136,9 @@ export interface UtilityReadingCreatePayload {
   month?: string | null;
   electricity_curr: number;
   water_curr: number;
+  electricity_meter_reset?: boolean;
+  water_meter_reset?: boolean;
+  meter_reset_note?: string | null;
   note?: string | null;
   evidence?: {
     electricity: UtilityEvidenceFilePayload;
@@ -360,9 +370,22 @@ export const createUtilityReading = async (payload: UtilityReadingCreatePayload,
     );
     const electricityPrev = Number(prev.rows[0]?.electricity_curr ?? 0);
     const waterPrev = Number(prev.rows[0]?.water_curr ?? 0);
+    const electricityMeterReset = payload.electricity_meter_reset ?? false;
+    const waterMeterReset = payload.water_meter_reset ?? false;
+    const meterResetNote = payload.meter_reset_note?.trim() || null;
 
-    if (Number(payload.electricity_curr) < electricityPrev || Number(payload.water_curr) < waterPrev) {
-      throw new AppError(400, 'Current reading must be greater or equal previous reading', 'INVALID_UTILITY_READING');
+    if (
+      (Number(payload.electricity_curr) < electricityPrev && !electricityMeterReset)
+      || (Number(payload.water_curr) < waterPrev && !waterMeterReset)
+    ) {
+      throw new AppError(
+        400,
+        'A reading can be lower than the previous month only when that meter was reset.',
+        'UTILITY_METER_READING_DECREASED'
+      );
+    }
+    if ((electricityMeterReset || waterMeterReset) && !meterResetNote) {
+      throw new AppError(400, 'A meter reset reason is required.', 'METER_RESET_NOTE_REQUIRED');
     }
 
     const existing = await client.query<DbRow>(
@@ -383,25 +406,55 @@ export const createUtilityReading = async (payload: UtilityReadingCreatePayload,
              electricity_curr=$2,
              water_prev=$3,
              water_curr=$4,
+             electricity_meter_reset=$5,
+             water_meter_reset=$6,
+             meter_reset_note=$7,
              status='SUBMITTED',
-             reported_by_user_id=$5,
+             reported_by_user_id=$8,
              reported_at=now(),
              submitted_at=now(),
              rejected_by_user_id=NULL,
              rejected_at=NULL,
              rejection_reason=NULL,
-             note=$6
-         WHERE id=$7
+             note=$9
+         WHERE id=$10
          RETURNING ${readingColumns()}`,
-        [electricityPrev, payload.electricity_curr, waterPrev, payload.water_curr, userId, payload.note ?? null, existing.rows[0].id]
+        [
+          electricityPrev,
+          payload.electricity_curr,
+          waterPrev,
+          payload.water_curr,
+          electricityMeterReset,
+          waterMeterReset,
+          meterResetNote,
+          userId,
+          payload.note ?? null,
+          existing.rows[0].id
+        ]
       );
       reading = updated.rows[0];
     } else {
       const created = await client.query<DbRow>(
-        `INSERT INTO utility_reading(room_id, month, electricity_prev, electricity_curr, water_prev, water_curr, status, reported_by_user_id, reported_at, submitted_at, note)
-         VALUES($1,$2,$3,$4,$5,$6,'SUBMITTED',$7,now(),now(),$8)
+        `INSERT INTO utility_reading(
+           room_id, month, electricity_prev, electricity_curr, water_prev, water_curr,
+           electricity_meter_reset, water_meter_reset, meter_reset_note,
+           status, reported_by_user_id, reported_at, submitted_at, note
+         )
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'SUBMITTED',$10,now(),now(),$11)
          RETURNING ${readingColumns()}`,
-        [payload.room_id, month, electricityPrev, payload.electricity_curr, waterPrev, payload.water_curr, userId, payload.note ?? null]
+        [
+          payload.room_id,
+          month,
+          electricityPrev,
+          payload.electricity_curr,
+          waterPrev,
+          payload.water_curr,
+          electricityMeterReset,
+          waterMeterReset,
+          meterResetNote,
+          userId,
+          payload.note ?? null
+        ]
       );
       reading = created.rows[0];
     }

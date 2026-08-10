@@ -1616,6 +1616,50 @@ describe('backend API smoke tests', () => {
 
   });
 
+  it('requires explicit reset metadata before accepting a lower meter reading', async () => {
+    const tenantSession = await login('tenant@example.com');
+    const basePayload = {
+      room_id: ids.roomA,
+      month: '2026-07',
+      electricity_curr: 5,
+      water_curr: 70
+    };
+
+    const withoutReset = await request(app)
+      .post('/api/utility-readings')
+      .set(auth(tenantSession.accessToken))
+      .send(basePayload)
+      .expect(400);
+
+    expect(withoutReset.body.code).toBe('UTILITY_METER_READING_DECREASED');
+
+    const withoutReason = await request(app)
+      .post('/api/utility-readings')
+      .set(auth(tenantSession.accessToken))
+      .send({ ...basePayload, electricity_meter_reset: true })
+      .expect(400);
+
+    expect(withoutReason.body.fieldErrors).toHaveProperty('meter_reset_note');
+
+    const resetReading = await request(app)
+      .post('/api/utility-readings')
+      .set(auth(tenantSession.accessToken))
+      .send({
+        ...basePayload,
+        electricity_meter_reset: true,
+        meter_reset_note: 'Electricity meter replaced by the building manager.'
+      })
+      .expect(201);
+
+    expect(resetReading.body).toMatchObject({
+      electricity_prev: 120,
+      electricity_curr: 5,
+      electricity_meter_reset: true,
+      water_meter_reset: false,
+      meter_reset_note: 'Electricity meter replaced by the building manager.'
+    });
+  });
+
   it('keeps invoice issuing and payment approval idempotent under concurrent requests', async () => {
     const managerSession = await login('manager@example.com');
     const tenantSession = await login('tenant@example.com');
