@@ -188,6 +188,7 @@ const envSchema = z.object({
   BACKGROUND_JOB_POLL_SECONDS: z.coerce.number().int().min(10).max(3600).default(60),
   EMAIL_OUTBOX_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(5),
   EMAIL_OUTBOX_BATCH_SIZE: z.coerce.number().int().min(1).max(100).default(20),
+  EMAIL_NOTIFICATIONS_ENABLED: z.enum(['true', 'false']).default('true'),
   PAYMENT_REMINDER_BEFORE_DAYS: z.coerce.number().int().min(0).max(30).default(3),
   PAYMENT_REMINDER_AFTER_DAYS: z.coerce.number().int().min(0).max(30).default(3),
   AUTH_TOKEN_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30),

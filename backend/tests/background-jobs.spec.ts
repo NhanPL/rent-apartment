@@ -59,4 +59,15 @@ describe('background jobs', () => {
     expect(migration).toContain("status IN ('PENDING', 'PROCESSING', 'SENT', 'FAILED')");
     expect(migration).toContain('attempts <= max_attempts');
   });
+
+  it('supports durable tenant lifecycle notification templates', () => {
+    const migration = fs.readFileSync(
+      path.resolve(__dirname, '../../migrations/20260810b_product_notifications.sql'),
+      'utf8'
+    );
+    expect(migration).toContain("'UTILITY_READING_REJECTED'");
+    expect(migration).toContain("'INVOICE_ISSUED'");
+    expect(migration).toContain("'PAYMENT_PROOF_REJECTED'");
+    expect(migration).toContain("'PAYMENT_APPROVED'");
+  });
 });

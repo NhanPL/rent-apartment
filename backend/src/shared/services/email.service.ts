@@ -36,6 +36,32 @@ export interface PaymentReminderPayload {
   timing: 'BEFORE_DUE' | 'AFTER_DUE';
 }
 
+export interface TenantNotificationPayload {
+  to: string;
+  tenantName: string;
+  roomCode: string;
+  month: string;
+}
+
+export interface UtilityReadingRejectedPayload extends TenantNotificationPayload {
+  reason: string;
+}
+
+export interface InvoiceIssuedPayload extends TenantNotificationPayload {
+  invoiceId: string;
+  total: number;
+  dueDate: string;
+}
+
+export interface PaymentProofRejectedPayload extends TenantNotificationPayload {
+  reason: string;
+}
+
+export interface PaymentApprovedPayload extends TenantNotificationPayload {
+  amount: number;
+  remainingAmount: number;
+}
+
 let transporter: ReturnType<typeof nodemailer.createTransport> | null = null;
 
 const isSmtpConfigured = (): boolean =>
@@ -147,3 +173,60 @@ export const sendPaymentReminderEmail = async (payload: PaymentReminderPayload):
 
   return sendEmail({ to: payload.to, subject, html });
 };
+
+const formatVnd = (amount: number): string => new Intl.NumberFormat('en-US', {
+  style: 'currency', currency: 'VND', maximumFractionDigits: 0
+}).format(amount);
+
+export const sendUtilityReadingRejectedEmail = async (
+  payload: UtilityReadingRejectedPayload
+): Promise<boolean> => sendEmail({
+  to: payload.to,
+  subject: `Utility reading requires correction for room ${payload.roomCode}`,
+  html: `
+    <p>Hello ${escapeHtml(payload.tenantName)},</p>
+    <p>Your utility reading for room ${escapeHtml(payload.roomCode)} (${escapeHtml(payload.month)}) requires correction.</p>
+    <p>Reason: ${escapeHtml(payload.reason)}</p>
+    <p>Please open RentMate to update and resubmit the reading.</p>
+  `
+});
+
+export const sendInvoiceIssuedEmail = async (
+  payload: InvoiceIssuedPayload
+): Promise<boolean> => sendEmail({
+  to: payload.to,
+  subject: `Invoice issued for room ${payload.roomCode}`,
+  html: `
+    <p>Hello ${escapeHtml(payload.tenantName)},</p>
+    <p>Your invoice for room ${escapeHtml(payload.roomCode)} (${escapeHtml(payload.month)}) has been issued.</p>
+    <p>Amount: ${escapeHtml(formatVnd(payload.total))}</p>
+    <p>Due date: ${escapeHtml(payload.dueDate)}</p>
+    <p>Please open RentMate to review the invoice and payment QR.</p>
+  `
+});
+
+export const sendPaymentProofRejectedEmail = async (
+  payload: PaymentProofRejectedPayload
+): Promise<boolean> => sendEmail({
+  to: payload.to,
+  subject: `Payment proof requires an update for room ${payload.roomCode}`,
+  html: `
+    <p>Hello ${escapeHtml(payload.tenantName)},</p>
+    <p>Your payment proof for room ${escapeHtml(payload.roomCode)} (${escapeHtml(payload.month)}) was rejected.</p>
+    <p>Reason: ${escapeHtml(payload.reason)}</p>
+    <p>Please open RentMate to submit an updated proof.</p>
+  `
+});
+
+export const sendPaymentApprovedEmail = async (
+  payload: PaymentApprovedPayload
+): Promise<boolean> => sendEmail({
+  to: payload.to,
+  subject: `Payment confirmed for room ${payload.roomCode}`,
+  html: `
+    <p>Hello ${escapeHtml(payload.tenantName)},</p>
+    <p>Your payment of ${escapeHtml(formatVnd(payload.amount))} for room ${escapeHtml(payload.roomCode)} (${escapeHtml(payload.month)}) was approved.</p>
+    <p>Remaining invoice balance: ${escapeHtml(formatVnd(payload.remainingAmount))}</p>
+    <p>You can review the updated invoice status in RentMate.</p>
+  `
+});

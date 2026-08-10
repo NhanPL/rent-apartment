@@ -5,6 +5,7 @@ import { resolveFixedChargesForContract, type ResolvedFixedCharge } from '../fix
 import { env } from '../../config/env';
 import { createVietQrPaymentData } from '../payments/vietqr.service';
 import { writeAuditLog } from '../../shared/services/audit-log.service';
+import { enqueueInvoiceIssued } from '../../shared/services/notification.service';
 import type {
   DatabaseDate,
   DatabaseNumeric,
@@ -670,6 +671,11 @@ export const updateInvoiceStatus = async (
         ? { reason: (payload as InvoiceVoidPayload).reason }
         : { paymentRequestCreated }
     });
+    if (action === 'issue') {
+      const dueDate = toDateString(updatedInvoice!.due_date);
+      if (!dueDate) throw new AppError(500, 'Issued invoice is missing a due date', 'INVOICE_DUE_DATE_MISSING');
+      await enqueueInvoiceIssued(client, invoiceId, toNumber(updatedInvoice!.total), dueDate);
+    }
     return invoiceId;
   });
 

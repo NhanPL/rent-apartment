@@ -17,6 +17,13 @@ vi.mock('../src/shared/services/email.service', () => ({
   sendPasswordResetEmail: emailServiceMocks.sendPasswordResetEmail,
   sendPasswordChangedEmail: emailServiceMocks.sendPasswordChangedEmail
 }));
+
+vi.mock('../src/shared/services/notification.service', () => ({
+  enqueueUtilityReadingRejected: vi.fn().mockResolvedValue(true),
+  enqueueInvoiceIssued: vi.fn().mockResolvedValue(true),
+  enqueuePaymentProofRejected: vi.fn().mockResolvedValue(true),
+  enqueuePaymentApproved: vi.fn().mockResolvedValue(true)
+}));
 vi.mock('../src/modules/fixed-charges/fixed-charges.service', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/modules/fixed-charges/fixed-charges.service')>();
   return {

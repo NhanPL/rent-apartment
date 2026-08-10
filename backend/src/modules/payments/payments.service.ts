@@ -10,6 +10,10 @@ import {
   type UploadResourceType
 } from '../uploads/uploads.service';
 import { writeAuditLog } from '../../shared/services/audit-log.service';
+import {
+  enqueuePaymentApproved,
+  enqueuePaymentProofRejected
+} from '../../shared/services/notification.service';
 import type {
   DatabaseNumeric,
   DatabaseTimestamp,
@@ -433,6 +437,7 @@ export const reviewPaymentProof = async (proofId: string, approve: boolean, mana
           rejectionReason: rejected.rows[0].rejection_reason
         }
       });
+      await enqueuePaymentProofRejected(client, proofId, reason ?? 'Rejected by manager');
       return rejected.rows[0];
     }
 
@@ -507,11 +512,14 @@ export const reviewPaymentProof = async (proofId: string, approve: boolean, mana
       }
     });
 
+    const remainingAmount = Math.max(0, toNumber(proof.invoice_total) - paidAmount);
+    await enqueuePaymentApproved(client, proofId, paymentAmount, remainingAmount);
+
     return {
       proof: approved.rows[0],
       payment: payment.rows[0],
       paid_amount: paidAmount,
-      remaining_amount: Math.max(0, toNumber(proof.invoice_total) - paidAmount),
+      remaining_amount: remainingAmount,
       invoice_status: invoiceStatus,
       idempotent: false
     };

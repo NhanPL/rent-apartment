@@ -2,6 +2,7 @@ import { query, withTransaction } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
 import { firstDayOfMonth } from '../../shared/utils/date';
 import { writeAuditLog } from '../../shared/services/audit-log.service';
+import { enqueueUtilityReadingRejected } from '../../shared/services/notification.service';
 import {
   getDocumentRetentionUntil,
   resolveCloudinaryAsset,
@@ -573,6 +574,7 @@ export const rejectUtilityReading = async (id: string, managerId: string, reason
       after: utilityAuditSnapshot(updated.rows[0]),
       metadata: { reason }
     });
+    await enqueueUtilityReadingRejected(client, id, reason, String(updated.rows[0].rejected_at));
   });
 
   return getUtilityReadingById(id, { userId: managerId, role: 'MANAGER' });
@@ -610,6 +612,7 @@ export const requestUtilityReadingCorrection = async (id: string, managerId: str
       after: utilityAuditSnapshot(updated.rows[0]),
       metadata: { reason, correctionRequested: true }
     });
+    await enqueueUtilityReadingRejected(client, id, reason, String(updated.rows[0].rejected_at));
   });
   return getUtilityReadingById(id, { userId: managerId, role: 'MANAGER' });
 };

@@ -32,18 +32,24 @@ payment approval or confusing financial lifecycle states.
 
 ## Email Delivery
 
-Only payment reminders use the durable email outbox. Activation and password
-reset links continue to send synchronously because the database stores only
-their token hashes; raw security tokens must not be placed in an outbox. A
-failed activation invitation can be resent by the manager, which creates a new
-token and revokes the old one.
+Payment reminders, utility rejection, invoice issue, payment-proof rejection,
+and payment approval use the durable email outbox. Set
+`EMAIL_NOTIFICATIONS_ENABLED=false` to stop enqueueing these product emails;
+SMTP transport is configured separately with `SMTP_ENABLED` and its credential
+variables. Activation and password reset links continue to send synchronously
+because the database stores only their token hashes; raw security tokens must
+not be placed in an outbox. Activation delivery status is recorded in the audit
+log, and a failed invitation can be resent by the manager with a newly rotated
+token.
 
-Reminder rows store a template code and bounded JSON payload, not HTML or a
-signed URL. `deduplication_key` prevents duplicate reminders when scheduling is
+Outbox rows store a template code and bounded JSON payload, not HTML or a signed
+URL. `deduplication_key` prevents duplicate delivery when a request or job is
 retried. Delivery increments attempts while claiming a row, retries after an
 exponential delay capped at 60 minutes, and becomes `FAILED` after
 `EMAIL_OUTBOX_MAX_ATTEMPTS`. A process crash leaves `PROCESSING` rows eligible
-for recovery after 15 minutes.
+for recovery after 15 minutes. Operators can inspect `email_outbox.status`,
+`attempts`, `next_attempt_at`, `sent_at`, and `last_error_code` without exposing
+message content in application logs.
 
 ## Operations
 

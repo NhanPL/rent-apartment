@@ -10,7 +10,13 @@ import {
   reconcileDocumentAssets
 } from '../documents/document-asset-jobs.service';
 import { processDueTenantAnonymization } from '../tenants/tenant-privacy.service';
-import { sendPaymentReminderEmail } from '../../shared/services/email.service';
+import {
+  sendInvoiceIssuedEmail,
+  sendPaymentApprovedEmail,
+  sendPaymentProofRejectedEmail,
+  sendPaymentReminderEmail,
+  sendUtilityReadingRejectedEmail
+} from '../../shared/services/email.service';
 import { logger } from '../../shared/services/logger.service';
 
 const schedulerLockName = 'rent-apartment:background-jobs:v1';
@@ -37,6 +43,7 @@ interface JobRunRow {
 interface EmailOutboxRow {
   id: string;
   recipient_email: string;
+  template_code: 'PAYMENT_REMINDER' | 'UTILITY_READING_REJECTED' | 'INVOICE_ISSUED' | 'PAYMENT_PROOF_REJECTED' | 'PAYMENT_APPROVED';
   payload: unknown;
   attempts: number;
   max_attempts: number;
@@ -50,6 +57,23 @@ const paymentReminderPayloadSchema = z.object({
   outstandingAmount: z.coerce.number().positive(),
   timing: z.enum(['BEFORE_DUE', 'AFTER_DUE'])
 });
+
+const tenantNotificationSchema = z.object({
+  tenantName: z.string().min(1),
+  roomCode: z.string().min(1),
+  month: z.string().regex(/^\d{4}-\d{2}$/)
+});
+const notificationPayloadSchemas = {
+  PAYMENT_REMINDER: paymentReminderPayloadSchema,
+  UTILITY_READING_REJECTED: tenantNotificationSchema.extend({ reason: z.string().min(1) }),
+  INVOICE_ISSUED: tenantNotificationSchema.extend({
+    invoiceId: z.string().uuid(), total: z.coerce.number().nonnegative(), dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+  }),
+  PAYMENT_PROOF_REJECTED: tenantNotificationSchema.extend({ reason: z.string().min(1) }),
+  PAYMENT_APPROVED: tenantNotificationSchema.extend({
+    amount: z.coerce.number().positive(), remainingAmount: z.coerce.number().nonnegative()
+  })
+} satisfies Record<EmailOutboxRow['template_code'], z.ZodType>;
 
 export const getScheduleBucket = (now: Date, intervalMinutes: number): Date => {
   const intervalMs = intervalMinutes * 60_000;
@@ -85,7 +109,7 @@ export const expirePaymentRequests = async (): Promise<number> => {
 };
 
 export const enqueuePaymentReminders = async (): Promise<number> => {
-  if (!env.SMTP_ENABLED) return 0;
+  if (env.EMAIL_NOTIFICATIONS_ENABLED !== 'true' || !env.SMTP_ENABLED) return 0;
   const inserted = await query<{ id: string }>(
     `INSERT INTO email_outbox(
        recipient_email, template_code, payload, deduplication_key, max_attempts
@@ -173,7 +197,7 @@ const claimEmailOutbox = async (): Promise<EmailOutboxRow[]> => withTransaction(
          last_error_code=NULL
      FROM candidates
      WHERE outbox.id=candidates.id
-     RETURNING outbox.id, outbox.recipient_email, outbox.payload,
+     RETURNING outbox.id, outbox.recipient_email, outbox.template_code, outbox.payload,
                outbox.attempts, outbox.max_attempts`,
     [env.EMAIL_OUTBOX_BATCH_SIZE]
   );
@@ -194,11 +218,37 @@ export const processEmailOutbox = async (): Promise<{
 
   for (const row of rows) {
     try {
-      const payload = paymentReminderPayloadSchema.parse(row.payload);
-      const delivered = await sendPaymentReminderEmail({
-        to: row.recipient_email,
-        ...payload
-      });
+      const payload = notificationPayloadSchemas[row.template_code].parse(row.payload);
+      let delivered: boolean;
+      switch (row.template_code) {
+        case 'PAYMENT_REMINDER':
+          delivered = await sendPaymentReminderEmail({ to: row.recipient_email, ...paymentReminderPayloadSchema.parse(payload) });
+          break;
+        case 'UTILITY_READING_REJECTED':
+          delivered = await sendUtilityReadingRejectedEmail({
+            to: row.recipient_email,
+            ...notificationPayloadSchemas.UTILITY_READING_REJECTED.parse(payload)
+          });
+          break;
+        case 'INVOICE_ISSUED':
+          delivered = await sendInvoiceIssuedEmail({
+            to: row.recipient_email,
+            ...notificationPayloadSchemas.INVOICE_ISSUED.parse(payload)
+          });
+          break;
+        case 'PAYMENT_PROOF_REJECTED':
+          delivered = await sendPaymentProofRejectedEmail({
+            to: row.recipient_email,
+            ...notificationPayloadSchemas.PAYMENT_PROOF_REJECTED.parse(payload)
+          });
+          break;
+        case 'PAYMENT_APPROVED':
+          delivered = await sendPaymentApprovedEmail({
+            to: row.recipient_email,
+            ...notificationPayloadSchemas.PAYMENT_APPROVED.parse(payload)
+          });
+          break;
+      }
       if (!delivered) throw new Error('SMTP_DISABLED');
       await query(
         `UPDATE email_outbox
