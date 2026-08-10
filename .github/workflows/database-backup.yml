@@ -1,0 +1,70 @@
+name: Database Backup
+
+on:
+  schedule:
+    - cron: "17 18 * * *"
+  workflow_dispatch:
+    inputs:
+      run_restore_test:
+        description: Restore the backup into an ephemeral PostgreSQL instance
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-database-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Encrypted Backup And Restore Verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: production-backup
+    env:
+      BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+      BACKUP_ENCRYPTION_PASSWORD: ${{ secrets.BACKUP_ENCRYPTION_PASSWORD }}
+      BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+      BACKUP_S3_PREFIX: ${{ vars.BACKUP_S3_PREFIX }}
+      BACKUP_S3_KMS_KEY_ID: ${{ secrets.BACKUP_S3_KMS_KEY_ID }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ vars.BACKUP_AWS_REGION }}
+      AWS_DEFAULT_REGION: ${{ vars.BACKUP_AWS_REGION }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Verify backup bucket protections
+        run: |
+          test "$(aws s3api get-bucket-versioning --bucket "$BACKUP_S3_BUCKET" --query Status --output text)" = "Enabled"
+          aws s3api get-bucket-encryption --bucket "$BACKUP_S3_BUCKET" >/dev/null
+          aws s3api get-bucket-lifecycle-configuration --bucket "$BACKUP_S3_BUCKET" >/dev/null
+
+      - name: Decide restore test schedule
+        id: schedule
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "restore=${{ inputs.run_restore_test }}" >> "$GITHUB_OUTPUT"
+          elif [[ "$(date -u +%u)" == "7" ]]; then
+            echo "restore=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "restore=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create encrypted backup
+        id: backup
+        env:
+          RUN_RESTORE_TEST: ${{ steps.schedule.outputs.restore }}
+        run: bash scripts/backup-postgres.sh
+
+      - name: Publish job summary
+        run: |
+          echo "### Database backup completed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Object: \`${{ steps.backup.outputs.object_key }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Restore test: \`${{ steps.schedule.outputs.restore }}\`" >> "$GITHUB_STEP_SUMMARY"
