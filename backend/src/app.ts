@@ -32,6 +32,7 @@ import { requestLogger } from './shared/middleware/request-logger';
 import { AppError } from './shared/errors/app-error';
 import openApiDocsRoutes from './openapi/docs.routes';
 import operationsRoutes from './modules/operations/operations.routes';
+import { checkApplicationReadiness } from './shared/services/readiness.service';
 
 export const app = express();
 const frontendDistPath = path.resolve(__dirname, '../../front-end/dist');
@@ -54,6 +55,10 @@ app.use(express.json({
 }));
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
+app.get('/ready', async (_req, res) => {
+  const readiness = await checkApplicationReadiness();
+  res.status(readiness.ready ? 200 : 503).json(readiness);
+});
 if (env.OPENAPI_DOCS_ENABLED) {
   app.use('/api-docs', globalRateLimit, openApiDocsRoutes);
 }

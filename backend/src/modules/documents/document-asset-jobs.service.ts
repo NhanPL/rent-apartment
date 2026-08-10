@@ -502,3 +502,10 @@ export const startDocumentAssetScheduler = (): void => {
   );
   reconciliationScheduler.unref();
 };
+
+export const stopDocumentAssetScheduler = (): void => {
+  if (scheduler) clearInterval(scheduler);
+  if (reconciliationScheduler) clearInterval(reconciliationScheduler);
+  scheduler = null;
+  reconciliationScheduler = null;
+};

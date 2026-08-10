@@ -149,6 +149,8 @@ const envSchema = z.object({
   METRICS_ALERT_DB_POOL_PERCENT: z.coerce.number().min(1).max(100).default(90),
   METRICS_ALERT_LOGIN_FAILURES: z.coerce.number().int().min(1).default(10),
   METRICS_ALERT_COOLDOWN_MINUTES: z.coerce.number().int().min(1).default(5),
+  SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(10000),
+  READINESS_DB_TIMEOUT_MS: z.coerce.number().int().min(100).max(30000).default(2000),
   PORT: z.coerce.number().int().positive().default(4000),
   DATABASE_URL: z.string().min(1),
   DB_SSL: z.enum(['true', 'false']).optional(),
