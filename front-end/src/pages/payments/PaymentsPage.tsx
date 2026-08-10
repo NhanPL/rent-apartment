@@ -53,6 +53,25 @@ const hasFilters = (filters: PaymentRequestListFilters) => Boolean(
   || filters.request_status || filters.latest_proof_status
 )
 
+const initialPaymentFilters = (): PaymentRequestListFilters => {
+  const params = new URLSearchParams(window.location.search)
+  const requestStatus = params.get('requestStatus') as PaymentRequestStatus | null
+  const latestProof = params.get('latestProof') as LatestProofFilter | null
+  return {
+    search: params.get('search') || undefined,
+    month: params.get('month') || undefined,
+    building_id: params.get('buildingId') || undefined,
+    room_id: params.get('roomId') || undefined,
+    tenant_id: params.get('tenantId') || undefined,
+    request_status: requestStatusOptions.some((option) => option.value === requestStatus) ? requestStatus ?? undefined : undefined,
+    latest_proof_status: latestProofOptions.some((option) => option.value === latestProof) ? latestProof ?? undefined : undefined,
+    page: Math.max(1, Number(params.get('page')) || 1),
+    pageSize: Math.min(100, Math.max(1, Number(params.get('pageSize')) || 20)),
+    sortBy: 'createdAt',
+    sortOrder: 'desc',
+  }
+}
+
 export function PaymentsPage() {
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
@@ -67,13 +86,8 @@ export function PaymentsPage() {
   const [reviewLoading, setReviewLoading] = useState<string | null>(null)
   const [rejectProofId, setRejectProofId] = useState<string | null>(null)
   const [reversePaymentId, setReversePaymentId] = useState<string | null>(null)
-  const [searchInput, setSearchInput] = useState('')
-  const [filters, setFilters] = useState<PaymentRequestListFilters>({
-    page: 1,
-    pageSize: 20,
-    sortBy: 'createdAt',
-    sortOrder: 'desc',
-  })
+  const [filters, setFilters] = useState<PaymentRequestListFilters>(initialPaymentFilters)
+  const [searchInput, setSearchInput] = useState(() => initialPaymentFilters().search ?? '')
   const [filterSourceItems, setFilterSourceItems] = useState<PaymentRequest[]>([])
 
   const pendingProofs = useMemo(() => items.filter((item) => item.latest_proof_status === 'PENDING').length, [items])
@@ -120,6 +134,24 @@ export function PaymentsPage() {
     }, 300)
     return () => window.clearTimeout(timer)
   }, [searchInput])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const values: Record<string, string | number | undefined> = {
+      search: filters.search,
+      month: filters.month,
+      buildingId: filters.building_id,
+      roomId: filters.room_id,
+      tenantId: filters.tenant_id,
+      requestStatus: filters.request_status,
+      latestProof: filters.latest_proof_status,
+      page: filters.page && filters.page > 1 ? filters.page : undefined,
+      pageSize: filters.pageSize && filters.pageSize !== 20 ? filters.pageSize : undefined,
+    }
+    Object.entries(values).forEach(([key, value]) => value == null || value === '' ? params.delete(key) : params.set(key, String(value)))
+    const query = params.toString()
+    window.history.replaceState(null, '', `/payments${query ? `?${query}` : ''}`)
+  }, [filters])
 
   useEffect(() => {
     let active = true

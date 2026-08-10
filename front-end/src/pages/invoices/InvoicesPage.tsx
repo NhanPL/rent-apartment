@@ -104,6 +104,16 @@ const paymentRequestStatusColor: Record<PaymentRequestStatus, string> = {
 
 const currency = vndCurrency
 
+const invoiceQuery = () => new URLSearchParams(window.location.search)
+const initialInvoiceStatus = () => {
+  const value = invoiceQuery().get('invoiceStatus') as InvoiceStatus | null
+  return invoiceStatusOptions.some((option) => option.value === value) ? value ?? undefined : undefined
+}
+const initialPaymentStatus = () => {
+  const value = invoiceQuery().get('paymentStatus') as PaymentStatus | null
+  return paymentStatusOptions.some((option) => option.value === value) ? value ?? undefined : undefined
+}
+
 interface PaymentRequestFormValues {
   amount: number
   bank_code?: string
@@ -185,14 +195,14 @@ export function InvoicesPage() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
 
-  const [searchInput, setSearchInput] = useState('')
-  const [search, setSearch] = useState('')
-  const [monthFilter, setMonthFilter] = useState('')
-  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<InvoiceStatus | undefined>()
-  const [paymentStatusFilter, setPaymentStatusFilter] = useState<PaymentStatus | undefined>()
-  const [buildingFilter, setBuildingFilter] = useState<string | undefined>()
-  const [roomFilter, setRoomFilter] = useState<string | undefined>()
-  const [tenantFilter, setTenantFilter] = useState<string | undefined>()
+  const [searchInput, setSearchInput] = useState(() => invoiceQuery().get('search') ?? '')
+  const [search, setSearch] = useState(() => invoiceQuery().get('search') ?? '')
+  const [monthFilter, setMonthFilter] = useState(() => invoiceQuery().get('month') ?? '')
+  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<InvoiceStatus | undefined>(initialInvoiceStatus)
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<PaymentStatus | undefined>(initialPaymentStatus)
+  const [buildingFilter, setBuildingFilter] = useState<string | undefined>(() => invoiceQuery().get('buildingId') ?? undefined)
+  const [roomFilter, setRoomFilter] = useState<string | undefined>(() => invoiceQuery().get('roomId') ?? undefined)
+  const [tenantFilter, setTenantFilter] = useState<string | undefined>(() => invoiceQuery().get('tenantId') ?? undefined)
 
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('create')
@@ -231,6 +241,22 @@ export function InvoicesPage() {
     }, 300)
     return () => window.clearTimeout(timer)
   }, [searchInput])
+
+  useEffect(() => {
+    const params = invoiceQuery()
+    const values: Record<string, string | undefined> = {
+      search: search || undefined,
+      month: monthFilter || undefined,
+      invoiceStatus: invoiceStatusFilter,
+      paymentStatus: paymentStatusFilter,
+      buildingId: buildingFilter,
+      roomId: roomFilter,
+      tenantId: tenantFilter,
+    }
+    Object.entries(values).forEach(([key, value]) => value ? params.set(key, value) : params.delete(key))
+    const query = params.toString()
+    window.history.replaceState(null, '', `/invoices${query ? `?${query}` : ''}`)
+  }, [search, monthFilter, invoiceStatusFilter, paymentStatusFilter, buildingFilter, roomFilter, tenantFilter])
 
   const dataFilters = useMemo(() => ({
     search,
@@ -381,7 +407,9 @@ export function InvoicesPage() {
 
   const openDetail = useCallback(async (id: string, syncUrl = true) => {
     if (syncUrl) {
-      window.history.pushState(null, '', `/invoices?invoiceId=${encodeURIComponent(id)}`)
+      const params = invoiceQuery()
+      params.set('invoiceId', id)
+      window.history.pushState(null, '', `/invoices?${params.toString()}`)
     }
     setDetailOpen(true)
     setDetailLoading(true)
