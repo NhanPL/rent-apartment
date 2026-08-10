@@ -1,8 +1,8 @@
+import { useI18n } from '../../../i18n'
 import { Alert, Button, Card, Form, Input, Result, Spin, Typography } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
-import { getFormErrorMessage, getUserErrorMessage } from '../../../services/errorMessage'
+import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../../../services/errorMessage'
 import { LanguageSwitcher } from '../../../shared/components/LanguageSwitcher'
-import { Localized } from '../../../shared/components/Localized'
 import { AuthLayout } from '../../../shared/layout/AuthLayout'
 import { activateAccount, validateAccountActivation } from '../authApi'
 import type { ActivationTokenDetails } from '../types/auth'
@@ -20,6 +20,8 @@ const goToLogin = () => {
 }
 
 export function ActivateAccountPage() {
+  const [form] = Form.useForm<ActivationFormValues>()
+  const { t } = useI18n()
   const token = useMemo(() => new URLSearchParams(window.location.search).get('token')?.trim() ?? '', [])
   const [details, setDetails] = useState<ActivationTokenDetails | null>(null)
   const [validating, setValidating] = useState(true)
@@ -62,6 +64,7 @@ export function ActivateAccountPage() {
       await activateAccount({ token, ...values })
       setActivated(true)
     } catch (activationError) {
+      applyApiFieldErrors(form, activationError)
       setError(getUserErrorMessage(activationError, 'Unable to activate your account.'))
     } finally {
       setSubmitting(false)
@@ -70,50 +73,51 @@ export function ActivateAccountPage() {
 
   return (
     <AuthLayout>
-      <Localized>
+      <>
         <Card className="activation-card" bordered={false}>
           <div className="activation-topbar">
-            <Typography.Text className="activation-brand">Rent Apartment Management</Typography.Text>
+            <Typography.Text className="activation-brand">{t("Rent Apartment Management")}</Typography.Text>
             <LanguageSwitcher />
           </div>
 
           {validating ? (
             <div className="activation-loading" role="status">
               <Spin size="large" />
-              <Typography.Text type="secondary">Checking your activation link...</Typography.Text>
+              <Typography.Text type="secondary">{t("Checking your activation link...")}</Typography.Text>
             </div>
           ) : null}
 
           {!validating && activated ? (
             <Result
               status="success"
-              title="Account activated"
+              title={t("Account activated")}
               subTitle="Your password has been set. Sign in to continue."
-              extra={<Button type="primary" onClick={goToLogin}>Sign in</Button>}
+              extra={<Button type="primary" onClick={goToLogin}>{t("Sign in")}</Button>}
             />
           ) : null}
 
           {!validating && !activated && !details ? (
             <Result
               status="error"
-              title="Unable to activate account"
+              title={t("Unable to activate account")}
               subTitle={error}
-              extra={<Button type="primary" onClick={goToLogin}>Back to sign in</Button>}
+              extra={<Button type="primary" onClick={goToLogin}>{t("Back to sign in")}</Button>}
             />
           ) : null}
 
           {!validating && !activated && details ? (
             <>
               <div className="activation-header">
-                <Typography.Title level={2}>Set your password</Typography.Title>
+                <Typography.Title level={2}>{t("Set your password")}</Typography.Title>
                 <Typography.Text type="secondary">
-                  Activate the account for {details.emailHint}.
+                  {t("Activate the account for")} {details.emailHint}{t(".")}
                 </Typography.Text>
               </div>
 
               {error ? <Alert type="error" message={error} showIcon className="activation-error" /> : null}
 
               <Form<ActivationFormValues>
+                form={form}
                 layout="vertical"
                 requiredMark={false}
                 size="large"
@@ -121,22 +125,22 @@ export function ActivateAccountPage() {
                 onFinishFailed={(formError) => setError(getFormErrorMessage(formError))}
               >
                 <Form.Item
-                  label="New password"
+                  label={t("New password")}
                   name="newPassword"
                   rules={[
-                    { required: true, message: 'Please enter a new password.' },
+                    { required: true, message: t("Please enter a new password.") },
                     ...passwordLengthRules,
                   ]}
                 >
-                  <Input.Password autoComplete="new-password" placeholder="Enter your new password" />
+                  <Input.Password autoComplete="new-password" placeholder={t("Enter your new password")} />
                 </Form.Item>
 
                 <Form.Item
-                  label="Confirm new password"
+                  label={t("Confirm new password")}
                   name="confirmPassword"
                   dependencies={['newPassword']}
                   rules={[
-                    { required: true, message: 'Please confirm your new password.' },
+                    { required: true, message: t("Please confirm your new password.") },
                     ({ getFieldValue }) => ({
                       validator(_, value) {
                         if (!value || getFieldValue('newPassword') === value) return Promise.resolve()
@@ -145,17 +149,17 @@ export function ActivateAccountPage() {
                     }),
                   ]}
                 >
-                  <Input.Password autoComplete="new-password" placeholder="Confirm your new password" />
+                  <Input.Password autoComplete="new-password" placeholder={t("Confirm your new password")} />
                 </Form.Item>
 
                 <Button type="primary" htmlType="submit" loading={submitting} block>
-                  Activate account
+                  {t("Activate account")}
                 </Button>
               </Form>
             </>
           ) : null}
         </Card>
-      </Localized>
+      </>
     </AuthLayout>
   )
 }

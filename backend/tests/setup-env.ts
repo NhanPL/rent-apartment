@@ -22,6 +22,7 @@ process.env.DEFAULT_BANK_CODE = '';
 process.env.DEFAULT_BANK_ACCOUNT_NO = '';
 process.env.DEFAULT_BANK_ACCOUNT_NAME = '';
 process.env.SMTP_HOST = process.env.SMTP_HOST ?? 'localhost';
+process.env.SMTP_ENABLED = process.env.SMTP_ENABLED ?? 'true';
 process.env.SMTP_PORT = process.env.SMTP_PORT ?? '1025';
 process.env.SMTP_SECURE = process.env.SMTP_SECURE ?? 'false';
 process.env.SMTP_USER = process.env.SMTP_USER ?? 'test';

@@ -1,10 +1,10 @@
+import { useI18n } from '../../../i18n'
 import { Card, Col, Empty, Grid, Row, Skeleton, Space, Typography } from 'antd'
 import type {
   DashboardBuildingDistributionPoint,
   DashboardMonthlyRevenuePoint,
   DashboardRoomStatusPoint,
 } from '../types'
-import { Localized } from '../../../shared/components/Localized'
 
 interface DashboardChartsProps {
   loading: boolean
@@ -29,6 +29,7 @@ export function DashboardCharts({
   buildingDistributionData,
   currencyFormatter,
 }: DashboardChartsProps) {
+  const { t } = useI18n()
   const screens = Grid.useBreakpoint()
   const compact = !screens.md
   const occupancyTotal = roomStatusData.reduce((sum, item) => sum + item.value, 0)
@@ -50,12 +51,12 @@ export function DashboardCharts({
   }
 
   return (
-    <Localized>
+    <>
     <Row gutter={[16, 16]}>
       <Col xs={24} lg={12}>
-        <Card title="Room occupancy / status" className="dashboard-card" bordered={false}>
+        <Card title={t("Room occupancy / status")} className="dashboard-card" bordered={false}>
           {roomStatusData.length === 0 ? (
-            <Empty description="No room status data" />
+            <Empty description={t("No room status data")} />
           ) : (
             <div className="dashboard-donut-wrap">
               <div
@@ -73,7 +74,7 @@ export function DashboardCharts({
                 }}
               >
                 <span>{occupancyTotal}</span>
-                <Typography.Text type="secondary">rooms</Typography.Text>
+                <Typography.Text type="secondary">{t("rooms")}</Typography.Text>
               </div>
               <Space direction="vertical" size={10} className="dashboard-donut-legend">
                 {roomStatusData.map((item) => (
@@ -90,16 +91,16 @@ export function DashboardCharts({
       </Col>
 
       <Col xs={24} lg={12}>
-        <Card title="Monthly billing trend" className="dashboard-card" bordered={false}>
+        <Card title={t("Monthly billing trend")} className="dashboard-card" bordered={false}>
           {monthlyRevenueData.length === 0 ? (
-            <Empty description="No invoice data" />
+            <Empty description={t("No invoice data")} />
           ) : (
             <Space direction="vertical" size={12} className="dashboard-bar-chart">
               {monthlyRevenueData.map((item) => (
                 <div key={item.month} className="dashboard-bar-group">
                   <div className="dashboard-bar-label-row">
                     <Typography.Text strong>{item.month}</Typography.Text>
-                    <Typography.Text type="secondary">Billed: {currencyFormatter(item.billed)}</Typography.Text>
+                    <Typography.Text type="secondary">{t("Billed:")} {currencyFormatter(item.billed)}</Typography.Text>
                   </div>
                   <div className="dashboard-bar-track">
                     <div className="dashboard-bar-segment billed" style={{ width: `${ratio(item.billed, monthlyMax)}%` }} />
@@ -108,7 +109,7 @@ export function DashboardCharts({
                   </div>
                   {!compact ? (
                     <Typography.Text type="secondary" className="dashboard-bar-meta">
-                      Collected {currencyFormatter(item.collected)} - Unpaid {currencyFormatter(item.unpaid)}
+                      {t("Collected")} {currencyFormatter(item.collected)} {t("- Unpaid")} {currencyFormatter(item.unpaid)}
                     </Typography.Text>
                   ) : null}
                 </div>
@@ -119,9 +120,9 @@ export function DashboardCharts({
       </Col>
 
       <Col xs={24}>
-        <Card title="Rooms by building" className="dashboard-card" bordered={false}>
+        <Card title={t("Rooms by building")} className="dashboard-card" bordered={false}>
           {buildingDistributionData.length === 0 ? (
-            <Empty description="No building distribution" />
+            <Empty description={t("No building distribution")} />
           ) : (
             <Space direction="vertical" size={12} className="dashboard-horizontal-bars">
               {buildingDistributionData.map((item) => (
@@ -129,7 +130,7 @@ export function DashboardCharts({
                   <div className="dashboard-horizontal-header">
                     <Typography.Text strong>{item.buildingName}</Typography.Text>
                     <Typography.Text type="secondary">
-                      {item.occupiedRooms}/{item.totalRooms} occupied
+                      {item.occupiedRooms}{t("/")}{item.totalRooms} {t("occupied")}
                     </Typography.Text>
                   </div>
                   <div className="dashboard-horizontal-track">
@@ -147,6 +148,6 @@ export function DashboardCharts({
         </Card>
       </Col>
     </Row>
-    </Localized>
+    </>
   )
 }

@@ -1,5 +1,4 @@
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const utilityServiceMocks = vi.hoisted(() => ({
@@ -53,7 +52,7 @@ const approvedReading = {
   updated_at: '2026-07-03T00:00:00.000Z',
 }
 
-describe('UtilitiesPage invoice creation', () => {
+describe('UtilitiesPage workflow ownership', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     window.history.replaceState(null, '', '/utilities')
@@ -74,16 +73,10 @@ describe('UtilitiesPage invoice creation', () => {
     })
   })
 
-  it('shows the action only for approved readings and opens the invoice form route', async () => {
-    const user = userEvent.setup()
+  it('keeps invoice generation out of utility reading review', async () => {
     render(<UtilitiesPage />)
 
-    const createButtons = await screen.findAllByRole('button', { name: /create invoice/i })
-    expect(createButtons).toHaveLength(1)
-
-    await user.click(createButtons[0])
-
-    expect(window.location.pathname).toBe('/invoices')
-    expect(new URLSearchParams(window.location.search).get('utilityReadingId')).toBe(approvedReading.id)
+    expect(await screen.findAllByText('Sunrise Apartments')).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: /create invoice/i })).not.toBeInTheDocument()
   })
 })

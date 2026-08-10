@@ -16,13 +16,13 @@
 
 .reports-filters {
   display: grid;
-  grid-template-columns: minmax(260px, 1.4fr) minmax(180px, 1fr) minmax(170px, 0.8fr);
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 12px;
 }
 
 .reports-summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 12px;
 }
 

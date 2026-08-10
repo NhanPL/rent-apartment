@@ -17,6 +17,13 @@ vi.mock('../src/shared/services/email.service', () => ({
   sendPasswordResetEmail: emailServiceMocks.sendPasswordResetEmail,
   sendPasswordChangedEmail: emailServiceMocks.sendPasswordChangedEmail
 }));
+
+vi.mock('../src/shared/services/notification.service', () => ({
+  enqueueUtilityReadingRejected: vi.fn().mockResolvedValue(true),
+  enqueueInvoiceIssued: vi.fn().mockResolvedValue(true),
+  enqueuePaymentProofRejected: vi.fn().mockResolvedValue(true),
+  enqueuePaymentApproved: vi.fn().mockResolvedValue(true)
+}));
 vi.mock('../src/modules/fixed-charges/fixed-charges.service', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/modules/fixed-charges/fixed-charges.service')>();
   return {
@@ -78,6 +85,7 @@ import { app } from '../src/app';
 import { AppError } from '../src/shared/errors/app-error';
 import { cleanupExpiredSessions } from '../src/modules/auth/session.service';
 import { hashPassword } from '../src/shared/utils/password';
+import { logger } from '../src/shared/services/logger.service';
 import { fakeDb, ids } from './support/mock-db';
 
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
@@ -223,6 +231,41 @@ describe('backend API smoke tests', () => {
     expect(fakeDb.auditLogs).toContainEqual(expect.objectContaining({
       action: 'REFRESH_TOKEN_REUSE_DETECTED'
     }));
+  });
+
+  it('exposes operational metrics only to managers', async () => {
+    const managerSession = await login('manager@example.com');
+    const tenantSession = await login('tenant@example.com');
+
+    const response = await request(app)
+      .get('/api/operations/metrics')
+      .set(auth(managerSession.accessToken))
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      http: {
+        requests: expect.any(Number),
+        errors: expect.any(Number),
+        averageDurationMs: expect.any(Number)
+      },
+      failures: {
+        auth_login: expect.any(Number),
+        upload: expect.any(Number),
+        invoice: expect.any(Number),
+        payment: expect.any(Number)
+      },
+      databasePool: {
+        configuredMax: expect.any(Number),
+        total: expect.any(Number),
+        idle: expect.any(Number),
+        waiting: expect.any(Number)
+      }
+    });
+
+    await request(app)
+      .get('/api/operations/metrics')
+      .set(auth(tenantSession.accessToken))
+      .expect(403);
   });
 
   it('revokes the current session on logout', async () => {
@@ -398,7 +441,7 @@ describe('backend API smoke tests', () => {
   });
 
   it('temporarily locks repeated failures for an account identifier', async () => {
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const warning = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
       await request(app)
@@ -422,8 +465,8 @@ describe('backend API smoke tests', () => {
     }));
     expect(JSON.stringify(fakeDb.auditLogs)).not.toContain('manager@example.com');
     expect(warning).toHaveBeenCalledWith(
-      'Suspected login brute force blocked',
-      expect.any(Object)
+      expect.any(Object),
+      'Suspected login brute force blocked'
     );
 
     const identifierThrottle = fakeDb.loginThrottles.find(
@@ -468,7 +511,7 @@ describe('backend API smoke tests', () => {
   });
 
   it('temporarily blocks an IP attacking multiple account identifiers', async () => {
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const warning = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
 
     for (let attempt = 0; attempt < 20; attempt += 1) {
       await request(app)

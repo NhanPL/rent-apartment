@@ -1,8 +1,8 @@
+import { useI18n } from '../../../i18n'
 import { BankOutlined, PlusOutlined } from '@ant-design/icons'
 import { Button, Empty, Grid, Input, List, Skeleton, Space, Tag, Typography } from 'antd'
 import type { ChangeEvent } from 'react'
 import type { BuildingEntity } from './types'
-import { Localized } from '../../../shared/components/Localized'
 
 interface MasterListPanelProps {
   loading: boolean
@@ -23,25 +23,26 @@ export function MasterListPanel({
   onSelect,
   onAdd,
 }: MasterListPanelProps) {
+  const { t } = useI18n()
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
 
   return (
-    <Localized>
+    <>
     <div>
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
         <Typography.Title level={5} style={{ margin: 0 }}>
-          Buildings
+          {t("Buildings")}
         </Typography.Title>
-        <Typography.Text type="secondary">Manage all buildings in one place.</Typography.Text>
+        <Typography.Text type="secondary">{t("Manage all buildings in one place.")}</Typography.Text>
         <Input.Search
           size={isMobile ? 'large' : 'middle'}
-          placeholder="Search by code or name"
+          placeholder={t("Search by code or name")}
           value={searchValue}
           onChange={(event: ChangeEvent<HTMLInputElement>) => onSearchChange(event.target.value)}
         />
         <Button size={isMobile ? 'large' : 'middle'} type="primary" icon={<PlusOutlined />} onClick={onAdd}>
-          Add
+          {t("Add")}
         </Button>
       </Space>
 
@@ -53,9 +54,9 @@ export function MasterListPanel({
             <Skeleton active paragraph={{ rows: 1 }} title={false} />
           </Space>
         ) : items.length === 0 ? (
-          <Empty description="No buildings found" image={Empty.PRESENTED_IMAGE_SIMPLE}>
+          <Empty description={t("No buildings found")} image={Empty.PRESENTED_IMAGE_SIMPLE}>
             <Button type="primary" size={isMobile ? 'large' : 'middle'} onClick={onAdd}>
-              Add Building
+              {t("Add Building")}
             </Button>
           </Empty>
         ) : (
@@ -80,7 +81,7 @@ export function MasterListPanel({
                   description={<Typography.Text type="secondary" ellipsis>{`${item.code} • ${item.address}`}</Typography.Text>}
                 />
                 <Tag color={item.activeUnits > 0 ? 'green' : 'default'}>
-                  {item.activeUnits}/{item.units} rooms
+                  {item.activeUnits}{t("/")}{item.units} {t("rooms")}
                 </Tag>
               </List.Item>
             )}
@@ -88,6 +89,6 @@ export function MasterListPanel({
         )}
       </div>
     </div>
-    </Localized>
+    </>
   )
 }

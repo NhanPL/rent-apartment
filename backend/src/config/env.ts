@@ -137,8 +137,61 @@ export const resolveOpenApiDocsSettings = (
   return { enabled, requireBasicAuth, username: username.trim(), password };
 };
 
+export interface SmtpSettings {
+  enabled: boolean;
+  host: string;
+  user: string;
+  password: string;
+  fromEmail: string;
+}
+
+export const resolveSmtpSettings = (input: {
+  enabled: 'true' | 'false';
+  host: string;
+  user: string;
+  password: string;
+  fromEmail: string;
+}): SmtpSettings => {
+  const values = [input.host, input.user, input.password, input.fromEmail];
+  const hasAnyCredentials = values.some((value) => value.trim().length > 0);
+  if (input.enabled === 'false' && hasAnyCredentials) {
+    throw new Error('SMTP_ENABLED must be true when SMTP credentials are configured');
+  }
+  if (input.enabled === 'true' && values.some((value) => value.trim().length === 0)) {
+    throw new Error(
+      'SMTP_HOST, SMTP_USER, SMTP_PASS and SMTP_FROM_EMAIL are required when SMTP_ENABLED=true'
+    );
+  }
+  return {
+    enabled: input.enabled === 'true',
+    host: input.host.trim(),
+    user: input.user.trim(),
+    password: input.password,
+    fromEmail: input.fromEmail.trim()
+  };
+};
+
 const envSchema = z.object({
   APP_ENV: z.enum(['development', 'test', 'staging', 'production']).default(defaultAppEnv),
+  APP_VERSION: z.string().trim().min(1).max(100).default('development'),
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
+    .optional(),
+  SENTRY_DSN: z.union([z.string().trim().url(), z.literal('')]).optional().default(''),
+  METRICS_ALERT_MIN_REQUESTS: z.coerce.number().int().min(1).default(20),
+  METRICS_ALERT_ERROR_RATE_PERCENT: z.coerce.number().min(0).max(100).default(10),
+  METRICS_ALERT_LATENCY_MS: z.coerce.number().int().min(1).default(2000),
+  METRICS_ALERT_DB_POOL_PERCENT: z.coerce.number().min(1).max(100).default(90),
+  METRICS_ALERT_LOGIN_FAILURES: z.coerce.number().int().min(1).default(10),
+  METRICS_ALERT_COOLDOWN_MINUTES: z.coerce.number().int().min(1).default(5),
+  SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(10000),
+  READINESS_DB_TIMEOUT_MS: z.coerce.number().int().min(100).max(30000).default(2000),
+  BACKGROUND_JOB_POLL_SECONDS: z.coerce.number().int().min(10).max(3600).default(60),
+  EMAIL_OUTBOX_MAX_ATTEMPTS: z.coerce.number().int().min(1).max(20).default(5),
+  EMAIL_OUTBOX_BATCH_SIZE: z.coerce.number().int().min(1).max(100).default(20),
+  EMAIL_NOTIFICATIONS_ENABLED: z.enum(['true', 'false']).default('true'),
+  PAYMENT_REMINDER_BEFORE_DAYS: z.coerce.number().int().min(0).max(30).default(3),
+  PAYMENT_REMINDER_AFTER_DAYS: z.coerce.number().int().min(0).max(30).default(3),
+  AUTH_TOKEN_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   PORT: z.coerce.number().int().positive().default(4000),
   DATABASE_URL: z.string().min(1),
   DB_SSL: z.enum(['true', 'false']).optional(),
@@ -211,6 +264,7 @@ const envSchema = z.object({
   CLOUDINARY_API_KEY: z.string().trim().optional(),
   CLOUDINARY_API_SECRET: z.string().trim().optional(),
   CLOUDINARY_UPLOAD_ROOT_FOLDER: z.string().trim().default('rent-apartment'),
+  SMTP_ENABLED: z.enum(['true', 'false']).default('false'),
   SMTP_HOST: optionalString,
   SMTP_PORT: z.coerce.number().int().positive().default(587),
   SMTP_SECURE: z.enum(['true', 'false']).default('false'),
@@ -252,9 +306,18 @@ const openApiDocs = resolveOpenApiDocsSettings(
   parsed.data.OPENAPI_DOCS_USERNAME,
   parsed.data.OPENAPI_DOCS_PASSWORD
 );
+const smtp = resolveSmtpSettings({
+  enabled: parsed.data.SMTP_ENABLED,
+  host: parsed.data.SMTP_HOST,
+  user: parsed.data.SMTP_USER,
+  password: parsed.data.SMTP_PASS,
+  fromEmail: parsed.data.SMTP_FROM_EMAIL
+});
 
 export const env = {
   ...parsed.data,
+  LOG_LEVEL: parsed.data.LOG_LEVEL
+    ?? (parsed.data.APP_ENV === 'test' ? 'silent' : parsed.data.APP_ENV === 'development' ? 'debug' : 'info'),
   DB_SSL: databaseTls.dbSsl,
   DB_SSL_REJECT_UNAUTHORIZED: databaseTls.rejectUnauthorized,
   DB_SSL_CA: parsed.data.DB_SSL_CA.replace(/\\n/g, '\n').trim(),
@@ -263,5 +326,10 @@ export const env = {
   DOCUMENT_DELIVERY_BASE_URL: documentDeliveryBaseUrl,
   OPENAPI_DOCS_ENABLED: openApiDocs.enabled,
   OPENAPI_DOCS_REQUIRE_AUTH: openApiDocs.requireBasicAuth,
+  SMTP_ENABLED: smtp.enabled,
+  SMTP_HOST: smtp.host,
+  SMTP_USER: smtp.user,
+  SMTP_PASS: smtp.password,
+  SMTP_FROM_EMAIL: smtp.fromEmail,
   AUDIT_IP_HASH_SECRET: parsed.data.AUDIT_IP_HASH_SECRET || parsed.data.JWT_ACCESS_SECRET
 };

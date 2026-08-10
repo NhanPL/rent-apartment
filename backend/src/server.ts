@@ -1,35 +1,48 @@
 import { app } from './app';
 import { env } from './config/env';
 import { assertDatabaseConnection } from './db/connection';
-import { startSessionCleanupScheduler } from './modules/auth/session.service';
-import { startDocumentAssetScheduler } from './modules/documents/document-asset-jobs.service';
+import {
+  startBackgroundJobScheduler,
+  stopBackgroundJobScheduler
+} from './modules/operations/background-jobs.service';
 import { toSafeErrorLog } from './shared/utils/safe-log';
-
-process.on('unhandledRejection', (reason) => {
-  // eslint-disable-next-line no-console
-  console.error('Unhandled rejection', toSafeErrorLog(reason));
-});
-
-process.on('uncaughtException', (error) => {
-  // eslint-disable-next-line no-console
-  console.error('Uncaught exception', toSafeErrorLog(error));
-});
+import { logger } from './shared/services/logger.service';
+import { flushMonitoring, initializeMonitoring } from './shared/services/monitoring.service';
+import { createGracefulShutdown } from './shared/services/lifecycle.service';
+import { pool } from './db/pool';
 
 async function bootstrap() {
   try {
+    initializeMonitoring();
     await assertDatabaseConnection();
-    // eslint-disable-next-line no-console
-    console.log('Database connected successfully.');
-    startSessionCleanupScheduler();
-    startDocumentAssetScheduler();
+    logger.info({}, 'Database connected successfully');
+    startBackgroundJobScheduler();
 
-    app.listen(env.PORT, () => {
-      // eslint-disable-next-line no-console
-      console.log(`Backend listening on port ${env.PORT}`);
+    const server = app.listen(env.PORT, () => {
+      logger.info({ port: env.PORT }, 'Backend listening');
+    });
+    const shutdown = createGracefulShutdown({
+      server,
+      timeoutMs: env.SHUTDOWN_TIMEOUT_MS,
+      stopSchedulers: stopBackgroundJobScheduler,
+      closeDatabase: () => pool.end(),
+      flushMonitoring: () => flushMonitoring(),
+      flushLogger: () => logger.flush(),
+      exit: (code) => process.exit(code)
+    });
+
+    process.on('SIGTERM', () => void shutdown('SIGTERM'));
+    process.on('SIGINT', () => void shutdown('SIGINT'));
+    process.on('unhandledRejection', (reason) => {
+      logger.error({ error: toSafeErrorLog(reason) }, 'Unhandled rejection');
+      void shutdown('UNHANDLED_REJECTION', 1);
+    });
+    process.on('uncaughtException', (error) => {
+      logger.error({ error: toSafeErrorLog(error) }, 'Uncaught exception');
+      void shutdown('UNCAUGHT_EXCEPTION', 1);
     });
   } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error((error as Error).message);
+    logger.error({ error }, 'Backend bootstrap failed');
     process.exit(1);
   }
 }

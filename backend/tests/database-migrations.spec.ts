@@ -54,4 +54,20 @@ describe('database migration source of truth', () => {
     expect(readme).not.toMatch(/psql[^\n]*database\.sql/i);
     expect(readme).not.toContain('/ `password`');
   });
+
+  it('records the application release and supports post-deploy verification', () => {
+    const runner = fs.readFileSync(path.join(repoRoot, 'backend', 'scripts', 'migrate.js'), 'utf8');
+    const packageJson = JSON.parse(
+      fs.readFileSync(path.join(repoRoot, 'backend', 'package.json'), 'utf8')
+    ) as { scripts: Record<string, string> };
+
+    expect(runner).toContain('application_version text');
+    expect(runner).toContain('process.env.APP_VERSION');
+    expect(runner).toContain("args.has('--verify')");
+    expect(runner).toContain('if (!dryRun && !verifyOnly)');
+    expect(runner).toContain('NULL::text AS application_version');
+    expect(runner).toContain("set_config('lock_timeout'");
+    expect(runner).toContain("set_config('statement_timeout'");
+    expect(packageJson.scripts['db:migrate:verify']).toBe('node scripts/migrate.js --verify');
+  });
 });

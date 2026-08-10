@@ -1,4 +1,5 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -61,6 +62,11 @@ vi.mock('../../services/paymentsService', () => ({
 
 import { InvoicesPage } from './InvoicesPage'
 import type { InvoiceListItem } from './types'
+
+function renderInvoicesPage() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
+  return render(<QueryClientProvider client={client}><InvoicesPage /></QueryClientProvider>)
+}
 
 const invoice: InvoiceListItem = {
   id: '00000000-0000-4000-8000-000000000901',
@@ -143,7 +149,7 @@ describe('InvoicesPage invoice deletion', () => {
       paid_at: null,
     }]))
     const user = userEvent.setup()
-    render(<InvoicesPage />)
+    renderInvoicesPage()
 
     await user.click(await screen.findByRole('button', { name: 'Delete draft invoice' }))
 
@@ -158,7 +164,7 @@ describe('InvoicesPage invoice deletion', () => {
 
   it('requires a reason to void a paid invoice and retains the record', async () => {
     const user = userEvent.setup()
-    render(<InvoicesPage />)
+    renderInvoicesPage()
 
     await user.click(await screen.findByRole('button', { name: 'Void invoice' }))
     const dialog = screen.getByRole('dialog', { name: 'Void this invoice?' })
@@ -217,7 +223,7 @@ describe('InvoicesPage invoice deletion', () => {
     })
     window.history.replaceState(null, '', `/invoices?utilityReadingId=${utilityReadingId}`)
 
-    render(<InvoicesPage />)
+    renderInvoicesPage()
 
     expect(await screen.findByText('Create invoice from utility reading')).toBeInTheDocument()
     await waitFor(() => {
@@ -272,7 +278,7 @@ describe('InvoicesPage invoice deletion', () => {
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(paymentRequest)
 
-    render(<InvoicesPage />)
+    renderInvoicesPage()
 
     await user.click(await screen.findByRole('button', { name: 'View invoice' }))
     await user.click(await screen.findByRole('button', { name: /issue and create qr/i }))
@@ -358,7 +364,7 @@ describe('InvoicesPage invoice deletion', () => {
       remaining_amount: 0,
     })
 
-    render(<InvoicesPage />)
+    renderInvoicesPage()
 
     await user.click(await screen.findByRole('button', { name: 'View invoice' }))
     await user.click(await screen.findByRole('button', { name: /confirm and complete invoice/i }))

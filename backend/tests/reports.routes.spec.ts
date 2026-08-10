@@ -57,6 +57,21 @@ describe('reports CSV export route', () => {
     expect(mockedGetReportDetails).not.toHaveBeenCalled();
   });
 
+  it('forwards reconciliation dimensions and validates its sort fields', async () => {
+    const roomId = '00000000-0000-4000-8000-000000000301';
+    const tenantId = '00000000-0000-4000-8000-000000000101';
+    await request(app)
+      .get(`/reports/details?section=reconciliation&room_id=${roomId}&tenant_id=${tenantId}&sortBy=paymentDate`)
+      .expect(200);
+
+    expect(mockedGetReportDetails).toHaveBeenCalledWith(
+      '00000000-0000-4000-8000-000000000001',
+      expect.objectContaining({ roomId, tenantId }),
+      'reconciliation',
+      expect.objectContaining({ sortBy: 'paymentDate' })
+    );
+  });
+
   it('returns UTF-8 CSV with safe download and caching headers', async () => {
     const response = await request(app)
       .get('/reports/export.csv?section=revenue')

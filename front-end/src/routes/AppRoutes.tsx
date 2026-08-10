@@ -1,11 +1,22 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { lazy, Suspense } from 'react'
+import {
+  BrowserRouter,
+  Navigate,
+  Outlet,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+} from 'react-router-dom'
 import { AppLayout } from '../layout/AppLayout'
 import { routeItems, sidebarRouteItems } from './routeConfig'
 import { useAuth } from '../features/auth/useAuth'
 import { changePassword, revokeAllSessions } from '../features/auth/authApi'
 import type { AppRole } from '../features/auth/types/auth'
 import { useI18n } from '../i18n'
-import { Localized } from '../shared/components/Localized'
+import { ForbiddenPage } from '../pages/errors/ForbiddenPage'
+import { NotFoundPage } from '../pages/errors/NotFoundPage'
 
 const LoginPage = lazy(() => import('../features/auth/pages/LoginPage').then((module) => ({ default: module.LoginPage })))
 const ActivateAccountPage = lazy(() => import('../features/auth/pages/ActivateAccountPage').then((module) => ({ default: module.ActivateAccountPage })))
@@ -26,23 +37,11 @@ const PaymentsPage = lazy(() => import('../pages/payments/PaymentsPage').then((m
 const ReportsPage = lazy(() => import('../pages/reports/ReportsPage').then((module) => ({ default: module.ReportsPage })))
 const AuditLogsPage = lazy(() => import('../pages/audit-logs/AuditLogsPage').then((module) => ({ default: module.AuditLogsPage })))
 
-const adminPaths = new Set(['/dashboard', '/buildings', '/rental-registration', '/contracts', '/utilities', '/fixed-charges', '/tenants', '/invoices', '/monthly-billing', '/payments', '/reports', '/audit-logs'])
+const managerPaths = new Set(routeItems.filter((item) => item.path !== '/my-room').map((item) => item.path))
 
 function RouteFallback() {
-  return (
-    <Localized>
-      <div role="status" aria-live="polite">
-        Loading page...
-      </div>
-    </Localized>
-  )
-}
-
-function getBasePath(pathname: string) {
-  if (pathname.startsWith('/rooms/')) {
-    return '/buildings'
-  }
-  return pathname
+  const { t } = useI18n()
+  return <><div role="status" aria-live="polite">{t("Loading page...")}</div></>
 }
 
 function homePathByRole(role: AppRole) {
@@ -50,135 +49,119 @@ function homePathByRole(role: AppRole) {
 }
 
 function canAccess(pathname: string, role: AppRole) {
-  if (pathname === '/my-room') {
-    return role === 'TENANT'
-  }
-
-  if (pathname.startsWith('/rooms/')) {
-    return role === 'MANAGER'
-  }
-
-  if (adminPaths.has(pathname)) {
-    return role === 'MANAGER'
-  }
-
+  if (pathname === '/my-room') return role === 'TENANT'
+  if (pathname.startsWith('/rooms/')) return role === 'MANAGER'
+  if (managerPaths.has(pathname)) return role === 'MANAGER'
   return true
 }
 
-function resolveProtectedPath(pathname: string, role: AppRole) {
-  const normalized = pathname === '/' ? homePathByRole(role) : pathname
-  const found = normalized.startsWith('/rooms/') || routeItems.some((item) => normalized === item.path)
-
-  if (!found) {
-    return homePathByRole(role)
-  }
-
-  if (!canAccess(normalized, role)) {
-    return homePathByRole(role)
-  }
-
-  return normalized
+function PublicOnlyRoute() {
+  const { user, isAuthenticated, isInitializing } = useAuth()
+  if (isInitializing) return <RouteFallback />
+  if (isAuthenticated && user) return <Navigate to={homePathByRole(user.role)} replace />
+  return <Outlet />
 }
 
-export function AppRoutes() {
-  const { user, isAuthenticated, isInitializing, logout } = useAuth()
-  const { t } = useI18n()
-  const [pathname, setPathname] = useState(window.location.pathname)
+function ProtectedRoute() {
+  const { user, isAuthenticated, isInitializing } = useAuth()
+  const location = useLocation()
+  if (isInitializing) return <RouteFallback />
+  if (!isAuthenticated || !user) return <Navigate to="/login" replace state={{ from: location }} />
+  return <Outlet />
+}
 
-  useEffect(() => {
-    const sync = () => setPathname(window.location.pathname)
-    window.addEventListener('popstate', sync)
-    return () => window.removeEventListener('popstate', sync)
-  }, [])
+function RoleRoute({ roles }: { roles: AppRole[] }) {
+  const { user } = useAuth()
+  if (!user || !roles.includes(user.role)) return <Navigate to="/403" replace />
+  return <Outlet />
+}
+
+function RoleHome() {
+  const { user } = useAuth()
+  return <Navigate to={user ? homePathByRole(user.role) : '/login'} replace />
+}
+
+function DashboardRoute() {
+  const navigate = useNavigate()
+  return <DashboardPage onNavigate={navigate} />
+}
+
+function RoomDetailRoute() {
+  const { roomId } = useParams<{ roomId: string }>()
+  return roomId ? <RoomDetailPage roomId={roomId} /> : <NotFoundPage />
+}
+
+function AuthenticatedLayout() {
+  const { user, logout } = useAuth()
+  const { t } = useI18n()
+  const location = useLocation()
+  const navigate = useNavigate()
+  if (!user) return null
+
+  const basePath = location.pathname.startsWith('/rooms/') ? '/buildings' : location.pathname
+  const pageTitle = location.pathname.startsWith('/rooms/')
+    ? t('Room Detail')
+    : location.pathname === '/403'
+      ? t('Access denied')
+      : t(routeItems.find((item) => item.path === location.pathname)?.label ?? 'Page not found')
+  const items = sidebarRouteItems.filter((item) => canAccess(item.path, user.role)).map((item) => ({ ...item, label: t(item.label) }))
 
   const handleLogout = async () => {
     await logout()
-    window.history.replaceState(null, '', '/login')
-    setPathname('/login')
+    navigate('/login', { replace: true })
   }
-
-  if (pathname === '/activate-account' || pathname === '/forgot-password' || pathname === '/reset-password') {
-    return (
-      <Suspense fallback={<RouteFallback />}>
-        {pathname === '/activate-account' ? <ActivateAccountPage /> : null}
-        {pathname === '/forgot-password' ? <ForgotPasswordPage /> : null}
-        {pathname === '/reset-password' ? <ResetPasswordPage /> : null}
-      </Suspense>
-    )
-  }
-
-  if (isInitializing) {
-    return <RouteFallback />
-  }
-
-  if (!isAuthenticated || !user) {
-    if (pathname !== '/login') {
-      window.history.replaceState(null, '', '/login')
-    }
-    return (
-      <Suspense fallback={<RouteFallback />}>
-        <LoginPage />
-      </Suspense>
-    )
-  }
-
-  const targetPath = pathname === '/login' ? homePathByRole(user.role) : resolveProtectedPath(pathname, user.role)
-  if (targetPath !== pathname) {
-    window.history.replaceState(null, '', targetPath)
-  }
-  const protectedPath = targetPath
-
-  const pageTitle = protectedPath.startsWith('/rooms/')
-    ? t('Room Detail')
-    : t(routeItems.find((item) => item.path === protectedPath)?.label ?? 'Dashboard')
-
-  const renderPage = () => {
-    if (protectedPath === '/dashboard') {
-      return <DashboardPage onNavigate={(path) => {
-        window.history.pushState(null, '', path)
-        setPathname(path)
-      }} />
-    }
-    if (protectedPath === '/buildings') return <BuildingsPage />
-    if (protectedPath === '/rental-registration') return <RentalRegistrationPage />
-    if (protectedPath === '/contracts') return <ContractsPage />
-    if (protectedPath === '/utilities') return <UtilitiesPage />
-    if (protectedPath === '/fixed-charges') return <FixedChargesPage />
-    if (protectedPath.startsWith('/rooms/')) return <RoomDetailPage roomId={protectedPath.split('/')[2]} />
-    if (protectedPath === '/tenants') return <TenantsPage />
-    if (protectedPath === '/invoices') return <InvoicesPage />
-    if (protectedPath === '/monthly-billing') return <MonthlyBillingPage />
-    if (protectedPath === '/payments') return <PaymentsPage />
-    if (protectedPath === '/reports') return <ReportsPage />
-    if (protectedPath === '/audit-logs') return <AuditLogsPage />
-    if (protectedPath === '/my-room') return <TenantRoomPage />
-    return null
-  }
-
-  const allowedSidebarItems = sidebarRouteItems
-    .filter((item) => canAccess(item.path, user.role))
-    .map((item) => ({ ...item, label: t(item.label) }))
 
   return (
     <AppLayout
-      pathname={getBasePath(protectedPath)}
-      onNavigate={(path) => {
-        window.history.pushState(null, '', path)
-        setPathname(path)
-      }}
-      items={allowedSidebarItems}
+      pathname={basePath}
+      onNavigate={navigate}
+      items={items}
       pageTitle={pageTitle}
-      content={<Suspense fallback={<RouteFallback />}>{renderPage()}</Suspense>}
+      content={<Suspense fallback={<RouteFallback />}><Outlet /></Suspense>}
       currentUserName={user.fullName ?? user.username ?? user.email ?? t('User')}
       onLogout={handleLogout}
-      onChangePassword={async (payload) => {
-        await changePassword(payload)
-        await handleLogout()
-      }}
-      onRevokeAllSessions={async () => {
-        await revokeAllSessions()
-        await handleLogout()
-      }}
+      onChangePassword={async (payload) => { await changePassword(payload); await handleLogout() }}
+      onRevokeAllSessions={async () => { await revokeAllSessions(); await handleLogout() }}
     />
   )
+}
+
+function AppRouteTree() {
+  return (
+    <Routes>
+      <Route element={<PublicOnlyRoute />}>
+        <Route path="/login" element={<LoginPage />} />
+      </Route>
+      <Route path="/activate-account" element={<ActivateAccountPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route element={<ProtectedRoute />}>
+        <Route element={<AuthenticatedLayout />}>
+          <Route index element={<RoleHome />} />
+          <Route element={<RoleRoute roles={['MANAGER']} />}>
+            <Route path="/dashboard" element={<DashboardRoute />} />
+            <Route path="/buildings" element={<BuildingsPage />} />
+            <Route path="/rooms/:roomId" element={<RoomDetailRoute />} />
+            <Route path="/rental-registration" element={<RentalRegistrationPage />} />
+            <Route path="/contracts" element={<ContractsPage />} />
+            <Route path="/utilities" element={<UtilitiesPage />} />
+            <Route path="/fixed-charges" element={<FixedChargesPage />} />
+            <Route path="/tenants" element={<TenantsPage />} />
+            <Route path="/invoices" element={<InvoicesPage />} />
+            <Route path="/monthly-billing" element={<MonthlyBillingPage />} />
+            <Route path="/payments" element={<PaymentsPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/audit-logs" element={<AuditLogsPage />} />
+          </Route>
+          <Route element={<RoleRoute roles={['TENANT']} />}><Route path="/my-room" element={<TenantRoomPage />} /></Route>
+          <Route path="/403" element={<ForbiddenPage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
+      </Route>
+    </Routes>
+  )
+}
+
+export function AppRoutes() {
+  return <BrowserRouter><AppRouteTree /></BrowserRouter>
 }

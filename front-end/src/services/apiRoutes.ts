@@ -33,6 +33,7 @@ export const API_ROUTES = {
     detail: (id: string) => `/tenants/${id}`,
     identityDocuments: (id: string) => `/tenants/${id}/identity-documents`,
     resendActivation: (id: string) => `/tenants/${id}/resend-activation`,
+    accountStatus: (id: string) => `/tenants/${id}/account-status`,
   },
   auditLogs: {
     list: '/audit-logs',

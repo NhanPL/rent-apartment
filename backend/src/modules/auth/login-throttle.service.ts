@@ -4,6 +4,7 @@ import { env } from '../../config/env';
 import { query, withTransaction } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
 import { writeAuditLog } from '../../shared/services/audit-log.service';
+import { logger } from '../../shared/services/logger.service';
 
 type ThrottleScope = 'IDENTIFIER' | 'IP';
 type ThrottleClient = Pick<PoolClient, 'query'>;
@@ -150,10 +151,9 @@ export const recordLoginFailure = async (
       }
     });
 
-    // eslint-disable-next-line no-console
-    console.warn('Suspected login brute force blocked', {
+    logger.warn({
       throttles: locked.map(suspiciousLogMetadata)
-    });
+    }, 'Suspected login brute force blocked');
   });
 };
 

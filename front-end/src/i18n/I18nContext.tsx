@@ -6,6 +6,7 @@ import 'dayjs/locale/en'
 import 'dayjs/locale/vi'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { I18nextProvider } from 'react-i18next'
 import {
   detectInitialLanguage,
   LANGUAGE_STORAGE_KEY,
@@ -14,9 +15,11 @@ import {
 } from './i18n'
 import type { AppLanguage } from './translations'
 import { I18nContext, type I18nContextValue } from './i18n-context-value'
+import { i18nInstance, loadLanguageResources } from './i18nextInstance'
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<AppLanguage>(detectInitialLanguage)
+  const [resourcesVersion, setResourcesVersion] = useState(0)
   setActiveLanguage(language)
   dayjs.locale(language)
 
@@ -26,9 +29,18 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
+    let active = true
     window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language)
     document.documentElement.lang = language
     dayjs.locale(language)
+    void loadLanguageResources(language).then(async () => {
+      await i18nInstance.changeLanguage(language)
+      if (active) setResourcesVersion((current) => current + 1)
+    })
+
+    return () => {
+      active = false
+    }
   }, [language])
 
   const value = useMemo<I18nContextValue>(
@@ -36,14 +48,19 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       language,
       locale: language === 'vi' ? 'vi-VN' : 'en-US',
       setLanguage,
-      t: (source, parameters) => translateTemplate(source, parameters, language),
+      t: (source, parameters) => {
+        void resourcesVersion
+        return translateTemplate(source, parameters, language)
+      },
     }),
-    [language, setLanguage],
+    [language, resourcesVersion, setLanguage],
   )
 
   return (
     <I18nContext.Provider value={value}>
-      <ConfigProvider locale={language === 'vi' ? viVN : enUS}>{children}</ConfigProvider>
+      <I18nextProvider i18n={i18nInstance}>
+        <ConfigProvider locale={language === 'vi' ? viVN : enUS}>{children}</ConfigProvider>
+      </I18nextProvider>
     </I18nContext.Provider>
   )
 }

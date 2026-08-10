@@ -35,18 +35,19 @@ interface MockAppLayoutProps {
   pageTitle: string
   content: ReactNode
   currentUserName: string
+  onNavigate: (path: string) => void
   onChangePassword: (payload: { currentPassword: string; newPassword: string; confirmPassword: string }) => Promise<void>
 }
 
 vi.mock('../layout/AppLayout', () => ({
-  AppLayout: ({ pathname, items, pageTitle, content, currentUserName, onChangePassword }: MockAppLayoutProps) => (
+  AppLayout: ({ pathname, items, pageTitle, content, currentUserName, onNavigate, onChangePassword }: MockAppLayoutProps) => (
     <div>
       <h1 data-testid="page-title">{pageTitle}</h1>
       <div data-testid="layout-path">{pathname}</div>
       <div data-testid="current-user">{currentUserName}</div>
       <nav aria-label="sidebar">
         {items.map((item) => (
-          <span key={item.path}>{item.label}</span>
+          <button type="button" key={item.path} onClick={() => onNavigate(item.path)}>{item.label}</button>
         ))}
       </nav>
       <button
@@ -233,27 +234,50 @@ describe('AppRoutes', () => {
     expect(await screen.findByText('Room Detail Page room-1')).not.toBeNull()
   })
 
-  it('redirects tenants away from manager-only routes to their room page', async () => {
+  it('shows 403 when a tenant opens a manager-only route', async () => {
     setAuth(tenantUser)
     window.history.replaceState(null, '', '/dashboard')
 
     render(<AppRoutes />)
 
-    expect(window.location.pathname).toBe('/my-room')
-    expect(screen.getByTestId('page-title').textContent).toBe('My Room')
-    expect(await screen.findByText('Tenant Room Page')).not.toBeNull()
-    expect(screen.getAllByText('My Room')).toHaveLength(2)
+    expect(window.location.pathname).toBe('/403')
+    expect(screen.getByTestId('page-title').textContent).toBe('Access denied')
+    expect(await screen.findByText('You do not have permission to open this page.')).not.toBeNull()
     expect(screen.queryByText('Buildings')).toBeNull()
   })
 
-  it('redirects the removed payment result route to the tenant room page', async () => {
+  it('shows 404 for a removed route', async () => {
     setAuth(tenantUser)
     window.history.replaceState(null, '', '/payment-result')
 
     render(<AppRoutes />)
 
-    expect(window.location.pathname).toBe('/my-room')
-    expect(await screen.findByText('Tenant Room Page')).not.toBeNull()
+    expect(window.location.pathname).toBe('/payment-result')
+    expect(await screen.findByText('The page you requested does not exist.')).not.toBeNull()
+  })
+
+  it('preserves query filters on manager deep links', async () => {
+    setAuth(managerUser)
+    window.history.replaceState(null, '', '/invoices?month=2026-08&status=ISSUED')
+
+    render(<AppRoutes />)
+
+    expect(await screen.findByText('Invoices Page')).not.toBeNull()
+    expect(window.location.search).toBe('?month=2026-08&status=ISSUED')
+  })
+
+  it('supports browser back after sidebar navigation', async () => {
+    const user = userEvent.setup()
+    setAuth(managerUser)
+    window.history.replaceState(null, '', '/dashboard')
+
+    render(<AppRoutes />)
+    await user.click(screen.getByRole('button', { name: 'Buildings' }))
+    expect(await screen.findByText('Buildings Page')).not.toBeNull()
+
+    window.history.back()
+    await waitFor(() => expect(window.location.pathname).toBe('/dashboard'))
+    expect(await screen.findByText('Dashboard Page')).not.toBeNull()
   })
 
   it('sends authenticated users away from login to their role home route', async () => {

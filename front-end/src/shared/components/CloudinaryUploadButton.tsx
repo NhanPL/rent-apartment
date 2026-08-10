@@ -5,7 +5,6 @@ import { useState, type ReactNode } from 'react'
 import { uploadFileToCloudinary, type UploadedCloudinaryFile, type UploadContext } from '../../services/uploadService'
 import { getUserErrorMessage } from '../../services/errorMessage'
 import { translate } from '../../i18n'
-import { Localized } from './Localized'
 
 interface CloudinaryUploadButtonBaseProps {
   context: UploadContext
@@ -41,7 +40,7 @@ export function CloudinaryUploadButton(props: CloudinaryUploadButtonProps) {
   }
 
   return (
-    <Localized>
+    <>
     <Upload
       accept={accept}
       beforeUpload={props.deferred ? (file) => {
@@ -58,6 +57,6 @@ export function CloudinaryUploadButton(props: CloudinaryUploadButtonProps) {
         {children ?? 'Upload file'}
       </Button>
     </Upload>
-    </Localized>
+    </>
   )
 }

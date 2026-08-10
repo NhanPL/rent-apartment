@@ -327,20 +327,3 @@ export const cleanupExpiredSessions = async (): Promise<number> => {
   );
   return result.rows.length;
 };
-
-export const startSessionCleanupScheduler = (): NodeJS.Timeout => {
-  const runCleanup = (): void => {
-    void cleanupExpiredSessions().catch((error) => {
-      console.error('Failed to clean up expired authentication sessions', {
-        error: error instanceof Error ? error.message : 'Unknown cleanup error'
-      });
-    });
-  };
-  runCleanup();
-  const timer = setInterval(
-    runCleanup,
-    env.SESSION_CLEANUP_INTERVAL_HOURS * 60 * 60 * 1000
-  );
-  timer.unref();
-  return timer;
-};

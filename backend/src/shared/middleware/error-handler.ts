@@ -2,6 +2,10 @@ import { NextFunction, Request, Response } from 'express';
 import { AppError } from '../errors/app-error';
 import { env, type AppEnvironment } from '../../config/env';
 import { buildErrorResponse } from '../errors/error-contract';
+import { logger } from '../services/logger.service';
+import { getAuditRequestContext } from './audit-context';
+import { captureRequestError } from '../services/monitoring.service';
+import { classifyOperationalFeature } from '../services/metrics.service';
 
 interface DatabaseError {
   code?: string;
@@ -198,7 +202,7 @@ const mappedFieldErrors = (mapped: { field?: string; message: string }) => (
 
 export const createErrorHandler = (appEnvironment: AppEnvironment) => (
   err: unknown,
-  _req: Request,
+  req: Request,
   res: Response,
   next: NextFunction
 ): void => {
@@ -209,6 +213,14 @@ export const createErrorHandler = (appEnvironment: AppEnvironment) => (
   }
 
   if (err instanceof AppError) {
+    if (err.statusCode >= 500) {
+      captureRequestError(err, {
+        method: req.method,
+        feature: classifyOperationalFeature(req.originalUrl),
+        userId: req.auth?.userId,
+        role: req.auth?.role
+      });
+    }
     res.status(err.statusCode).json(buildErrorResponse(
       res,
       err.code,
@@ -298,6 +310,17 @@ export const createErrorHandler = (appEnvironment: AppEnvironment) => (
     ));
     return;
   }
+
+  logger.error({
+    requestId: getAuditRequestContext()?.requestId ?? 'unknown',
+    error: err
+  }, 'Unhandled request error');
+  captureRequestError(err, {
+    method: req.method,
+    feature: classifyOperationalFeature(req.originalUrl),
+    userId: req.auth?.userId,
+    role: req.auth?.role
+  });
 
   res.status(500).json(buildErrorResponse(
     res,

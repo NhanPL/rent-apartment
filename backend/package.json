@@ -11,10 +11,12 @@
     "test": "vitest run --config vitest.config.ts",
     "audit": "npm audit --audit-level=high",
     "db:migrate": "node scripts/migrate.js",
+    "db:migrate:verify": "node scripts/migrate.js --verify",
     "db:seed": "node scripts/migrate.js --seed",
     "db:schema:export": "node scripts/export-schema.js --output ../database.sql"
   },
   "dependencies": {
+    "@sentry/node": "^10.70.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^16.4.5",
@@ -23,6 +25,7 @@
     "helmet": "^8.3.0",
     "nodemailer": "^9.0.3",
     "pg": "^8.12.0",
+    "pino": "^9.14.0",
     "swagger-ui-express": "^5.0.1",
     "zod": "^3.23.8"
   },

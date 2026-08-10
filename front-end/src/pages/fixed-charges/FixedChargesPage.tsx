@@ -1,3 +1,4 @@
+import { useI18n } from '../../i18n'
 import {
   DeleteOutlined,
   EditOutlined,
@@ -15,7 +16,6 @@ import {
   InputNumber,
   Modal,
   Select,
-  Skeleton,
   Space,
   Switch,
   Table,
@@ -53,8 +53,7 @@ import {
   updateRoomChargeOverride,
   updateRoomMonthExtra,
 } from '../../services/fixedChargesService'
-import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
-import { Localized } from '../../shared/components/Localized'
+import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
 import { vndCurrency } from '../../i18n'
 import type {
   BuildingCharge,
@@ -75,6 +74,9 @@ import type {
   RoomOption,
 } from './types'
 import './FixedChargesPage.css'
+import { ChargeAssignmentPanel } from './components/ChargeAssignmentPanel'
+import { ChargeCatalogPanel } from './components/ChargeCatalogPanel'
+import { MonthlyExtrasPanel } from './components/MonthlyExtrasPanel'
 
 type TabKey = 'catalog' | 'building' | 'room' | 'contract' | 'extra' | 'preview'
 type EditableKind = Exclude<TabKey, 'preview'>
@@ -145,6 +147,7 @@ const typeTag = (type: ChargeType) => {
 const activeTag = (active: boolean) => <Tag color={active ? 'green' : 'default'}>{active ? 'Active' : 'Inactive'}</Tag>
 
 export function FixedChargesPage() {
+  const { t } = useI18n()
   const screens = Grid.useBreakpoint()
   const [catalogForm] = Form.useForm<CatalogFormValues>()
   const [chargeForm] = Form.useForm<ChargeFormValues>()
@@ -508,11 +511,14 @@ export function FixedChargesPage() {
       closeDrawer()
       await loadTables()
     } catch (error: unknown) {
+      if (drawerKind === 'catalog') applyApiFieldErrors(catalogForm, error)
+      else if (drawerKind === 'extra') applyApiFieldErrors(extraForm, error)
+      else applyApiFieldErrors(chargeForm, error)
       message.error(getFormErrorMessage(error, 'Unable to save the fixed charge.'))
     } finally {
       setSaving(false)
     }
-  }, [closeDrawer, drawerKind, loadTables, submitCatalog, submitCharge, submitExtra])
+  }, [catalogForm, chargeForm, closeDrawer, drawerKind, extraForm, loadTables, submitCatalog, submitCharge, submitExtra])
 
   const confirmDelete = useCallback((kind: EditableKind, id: string, title: string) => {
     Modal.confirm({
@@ -546,6 +552,7 @@ export function FixedChargesPage() {
       }
       setPreview(await resolveFixedCharges(values.contract_id, monthToDate(values.month)))
     } catch (error) {
+      applyApiFieldErrors(previewForm, error)
       message.error(getFormErrorMessage(error, 'Unable to calculate the fixed charges.'))
     } finally {
       setPreviewLoading(false)
@@ -554,149 +561,149 @@ export function FixedChargesPage() {
 
   const catalogColumns: ColumnsType<ChargeCatalog> = useMemo(
     () => [
-      { title: 'Code', dataIndex: 'code', width: 150 },
-      { title: 'Name', dataIndex: 'name', width: 220 },
-      { title: 'Type', dataIndex: 'charge_type', width: 160, render: (value: ChargeType) => typeTag(value) },
-      { title: 'Status', dataIndex: 'is_active', width: 120, render: (value: boolean) => activeTag(value) },
-      { title: 'Note', dataIndex: 'note', render: (value: string | null) => value ?? '-' },
+      { title: t("Code"), dataIndex: 'code', width: 150 },
+      { title: t("Name"), dataIndex: 'name', width: 220 },
+      { title: t("Type"), dataIndex: 'charge_type', width: 160, render: (value: ChargeType) => typeTag(value) },
+      { title: t("Status"), dataIndex: 'is_active', width: 120, render: (value: boolean) => activeTag(value) },
+      { title: t("Note"), dataIndex: 'note', render: (value: string | null) => value ?? '-' },
       {
-        title: 'Actions',
+        title: t("Actions"),
         key: 'actions',
         width: 120,
         fixed: 'right',
         render: (_, item) => (
           <Space>
-            <Button type="text" icon={<EditOutlined />} onClick={() => openEditCatalog(item)} />
-            <Button type="text" danger icon={<DeleteOutlined />} onClick={() => confirmDelete('catalog', item.id, item.code)} />
+            <Button type="text" aria-label={`${t("Edit")} ${item.code}`} icon={<EditOutlined />} onClick={() => openEditCatalog(item)} />
+            <Button type="text" danger aria-label={`${t("Delete")} ${item.code}`} icon={<DeleteOutlined />} onClick={() => confirmDelete('catalog', item.id, item.code)} />
           </Space>
         ),
       },
     ],
-    [confirmDelete, openEditCatalog],
+    [confirmDelete, openEditCatalog, t],
   )
 
   const buildingColumns: ColumnsType<BuildingCharge> = useMemo(
     () => [
-      { title: 'Building', dataIndex: 'building_name', width: 220 },
-      { title: 'Charge', key: 'charge', width: 240, render: (_, item) => `${item.charge_code} - ${item.charge_name}` },
-      { title: 'Type', dataIndex: 'charge_type', width: 150, render: (value: ChargeType) => typeTag(value) },
-      { title: 'Unit price', dataIndex: 'unit_price', width: 150, align: 'right', render: (value: number) => currency.format(value) },
-      { title: 'Effective from', dataIndex: 'effective_from', width: 150, render: (value: string) => formatDate(value) },
-      { title: 'Status', dataIndex: 'is_active', width: 120, render: (value: boolean) => activeTag(value) },
+      { title: t("Building"), dataIndex: 'building_name', width: 220 },
+      { title: t("Charge"), key: 'charge', width: 240, render: (_, item) => `${item.charge_code} - ${item.charge_name}` },
+      { title: t("Type"), dataIndex: 'charge_type', width: 150, render: (value: ChargeType) => typeTag(value) },
+      { title: t("Unit price"), dataIndex: 'unit_price', width: 150, align: 'right', render: (value: number) => currency.format(value) },
+      { title: t("Effective from"), dataIndex: 'effective_from', width: 150, render: (value: string) => formatDate(value) },
+      { title: t("Status"), dataIndex: 'is_active', width: 120, render: (value: boolean) => activeTag(value) },
       {
-        title: 'Actions',
+        title: t("Actions"),
         key: 'actions',
         width: 120,
         fixed: 'right',
         render: (_, item) => (
           <Space>
-            <Button type="text" icon={<EditOutlined />} onClick={() => openEditBuildingCharge(item)} />
-            <Button type="text" danger icon={<DeleteOutlined />} onClick={() => confirmDelete('building', item.id, item.charge_code)} />
+            <Button type="text" aria-label={`${t("Edit")} ${item.charge_code}`} icon={<EditOutlined />} onClick={() => openEditBuildingCharge(item)} />
+            <Button type="text" danger aria-label={`${t("Delete")} ${item.charge_code}`} icon={<DeleteOutlined />} onClick={() => confirmDelete('building', item.id, item.charge_code)} />
           </Space>
         ),
       },
     ],
-    [confirmDelete, openEditBuildingCharge],
+    [confirmDelete, openEditBuildingCharge, t],
   )
 
   const roomColumns: ColumnsType<RoomChargeOverride> = useMemo(
     () => [
-      { title: 'Building', dataIndex: 'building_name', width: 200 },
-      { title: 'Room', dataIndex: 'room_code', width: 120 },
-      { title: 'Charge', key: 'charge', width: 240, render: (_, item) => `${item.charge_code} - ${item.charge_name}` },
-      { title: 'Type', dataIndex: 'charge_type', width: 150, render: (value: ChargeType) => typeTag(value) },
-      { title: 'Unit price', dataIndex: 'unit_price', width: 150, align: 'right', render: (value: number) => currency.format(value) },
-      { title: 'Effective from', dataIndex: 'effective_from', width: 150, render: (value: string) => formatDate(value) },
-      { title: 'Status', dataIndex: 'is_active', width: 120, render: (value: boolean) => activeTag(value) },
+      { title: t("Building"), dataIndex: 'building_name', width: 200 },
+      { title: t("Room"), dataIndex: 'room_code', width: 120 },
+      { title: t("Charge"), key: 'charge', width: 240, render: (_, item) => `${item.charge_code} - ${item.charge_name}` },
+      { title: t("Type"), dataIndex: 'charge_type', width: 150, render: (value: ChargeType) => typeTag(value) },
+      { title: t("Unit price"), dataIndex: 'unit_price', width: 150, align: 'right', render: (value: number) => currency.format(value) },
+      { title: t("Effective from"), dataIndex: 'effective_from', width: 150, render: (value: string) => formatDate(value) },
+      { title: t("Status"), dataIndex: 'is_active', width: 120, render: (value: boolean) => activeTag(value) },
       {
-        title: 'Actions',
+        title: t("Actions"),
         key: 'actions',
         width: 120,
         fixed: 'right',
         render: (_, item) => (
           <Space>
-            <Button type="text" icon={<EditOutlined />} onClick={() => openEditRoomOverride(item)} />
-            <Button type="text" danger icon={<DeleteOutlined />} onClick={() => confirmDelete('room', item.id, item.charge_code)} />
+            <Button type="text" aria-label={`${t("Edit")} ${item.charge_code}`} icon={<EditOutlined />} onClick={() => openEditRoomOverride(item)} />
+            <Button type="text" danger aria-label={`${t("Delete")} ${item.charge_code}`} icon={<DeleteOutlined />} onClick={() => confirmDelete('room', item.id, item.charge_code)} />
           </Space>
         ),
       },
     ],
-    [confirmDelete, openEditRoomOverride],
+    [confirmDelete, openEditRoomOverride, t],
   )
 
   const contractColumns: ColumnsType<ContractChargeOverride> = useMemo(
     () => [
-      { title: 'Building', dataIndex: 'building_name', width: 180 },
-      { title: 'Room', dataIndex: 'room_code', width: 110 },
+      { title: t("Building"), dataIndex: 'building_name', width: 180 },
+      { title: t("Room"), dataIndex: 'room_code', width: 110 },
       {
-        title: 'Contract',
+        title: t("Contract"),
         key: 'contract',
         width: 260,
         render: (_, item) => item.contract_code ? `${item.contract_code} - ${item.tenant_name ?? item.contract_id}` : item.tenant_name ?? item.contract_id,
       },
-      { title: 'Charge', key: 'charge', width: 220, render: (_, item) => `${item.charge_code} - ${item.charge_name}` },
-      { title: 'Unit price', dataIndex: 'unit_price', width: 140, align: 'right', render: (value: number) => currency.format(value) },
-      { title: 'From', dataIndex: 'effective_from', width: 120, render: (value: string) => formatDate(value) },
-      { title: 'To', dataIndex: 'effective_to', width: 120, render: (value: string | null) => formatDate(value) },
-      { title: 'Status', dataIndex: 'is_active', width: 120, render: (value: boolean) => activeTag(value) },
+      { title: t("Charge"), key: 'charge', width: 220, render: (_, item) => `${item.charge_code} - ${item.charge_name}` },
+      { title: t("Unit price"), dataIndex: 'unit_price', width: 140, align: 'right', render: (value: number) => currency.format(value) },
+      { title: t("From"), dataIndex: 'effective_from', width: 120, render: (value: string) => formatDate(value) },
+      { title: t("To"), dataIndex: 'effective_to', width: 120, render: (value: string | null) => formatDate(value) },
+      { title: t("Status"), dataIndex: 'is_active', width: 120, render: (value: boolean) => activeTag(value) },
       {
-        title: 'Actions',
+        title: t("Actions"),
         key: 'actions',
         width: 120,
         fixed: 'right',
         render: (_, item) => (
           <Space>
-            <Button type="text" icon={<EditOutlined />} onClick={() => openEditContractOverride(item)} />
-            <Button type="text" danger icon={<DeleteOutlined />} onClick={() => confirmDelete('contract', item.id, item.charge_code)} />
+            <Button type="text" aria-label={`${t("Edit")} ${item.charge_code}`} icon={<EditOutlined />} onClick={() => openEditContractOverride(item)} />
+            <Button type="text" danger aria-label={`${t("Delete")} ${item.charge_code}`} icon={<DeleteOutlined />} onClick={() => confirmDelete('contract', item.id, item.charge_code)} />
           </Space>
         ),
       },
     ],
-    [confirmDelete, openEditContractOverride],
+    [confirmDelete, openEditContractOverride, t],
   )
 
   const extraColumns: ColumnsType<RoomMonthExtra> = useMemo(
     () => [
-      { title: 'Month', dataIndex: 'month', width: 120, render: (value: string) => formatMonth(value) },
-      { title: 'Building', dataIndex: 'building_name', width: 200 },
-      { title: 'Room', dataIndex: 'room_code', width: 120 },
-      { title: 'Persons', dataIndex: 'persons_count', width: 120, render: (value: number | null) => value ?? '-' },
-      { title: 'Vehicles', dataIndex: 'vehicles_count', width: 120, render: (value: number | null) => value ?? '-' },
-      { title: 'Note', dataIndex: 'note', render: (value: string | null) => value ?? '-' },
+      { title: t("Month"), dataIndex: 'month', width: 120, render: (value: string) => formatMonth(value) },
+      { title: t("Building"), dataIndex: 'building_name', width: 200 },
+      { title: t("Room"), dataIndex: 'room_code', width: 120 },
+      { title: t("Persons"), dataIndex: 'persons_count', width: 120, render: (value: number | null) => value ?? '-' },
+      { title: t("Vehicles"), dataIndex: 'vehicles_count', width: 120, render: (value: number | null) => value ?? '-' },
+      { title: t("Note"), dataIndex: 'note', render: (value: string | null) => value ?? '-' },
       {
-        title: 'Actions',
+        title: t("Actions"),
         key: 'actions',
         width: 120,
         fixed: 'right',
         render: (_, item) => (
           <Space>
-            <Button type="text" icon={<EditOutlined />} onClick={() => openEditExtra(item)} />
-            <Button type="text" danger icon={<DeleteOutlined />} onClick={() => confirmDelete('extra', item.id, item.room_code)} />
+            <Button type="text" aria-label={`${t("Edit")} ${item.room_code}`} icon={<EditOutlined />} onClick={() => openEditExtra(item)} />
+            <Button type="text" danger aria-label={`${t("Delete")} ${item.room_code}`} icon={<DeleteOutlined />} onClick={() => confirmDelete('extra', item.id, item.room_code)} />
           </Space>
         ),
       },
     ],
-    [confirmDelete, openEditExtra],
+    [confirmDelete, openEditExtra, t],
   )
 
   const previewColumns: ColumnsType<ResolvedFixedCharge> = useMemo(
     () => [
-      { title: 'Charge', key: 'charge', width: 240, render: (_, item) => `${item.charge_code} - ${item.charge_name}` },
-      { title: 'Type', dataIndex: 'charge_type', width: 150, render: (value: ChargeType) => typeTag(value) },
-      { title: 'Source', dataIndex: 'source', width: 170, render: (value: ResolvedFixedCharge['source']) => <Tag color={sourceColor[value]}>{value}</Tag> },
-      { title: 'Quantity', dataIndex: 'quantity', width: 110, align: 'right' },
-      { title: 'Unit price', dataIndex: 'unit_price', width: 150, align: 'right', render: (value: number) => currency.format(value) },
-      { title: 'Amount', dataIndex: 'amount', width: 150, align: 'right', render: (value: number) => currency.format(value) },
-      { title: 'Effective from', dataIndex: 'effective_from', width: 150, render: (value: string) => formatDate(value) },
+      { title: t("Charge"), key: 'charge', width: 240, render: (_, item) => `${item.charge_code} - ${item.charge_name}` },
+      { title: t("Type"), dataIndex: 'charge_type', width: 150, render: (value: ChargeType) => typeTag(value) },
+      { title: t("Source"), dataIndex: 'source', width: 170, render: (value: ResolvedFixedCharge['source']) => <Tag color={sourceColor[value]}>{value}</Tag> },
+      { title: t("Quantity"), dataIndex: 'quantity', width: 110, align: 'right' },
+      { title: t("Unit price"), dataIndex: 'unit_price', width: 150, align: 'right', render: (value: number) => currency.format(value) },
+      { title: t("Amount"), dataIndex: 'amount', width: 150, align: 'right', render: (value: number) => currency.format(value) },
+      { title: t("Effective from"), dataIndex: 'effective_from', width: 150, render: (value: string) => formatDate(value) },
     ],
-    [],
+    [t],
   )
 
   const renderFilters = (includeContract = false, includeMonth = false) => (
     <div className="fixed-charges-filters">
       <Select
         value={buildingFilter}
-        placeholder="Building"
+        placeholder={t("Building")}
         allowClear
         options={buildings.map((building) => ({ label: building.name, value: building.id }))}
         onChange={(value) => {
@@ -707,7 +714,7 @@ export function FixedChargesPage() {
       />
       <Select
         value={roomFilter}
-        placeholder="Room"
+        placeholder={t("Room")}
         allowClear
         options={filteredRooms.map((room) => ({ label: room.code, value: room.id }))}
         onChange={(value) => {
@@ -718,7 +725,7 @@ export function FixedChargesPage() {
       {includeContract ? (
         <Select
           value={contractFilter}
-          placeholder="Contract"
+          placeholder={t("Contract")}
           allowClear
           options={filteredContracts.map((contract) => ({
             label: contract.contract_code ? `${contract.contract_code} - ${contract.tenant_name ?? contract.id}` : contract.tenant_name ?? contract.id,
@@ -732,7 +739,7 @@ export function FixedChargesPage() {
         <span />
       )}
       <Button icon={<ReloadOutlined />} onClick={() => void loadTables()}>
-        Refresh
+        {t("Refresh")}
       </Button>
     </div>
   )
@@ -749,16 +756,16 @@ export function FixedChargesPage() {
           : 'New Monthly Extras'
 
   return (
-    <Localized>
+    <>
     <div className="fixed-charges-page">
       <Card>
         <div className="fixed-charges-toolbar">
           <div>
             <Typography.Title level={4} style={{ margin: 0 }}>
-              Fixed Charges
+              {t("Fixed Charges")}
             </Typography.Title>
             <Typography.Text type="secondary">
-              Configure recurring fees, priority overrides, and monthly person/vehicle counts for invoice generation.
+              {t("Configure recurring fees, priority overrides, and monthly person/vehicle counts for invoice generation.")}
             </Typography.Text>
           </div>
           {currentCreateKind ? (
@@ -775,81 +782,45 @@ export function FixedChargesPage() {
         items={[
           {
             key: 'catalog',
-            label: 'Catalog',
-            children: (
-              <Card>
-                {loading ? <Skeleton active paragraph={{ rows: 6 }} /> : error ? (
-                  <Empty description={error}><Button onClick={() => void loadTables()}>Retry</Button></Empty>
-                ) : (
-                  <Table<ChargeCatalog> rowKey="id" columns={catalogColumns} dataSource={catalog} scroll={{ x: 1000 }} />
-                )}
-              </Card>
-            ),
+            label: t("Catalog"),
+            children: <ChargeCatalogPanel loading={loading} error={error} items={catalog} columns={catalogColumns} onRetry={() => void loadTables()} />,
           },
           {
             key: 'building',
-            label: 'Building Defaults',
-            children: (
-              <Card>
-                <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                  {renderFilters()}
-                  <Table<BuildingCharge> rowKey="id" columns={buildingColumns} dataSource={visibleBuildingCharges} loading={loading} scroll={{ x: 1120 }} />
-                </Space>
-              </Card>
-            ),
+            label: t("Building Defaults"),
+            children: <ChargeAssignmentPanel filters={renderFilters()} loading={loading} items={visibleBuildingCharges} columns={buildingColumns} scrollWidth={1120} />,
           },
           {
             key: 'room',
-            label: 'Room Overrides',
-            children: (
-              <Card>
-                <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                  {renderFilters()}
-                  <Table<RoomChargeOverride> rowKey="id" columns={roomColumns} dataSource={visibleRoomOverrides} loading={loading} scroll={{ x: 1240 }} />
-                </Space>
-              </Card>
-            ),
+            label: t("Room Overrides"),
+            children: <ChargeAssignmentPanel filters={renderFilters()} loading={loading} items={visibleRoomOverrides} columns={roomColumns} scrollWidth={1240} />,
           },
           {
             key: 'contract',
-            label: 'Contract Overrides',
-            children: (
-              <Card>
-                <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                  {renderFilters(true)}
-                  <Table<ContractChargeOverride> rowKey="id" columns={contractColumns} dataSource={visibleContractOverrides} loading={loading} scroll={{ x: 1460 }} />
-                </Space>
-              </Card>
-            ),
+            label: t("Contract Overrides"),
+            children: <ChargeAssignmentPanel filters={renderFilters(true)} loading={loading} items={visibleContractOverrides} columns={contractColumns} scrollWidth={1460} />,
           },
           {
             key: 'extra',
-            label: 'Monthly Extras',
-            children: (
-              <Card>
-                <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                  {renderFilters(false, true)}
-                  <Table<RoomMonthExtra> rowKey="id" columns={extraColumns} dataSource={visibleExtras} loading={loading} scroll={{ x: 980 }} />
-                </Space>
-              </Card>
-            ),
+            label: t("Monthly Extras"),
+            children: <MonthlyExtrasPanel filters={renderFilters(false, true)} loading={loading} items={visibleExtras} columns={extraColumns} />,
           },
           {
             key: 'preview',
-            label: 'Resolved Charges',
+            label: t("Resolved Charges"),
             children: (
               <Card>
                 <Space direction="vertical" size={16} style={{ width: '100%' }}>
                   <div className="fixed-charges-preview-header">
                     <div>
-                      <Typography.Text strong>Resolve preview</Typography.Text>
+                      <Typography.Text strong>{t("Resolve preview")}</Typography.Text>
                       <br />
-                      <Typography.Text type="secondary">Shows priority result: contract override, then room override, then building default.</Typography.Text>
+                      <Typography.Text type="secondary">{t("Shows priority result: contract override, then room override, then building default.")}</Typography.Text>
                     </div>
-                    {preview ? <Typography.Text strong>Total: {currency.format(preview.total)}</Typography.Text> : null}
+                    {preview ? <Typography.Text strong>{t("Total:")} {currency.format(preview.total)}</Typography.Text> : null}
                   </div>
                   <Form form={previewForm} layout="vertical" className="fixed-charges-preview-form" initialValues={{ month: dayjs().format('YYYY-MM') }}>
-                    <Form.Item name="contract_id" label="Contract" rules={[{ required: true, message: 'Please select contract' }]}>
+                    <Form.Item name="contract_id" label={t("Contract")} rules={[{ required: true, message: t("Please select contract") }]}>
                       <Select
                         showSearch
                         optionFilterProp="label"
@@ -859,12 +830,12 @@ export function FixedChargesPage() {
                         }))}
                       />
                     </Form.Item>
-                    <Form.Item name="month" label="Month" rules={[{ required: true, message: 'Please select month' }]}>
+                    <Form.Item name="month" label={t("Month")} rules={[{ required: true, message: t("Please select month") }]}>
                       <Input type="month" />
                     </Form.Item>
                     <Form.Item label=" ">
                       <Button type="primary" loading={previewLoading} onClick={() => void submitPreview()}>
-                        Resolve
+                        {t("Resolve")}
                       </Button>
                     </Form.Item>
                   </Form>
@@ -874,7 +845,7 @@ export function FixedChargesPage() {
                     dataSource={preview?.items ?? []}
                     loading={previewLoading}
                     scroll={{ x: 1060 }}
-                    locale={{ emptyText: <Empty description="No resolved charges" /> }}
+                    locale={{ emptyText: <Empty description={t("No resolved charges")} /> }}
                   />
                 </Space>
               </Card>
@@ -894,19 +865,19 @@ export function FixedChargesPage() {
         {drawerKind === 'catalog' ? (
           <Form form={catalogForm} layout="vertical">
             <div className="fixed-charge-form-grid">
-              <Form.Item name="code" label="Code" rules={[{ required: true, whitespace: true, message: 'Please enter code' }]}>
-                <Input placeholder="WIFI" />
+              <Form.Item name="code" label={t("Code")} rules={[{ required: true, whitespace: true, message: t("Please enter code") }]}>
+                <Input placeholder={t("WIFI")} />
               </Form.Item>
-              <Form.Item name="charge_type" label="Charge type" rules={[{ required: true, message: 'Please select type' }]}>
+              <Form.Item name="charge_type" label={t("Charge type")} rules={[{ required: true, message: t("Please select type") }]}>
                 <Select options={chargeTypeOptions} />
               </Form.Item>
-              <Form.Item name="name" label="Name" rules={[{ required: true, whitespace: true, message: 'Please enter name' }]} className="fixed-charge-form-full">
-                <Input placeholder="Wifi fee" />
+              <Form.Item name="name" label={t("Name")} rules={[{ required: true, whitespace: true, message: t("Please enter name") }]} className="fixed-charge-form-full">
+                <Input placeholder={t("Wifi fee")} />
               </Form.Item>
-              <Form.Item name="is_active" label="Active" valuePropName="checked">
+              <Form.Item name="is_active" label={t("Active")} valuePropName="checked">
                 <Switch />
               </Form.Item>
-              <Form.Item name="note" label="Note" className="fixed-charge-form-full">
+              <Form.Item name="note" label={t("Note")} className="fixed-charge-form-full">
                 <Input.TextArea rows={3} />
               </Form.Item>
             </div>
@@ -914,26 +885,26 @@ export function FixedChargesPage() {
         ) : drawerKind === 'extra' ? (
           <Form form={extraForm} layout="vertical">
             <div className="fixed-charge-form-grid">
-              <Form.Item name="building_id" label="Building">
+              <Form.Item name="building_id" label={t("Building")}>
                 <Select
                   allowClear
                   options={buildings.map((building) => ({ label: building.name, value: building.id }))}
                   onChange={() => extraForm.setFieldValue('room_id', undefined)}
                 />
               </Form.Item>
-              <Form.Item name="room_id" label="Room" rules={[{ required: true, message: 'Please select room' }]}>
+              <Form.Item name="room_id" label={t("Room")} rules={[{ required: true, message: t("Please select room") }]}>
                 <Select options={extraFormRooms.map((room) => ({ label: room.code, value: room.id }))} />
               </Form.Item>
-              <Form.Item name="month" label="Month" rules={[{ required: true, message: 'Please select month' }]}>
+              <Form.Item name="month" label={t("Month")} rules={[{ required: true, message: t("Please select month") }]}>
                 <Input type="month" />
               </Form.Item>
-              <Form.Item name="persons_count" label="Persons count">
+              <Form.Item name="persons_count" label={t("Persons count")}>
                 <InputNumber min={0} precision={0} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item name="vehicles_count" label="Vehicles count">
+              <Form.Item name="vehicles_count" label={t("Vehicles count")}>
                 <InputNumber min={0} precision={0} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item name="note" label="Note" className="fixed-charge-form-full">
+              <Form.Item name="note" label={t("Note")} className="fixed-charge-form-full">
                 <Input.TextArea rows={3} />
               </Form.Item>
             </div>
@@ -942,7 +913,7 @@ export function FixedChargesPage() {
           <Form form={chargeForm} layout="vertical">
             <div className="fixed-charge-form-grid">
               {drawerKind === 'building' || drawerKind === 'room' || drawerKind === 'contract' ? (
-                <Form.Item name="building_id" label="Building" rules={drawerKind === 'building' ? [{ required: true, message: 'Please select building' }] : undefined}>
+                <Form.Item name="building_id" label={t("Building")} rules={drawerKind === 'building' ? [{ required: true, message: t("Please select building") }] : undefined}>
                   <Select
                     allowClear={drawerKind !== 'building'}
                     options={buildings.map((building) => ({ label: building.name, value: building.id }))}
@@ -952,7 +923,7 @@ export function FixedChargesPage() {
               ) : null}
 
               {drawerKind === 'room' || drawerKind === 'contract' ? (
-                <Form.Item name="room_id" label="Room" rules={drawerKind === 'room' ? [{ required: true, message: 'Please select room' }] : undefined}>
+                <Form.Item name="room_id" label={t("Room")} rules={drawerKind === 'room' ? [{ required: true, message: t("Please select room") }] : undefined}>
                   <Select
                     allowClear={drawerKind !== 'room'}
                     options={formRooms.map((room) => ({ label: room.code, value: room.id }))}
@@ -962,7 +933,7 @@ export function FixedChargesPage() {
               ) : null}
 
               {drawerKind === 'contract' ? (
-                <Form.Item name="contract_id" label="Contract" rules={[{ required: true, message: 'Please select contract' }]}>
+                <Form.Item name="contract_id" label={t("Contract")} rules={[{ required: true, message: t("Please select contract") }]}>
                   <Select
                     showSearch
                     optionFilterProp="label"
@@ -974,7 +945,7 @@ export function FixedChargesPage() {
                 </Form.Item>
               ) : null}
 
-              <Form.Item name="charge_id" label="Charge" rules={[{ required: true, message: 'Please select charge' }]}>
+              <Form.Item name="charge_id" label={t("Charge")} rules={[{ required: true, message: t("Please select charge") }]}>
                 <Select
                   showSearch
                   optionFilterProp="label"
@@ -984,18 +955,18 @@ export function FixedChargesPage() {
                   }))}
                 />
               </Form.Item>
-              <Form.Item name="unit_price" label="Unit price" rules={[{ required: true, message: 'Please enter unit price' }]}>
+              <Form.Item name="unit_price" label={t("Unit price")} rules={[{ required: true, message: t("Please enter unit price") }]}>
                 <InputNumber min={0} precision={0} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item name="effective_from" label="Effective from" rules={[{ required: true, message: 'Please select effective date' }]}>
+              <Form.Item name="effective_from" label={t("Effective from")} rules={[{ required: true, message: t("Please select effective date") }]}>
                 <Input type="date" />
               </Form.Item>
               {drawerKind === 'contract' ? (
-                <Form.Item name="effective_to" label="Effective to">
+                <Form.Item name="effective_to" label={t("Effective to")}>
                   <Input type="date" />
                 </Form.Item>
               ) : null}
-              <Form.Item name="is_active" label="Active" valuePropName="checked">
+              <Form.Item name="is_active" label={t("Active")} valuePropName="checked">
                 <Switch />
               </Form.Item>
             </div>
@@ -1004,14 +975,14 @@ export function FixedChargesPage() {
 
         <div className="fixed-charge-drawer-actions">
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-            <Button onClick={closeDrawer}>Cancel</Button>
+            <Button onClick={closeDrawer}>{t("Cancel")}</Button>
             <Button type="primary" loading={saving} onClick={() => void submitDrawer()}>
-              Save
+              {t("Save")}
             </Button>
           </Space>
         </div>
       </Drawer>
     </div>
-    </Localized>
+    </>
   )
 }

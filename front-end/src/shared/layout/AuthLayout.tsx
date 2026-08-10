@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import loginBackground from '../../assets/login-background-luxury.jpg'
+import loginBackground from '../../assets/login-background-luxury.webp'
 import './AuthLayout.css'
 
 interface AuthLayoutProps {

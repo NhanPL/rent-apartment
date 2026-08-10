@@ -14,6 +14,7 @@ import {
   sendPasswordResetEmail
 } from '../../shared/services/email.service';
 import { revokeUserSessions } from './session.service';
+import { logger } from '../../shared/services/logger.service';
 
 type PasswordResetClient = Pick<PoolClient, 'query'>;
 
@@ -174,10 +175,10 @@ export const requestPasswordReset = async (email: string, clientIp: string): Pro
       expiresAt: delivery.expiresAt
     });
   } catch (error) {
-    console.error('Failed to send password reset email', {
+    logger.error({
       userId: delivery.userId,
-      error: error instanceof Error ? error.message : 'Unknown email error'
-    });
+      error
+    }, 'Failed to send password reset email');
   }
 };
 
@@ -277,9 +278,9 @@ export const confirmPasswordReset = async (token: string, newPassword: string): 
   try {
     await sendPasswordChangedEmail({ to: completedReset.email });
   } catch (error) {
-    console.error('Failed to send password changed notification', {
+    logger.error({
       userId: completedReset.userId,
-      error: error instanceof Error ? error.message : 'Unknown email error'
-    });
+      error
+    }, 'Failed to send password changed notification');
   }
 };

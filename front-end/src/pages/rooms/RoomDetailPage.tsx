@@ -1,3 +1,4 @@
+import { useI18n } from '../../i18n'
 import { ArrowLeftOutlined, BankOutlined, DeleteOutlined, EditOutlined, EyeOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { Button, Card, Descriptions, Empty, Grid, Modal, Skeleton, Space, Table, Tag, Typography, message } from 'antd'
 import dayjs from 'dayjs'
@@ -14,7 +15,6 @@ import {
 import { RoomsUpsertDrawer } from '../buildings/components/RoomsUpsertDrawer'
 import type { MonthlyBill, Room, TenantSummary } from '../buildings/components/roomTypes'
 import { getUserErrorMessage } from '../../services/errorMessage'
-import { Localized } from '../../shared/components/Localized'
 import { vndCurrency } from '../../i18n'
 
 interface RoomDetailPageProps {
@@ -38,6 +38,7 @@ const billStatusColor: Record<MonthlyBill['invoice_status'], string> = {
 const currency = vndCurrency
 
 export function RoomDetailPage({ roomId }: RoomDetailPageProps) {
+  const { t } = useI18n()
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
 
@@ -131,11 +132,11 @@ export function RoomDetailPage({ roomId }: RoomDetailPageProps) {
   }
 
   if (!room) {
-    return <Empty description="Room not found" />
+    return <Empty description={t("Room not found")} />
   }
 
   return (
-    <Localized>
+    <>
     <>
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         <Button
@@ -147,15 +148,15 @@ export function RoomDetailPage({ roomId }: RoomDetailPageProps) {
             window.dispatchEvent(new PopStateEvent('popstate'))
           }}
         >
-          Back to Buildings
+          {t("Back to Buildings")}
         </Button>
 
         <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
           <Space direction="vertical" size={4}>
             <Typography.Title level={isMobile ? 4 : 3} style={{ margin: 0 }}>
-              Room {room.code}
+              {t("Room")} {room.code}
             </Typography.Title>
-            <Typography.Text type="secondary">Building: {room.building_name}</Typography.Text>
+            <Typography.Text type="secondary">{t("Building:")} {room.building_name}</Typography.Text>
           </Space>
           <Space wrap>
             <Tag color={roomStatusColor[room.status]}>{room.status}</Tag>
@@ -164,7 +165,7 @@ export function RoomDetailPage({ roomId }: RoomDetailPageProps) {
               loading={quickActionLoading === 'invoice'}
               onClick={() => void generateCurrentMonthInvoice()}
             >
-              Generate Invoice
+              {t("Generate Invoice")}
             </Button>
             <Button
               icon={<BankOutlined />}
@@ -172,44 +173,44 @@ export function RoomDetailPage({ roomId }: RoomDetailPageProps) {
               loading={quickActionLoading === 'payment'}
               onClick={() => void createQuickPaymentRequest()}
             >
-              Payment Request
+              {t("Payment Request")}
             </Button>
             <Button icon={<EditOutlined />} onClick={() => setRoomDrawerOpen(true)}>
-              Edit Room
+              {t("Edit Room")}
             </Button>
             <Button danger icon={<DeleteOutlined />} onClick={() => setDeleteRoomModalOpen(true)}>
-              Delete Room
+              {t("Delete Room")}
             </Button>
           </Space>
         </Space>
 
-        <Card title="Room information">
+        <Card title={t("Room information")}>
           <Descriptions bordered column={isMobile ? 1 : 2}>
-            <Descriptions.Item label="Code">{room.code}</Descriptions.Item>
-            <Descriptions.Item label="Status">{room.status}</Descriptions.Item>
-            <Descriptions.Item label="Price">{currency.format(room.base_rent)}</Descriptions.Item>
-            <Descriptions.Item label="Floor">{room.floor ?? '-'}</Descriptions.Item>
-            <Descriptions.Item label="Area (m²)">{room.area_m2 ?? '-'}</Descriptions.Item>
-            <Descriptions.Item label="Max occupants">{room.max_occupants}</Descriptions.Item>
-            <Descriptions.Item label="Notes" span={isMobile ? 1 : 2}>
+            <Descriptions.Item label={t("Code")}>{room.code}</Descriptions.Item>
+            <Descriptions.Item label={t("Status")}>{room.status}</Descriptions.Item>
+            <Descriptions.Item label={t("Price")}>{currency.format(room.base_rent)}</Descriptions.Item>
+            <Descriptions.Item label={t("Floor")}>{room.floor ?? '-'}</Descriptions.Item>
+            <Descriptions.Item label={t("Area (m²)")}>{room.area_m2 ?? '-'}</Descriptions.Item>
+            <Descriptions.Item label={t("Max occupants")}>{room.max_occupants}</Descriptions.Item>
+            <Descriptions.Item label={t("Notes")} span={isMobile ? 1 : 2}>
               {room.note ?? '-'}
             </Descriptions.Item>
           </Descriptions>
         </Card>
 
-        <Card title="Current tenants">
+        <Card title={t("Current tenants")}>
           <Table<TenantSummary>
             rowKey="id"
             dataSource={tenants}
-            locale={{ emptyText: 'No current tenants in this room' }}
+            locale={{ emptyText: t("No current tenants in this room") }}
             scroll={{ x: 760 }}
             pagination={false}
             columns={[
-              { title: 'Tenant name', dataIndex: 'full_name' },
-              { title: 'Contact', render: (_, record) => record.email ?? record.phone },
-              { title: 'Contract start', dataIndex: 'contract_start_date' },
+              { title: t("Tenant name"), dataIndex: 'full_name' },
+              { title: t("Contact"), render: (_, record) => record.email ?? record.phone },
+              { title: t("Contract start"), dataIndex: 'contract_start_date' },
               {
-                title: 'Status',
+                title: t("Status"),
                 dataIndex: 'status',
                 render: (value: TenantSummary['status']) => <Tag color={value === 'ACTIVE' ? 'green' : 'default'}>{value}</Tag>,
               },
@@ -217,31 +218,31 @@ export function RoomDetailPage({ roomId }: RoomDetailPageProps) {
           />
         </Card>
 
-        <Card title="Invoices">
+        <Card title={t("Invoices")}>
           <Table<MonthlyBill>
             rowKey="id"
             dataSource={bills}
             scroll={{ x: 1480 }}
             columns={[
-              { title: 'Month', dataIndex: 'month', render: (value: string) => value.slice(0, 7) },
-              { title: 'Rent', dataIndex: 'rent_amount', align: 'right', render: (value: number) => currency.format(value) },
-              { title: 'Electric old/new', render: (_, record) => `${record.electricity_prev} / ${record.electricity_curr}` },
-              { title: 'Electric amount', dataIndex: 'electric_amount', align: 'right', render: (value: number) => currency.format(value) },
-              { title: 'Water old/new', render: (_, record) => `${record.water_prev} / ${record.water_curr}` },
-              { title: 'Water amount', dataIndex: 'water_amount', align: 'right', render: (value: number) => currency.format(value) },
-              { title: 'Other fees', dataIndex: 'other_fees', align: 'right', render: (value: number) => currency.format(value) },
-              { title: 'Total', dataIndex: 'total_bill_amount', align: 'right', render: (value: number) => currency.format(value) },
+              { title: t("Month"), dataIndex: 'month', render: (value: string) => value.slice(0, 7) },
+              { title: t("Rent"), dataIndex: 'rent_amount', align: 'right', render: (value: number) => currency.format(value) },
+              { title: t("Electric old/new"), render: (_, record) => `${record.electricity_prev} / ${record.electricity_curr}` },
+              { title: t("Electric amount"), dataIndex: 'electric_amount', align: 'right', render: (value: number) => currency.format(value) },
+              { title: t("Water old/new"), render: (_, record) => `${record.water_prev} / ${record.water_curr}` },
+              { title: t("Water amount"), dataIndex: 'water_amount', align: 'right', render: (value: number) => currency.format(value) },
+              { title: t("Other fees"), dataIndex: 'other_fees', align: 'right', render: (value: number) => currency.format(value) },
+              { title: t("Total"), dataIndex: 'total_bill_amount', align: 'right', render: (value: number) => currency.format(value) },
               {
-                title: 'Status',
+                title: t("Status"),
                 dataIndex: 'invoice_status',
                 render: (value: MonthlyBill['invoice_status']) => <Tag color={billStatusColor[value]}>{value}</Tag>,
               },
               {
-                title: 'Actions',
+                title: t("Actions"),
                 fixed: 'right',
                 width: 90,
                 render: (_, record) => (
-                  <Button size="small" icon={<EyeOutlined />} onClick={() => openInvoiceDetail(record.id)} />
+                  <Button size="small" aria-label={t("View invoice")} icon={<EyeOutlined />} onClick={() => openInvoiceDetail(record.id)} />
                 ),
               },
             ]}
@@ -274,7 +275,7 @@ export function RoomDetailPage({ roomId }: RoomDetailPageProps) {
 
       <Modal
         open={deleteRoomModalOpen}
-        title="Delete this room?"
+        title={t("Delete this room?")}
         onCancel={() => setDeleteRoomModalOpen(false)}
         onOk={async () => {
           try {
@@ -288,15 +289,15 @@ export function RoomDetailPage({ roomId }: RoomDetailPageProps) {
             message.error(getUserErrorMessage(error, 'Khong the xoa phong.'))
           }
         }}
-        okText="Delete"
+        okText={t("Delete")}
         okButtonProps={{ danger: true }}
-        cancelText="Cancel"
+        cancelText={t("Cancel")}
         maskClosable
       >
-        This action cannot be undone.
+        {t("This action cannot be undone.")}
       </Modal>
 
     </>
-    </Localized>
+    </>
   )
 }

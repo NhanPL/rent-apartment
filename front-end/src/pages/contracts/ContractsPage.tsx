@@ -1,8 +1,8 @@
+import { useI18n } from '../../i18n'
 import {
   EditOutlined,
   EyeOutlined,
   PlusOutlined,
-  ReloadOutlined,
 } from '@ant-design/icons'
 import {
   Button,
@@ -10,11 +10,9 @@ import {
   Checkbox,
   Descriptions,
   Drawer,
-  Empty,
   Form,
   Grid,
   Input,
-  InputNumber,
   Modal,
   Select,
   Skeleton,
@@ -36,71 +34,35 @@ import {
   createContract,
   endContract,
   getContract,
-  listBuildings,
-  listContracts,
-  listRooms,
-  listTenants,
   removeContractTenant,
   updateContract,
   updateContractTenant,
 } from '../../services/contractsService'
 import type {
-  BuildingOption,
   ContractClosePayload,
   ContractBusinessStage,
   ContractCreatePayload,
   ContractDetail,
-  ContractDocument,
-  ContractDocumentType,
   ContractListItem,
   ContractStatus,
   ContractTenant,
   ContractUpdatePayload,
-  RoomOption,
-  TenantOption,
 } from './types'
-import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
-import type { UploadedCloudinaryFile } from '../../services/uploadService'
-import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
-import { Localized } from '../../shared/components/Localized'
+import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
 import { vndCurrency } from '../../i18n'
+import { ContractFilters } from './components/ContractFilters'
+import { ContractTable } from './components/ContractTable'
+import { ContractFormDrawer } from './components/ContractFormDrawer'
+import { ContractStatusActions } from './components/ContractStatusActions'
+import { ContractDocumentManager } from './components/ContractDocumentManager'
+import type {
+  AddTenantFormValues,
+  CloseContractFormValues,
+  ContractDocumentFormValues,
+  ContractFormValues,
+} from './components/formTypes'
+import { useContractsData } from './hooks/useContractsData'
 import './ContractsPage.css'
-
-interface ContractFormValues {
-  building_id?: string
-  room_id?: string
-  contract_code?: string
-  start_date?: string
-  end_date?: string
-  move_in_date?: string
-  move_out_date?: string
-  rent_price?: number
-  deposit_amount?: number
-  billing_day?: number
-  note?: string
-  primary_tenant_id?: string
-  co_tenant_ids?: string[]
-}
-
-interface AddTenantFormValues {
-  tenant_id: string
-  joined_at?: string
-  is_primary?: boolean
-}
-
-interface CloseContractFormValues {
-  close_date: string
-  note?: string
-}
-
-interface ContractDocumentFormValues {
-  doc_type: ContractDocumentType
-  file_name?: string
-  file_url?: string
-  mime_type?: string
-  file_size?: number
-  note?: string
-}
 
 const statusOptions: { label: string; value: ContractStatus; color: string }[] = [
   { label: 'Draft', value: 'DRAFT', color: 'default' },
@@ -120,21 +82,6 @@ const businessStageOptions: { label: string; value: ContractBusinessStage; color
 
 const closedStatuses = new Set<ContractStatus>(['ENDED', 'CANCELLED'])
 const currency = vndCurrency
-const documentAccept = 'image/jpeg,image/png,image/webp,application/pdf'
-
-const contractDocumentTypeLabel: Record<ContractDocumentType, string> = {
-  SIGNED_SCAN: 'Signed scan',
-  ADDENDUM: 'Addendum',
-  TERMINATION: 'Termination',
-  OTHER: 'Other',
-}
-
-const uploadedFileFields = (file: UploadedCloudinaryFile) => ({
-  file_name: file.file_name,
-  file_url: file.file_url,
-  mime_type: file.mime_type,
-  file_size: file.file_size,
-})
 
 const today = () => new Date().toISOString().slice(0, 10)
 
@@ -224,18 +171,15 @@ const toContractUpdatePayload = (values: ContractFormValues): ContractUpdatePayl
 }
 
 export function ContractsPage() {
+  const { t } = useI18n()
   const screens = Grid.useBreakpoint()
   const [contractForm] = Form.useForm<ContractFormValues>()
   const [addTenantForm] = Form.useForm<AddTenantFormValues>()
   const [closeForm] = Form.useForm<CloseContractFormValues>()
   const [documentForm] = Form.useForm<ContractDocumentFormValues>()
 
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [items, setItems] = useState<ContractListItem[]>([])
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
-  const [total, setTotal] = useState(0)
 
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
@@ -245,9 +189,16 @@ export function ContractsPage() {
   const [roomFilter, setRoomFilter] = useState<string | undefined>()
   const [tenantFilter, setTenantFilter] = useState<string | undefined>()
 
-  const [buildings, setBuildings] = useState<BuildingOption[]>([])
-  const [rooms, setRooms] = useState<RoomOption[]>([])
-  const [tenants, setTenants] = useState<TenantOption[]>([])
+  const { loading, error, items, total, buildings, rooms, tenants, reload: loadData } = useContractsData({
+    search,
+    status: statusFilter,
+    businessStage: businessStageFilter,
+    buildingId: buildingFilter,
+    roomId: roomFilter,
+    tenantId: tenantFilter,
+    page,
+    pageSize,
+  })
 
   const [formDrawerOpen, setFormDrawerOpen] = useState(false)
   const [formDrawerMode, setFormDrawerMode] = useState<'create' | 'edit'>('create')
@@ -273,52 +224,6 @@ export function ContractsPage() {
     setPage(1)
   }, [search, statusFilter, businessStageFilter, buildingFilter, roomFilter, tenantFilter])
 
-  const loadOptions = useCallback(async () => {
-    try {
-      const [buildingRows, roomRows, tenantRows] = await Promise.all([
-        listBuildings(),
-        listRooms(),
-        listTenants(),
-      ])
-      setBuildings(buildingRows)
-      setRooms(roomRows)
-      setTenants(tenantRows)
-    } catch (error) {
-      message.error(getUserErrorMessage(error, 'Khong tai duoc bo loc hop dong.'))
-    }
-  }, [])
-
-  const loadData = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-
-    try {
-      const response = await listContracts({
-        search,
-        status: statusFilter,
-        business_stage: businessStageFilter,
-        building_id: buildingFilter,
-        room_id: roomFilter,
-        tenant_id: tenantFilter,
-        page,
-        pageSize,
-      })
-      setItems(response.items)
-      setTotal(response.total)
-    } catch (error) {
-      setError(getUserErrorMessage(error, 'Khong tai duoc danh sach hop dong.'))
-    } finally {
-      setLoading(false)
-    }
-  }, [buildingFilter, businessStageFilter, page, pageSize, roomFilter, search, statusFilter, tenantFilter])
-
-  useEffect(() => {
-    void loadOptions()
-  }, [loadOptions])
-
-  useEffect(() => {
-    void loadData()
-  }, [loadData])
 
   const openDetail = useCallback(async (id: string, syncUrl = true) => {
     if (syncUrl) {
@@ -465,6 +370,7 @@ export function ContractsPage() {
       setFormDrawerOpen(false)
       await loadData()
     } catch (error: unknown) {
+      applyApiFieldErrors(contractForm, error)
       message.error(getFormErrorMessage(error, 'Unable to save the contract.'))
     } finally {
       setSaveLoading(false)
@@ -517,6 +423,7 @@ export function ContractsPage() {
       setCloseAction(null)
       await refreshDetailAndList(detailItem.id)
     } catch (error: unknown) {
+      applyApiFieldErrors(closeForm, error)
       message.error(getFormErrorMessage(error, 'Unable to close the contract.'))
     } finally {
       setCloseLoading(false)
@@ -541,6 +448,7 @@ export function ContractsPage() {
       message.success('Tenant added to contract')
       await refreshDetailAndList(detailItem.id)
     } catch (error: unknown) {
+      applyApiFieldErrors(addTenantForm, error)
       message.error(getFormErrorMessage(error, 'Unable to add the tenant to the contract.'))
     } finally {
       setActionLoading(null)
@@ -610,6 +518,7 @@ export function ContractsPage() {
       message.success('Contract document uploaded')
       await refreshDetailAndList(detailItem.id)
     } catch (error: unknown) {
+      applyApiFieldErrors(documentForm, error)
       message.error(getFormErrorMessage(error, 'Unable to save the contract document.'))
     } finally {
       setDocumentSaving(false)
@@ -634,103 +543,103 @@ export function ContractsPage() {
   const columns: ColumnsType<ContractListItem> = useMemo(
     () => [
       {
-        title: 'Code',
+        title: t("Code"),
         dataIndex: 'contract_code',
         key: 'contract_code',
         width: 170,
         render: (value: string | null, item) => value ?? item.id.slice(0, 8),
       },
       {
-        title: 'Status',
+        title: t("Status"),
         dataIndex: 'status',
         key: 'status',
         width: 120,
         render: (value: ContractStatus) => statusTag(value),
       },
       {
-        title: 'Business stage',
+        title: t("Business stage"),
         dataIndex: 'business_stage',
         key: 'business_stage',
         width: 160,
         render: (value: ContractBusinessStage | undefined) => businessStageTag(value),
       },
       {
-        title: 'Building / Room',
+        title: t("Building / Room"),
         key: 'room',
         width: 220,
         render: (_, item) => (
           <Space direction="vertical" size={0}>
             <Typography.Text>{item.building_name}</Typography.Text>
-            <Typography.Text type="secondary">Room {item.room_code}</Typography.Text>
+            <Typography.Text type="secondary">{t("Room")} {item.room_code}</Typography.Text>
           </Space>
         ),
       },
       {
-        title: 'Tenants',
+        title: t("Tenants"),
         key: 'tenants',
         width: 260,
-        render: (_, item) => item.tenant_names || item.tenant_name || <Typography.Text type="secondary">No tenants</Typography.Text>,
+        render: (_, item) => item.tenant_names || item.tenant_name || <Typography.Text type="secondary">{t("No tenants")}</Typography.Text>,
       },
       {
-        title: 'Occupants',
+        title: t("Occupants"),
         dataIndex: 'active_tenants_count',
         key: 'active_tenants_count',
         width: 110,
       },
       {
-        title: 'Dates',
+        title: t("Dates"),
         key: 'dates',
         width: 210,
         render: (_, item) => (
           <Space direction="vertical" size={0}>
             <Typography.Text>{formatDate(item.start_date)}</Typography.Text>
-            <Typography.Text type="secondary">End: {formatDate(item.end_date)}</Typography.Text>
+            <Typography.Text type="secondary">{t("End:")} {formatDate(item.end_date)}</Typography.Text>
           </Space>
         ),
       },
       {
-        title: 'Rent',
+        title: t("Rent"),
         dataIndex: 'rent_price',
         key: 'rent_price',
         width: 160,
         render: (value: number) => currency.format(value),
       },
       {
-        title: 'Deposit',
+        title: t("Deposit"),
         dataIndex: 'deposit_amount',
         key: 'deposit_amount',
         width: 160,
         render: (value: number) => currency.format(value),
       },
       {
-        title: 'Actions',
+        title: t("Actions"),
         key: 'actions',
         fixed: 'right',
         width: 180,
         render: (_, item) => (
           <Space>
-            <Button type="text" icon={<EyeOutlined />} onClick={() => void openDetail(item.id)} />
-            <Button type="text" icon={<EditOutlined />} disabled={closedStatuses.has(item.status)} onClick={() => void openEdit(item.id)} />
+            <Button type="text" aria-label={`${t("View")} ${item.contract_code ?? item.room_code}`} icon={<EyeOutlined />} onClick={() => void openDetail(item.id)} />
+            <Button type="text" aria-label={`${t("Edit")} ${item.contract_code ?? item.room_code}`} icon={<EditOutlined />} disabled={closedStatuses.has(item.status)} onClick={() => void openEdit(item.id)} />
             {item.status === 'DRAFT' ? (
               <Button
                 type="link"
                 loading={actionLoading === `activate-${item.id}`}
                 onClick={() => void handleActivate(item.id)}
               >
-                Activate
+                {t("Activate")}
               </Button>
             ) : null}
           </Space>
         ),
       },
     ],
-    [actionLoading, handleActivate, openDetail, openEdit],
+    [actionLoading, handleActivate, openDetail, openEdit, t],
   )
 
   const tenantColumns: ColumnsType<ContractTenant> = useMemo(
     () => [
       {
-        title: 'Tenant',
+        title: t("Tenant"),
         key: 'tenant',
         render: (_, tenant) => (
           <Space direction="vertical" size={0}>
@@ -740,28 +649,28 @@ export function ContractsPage() {
         ),
       },
       {
-        title: 'Role',
+        title: t("Role"),
         dataIndex: 'is_primary',
         key: 'is_primary',
         width: 120,
-        render: (value: boolean) => (value ? <Tag color="green">Primary</Tag> : <Tag>Co-tenant</Tag>),
+        render: (value: boolean) => (value ? <Tag color="green">{t("Primary")}</Tag> : <Tag>{t("Co-tenant")}</Tag>),
       },
       {
-        title: 'Joined',
+        title: t("Joined"),
         dataIndex: 'joined_at',
         key: 'joined_at',
         width: 130,
         render: (value: string) => formatDate(value),
       },
       {
-        title: 'Left',
+        title: t("Left"),
         dataIndex: 'left_at',
         key: 'left_at',
         width: 130,
         render: (value: string | null) => formatDate(value),
       },
       {
-        title: 'Actions',
+        title: t("Actions"),
         key: 'actions',
         width: 210,
         render: (_, tenant) => {
@@ -774,7 +683,7 @@ export function ContractsPage() {
                 loading={actionLoading === `primary-${tenant.tenant_id}`}
                 onClick={() => void handleMakePrimary(tenant)}
               >
-                Make primary
+                {t("Make primary")}
               </Button>
               <Button
                 size="small"
@@ -783,239 +692,89 @@ export function ContractsPage() {
                 loading={actionLoading === `remove-${tenant.tenant_id}`}
                 onClick={() => void handleRemoveTenant(tenant)}
               >
-                Remove
+                {t("Remove")}
               </Button>
             </Space>
           )
         },
       },
     ],
-    [actionLoading, detailCanChange, handleMakePrimary, handleRemoveTenant],
+    [actionLoading, detailCanChange, handleMakePrimary, handleRemoveTenant, t],
   )
 
   return (
-    <Localized>
+    <>
     <div className="contracts-page">
       <Card>
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <div className="contracts-toolbar">
             <div>
               <Typography.Title level={4} style={{ margin: 0 }}>
-                Contracts
+                {t("Contracts")}
               </Typography.Title>
               <Typography.Text type="secondary">
-                Manage rental contracts, occupants, lifecycle status, and room capacity.
+                {t("Manage rental contracts, occupants, lifecycle status, and room capacity.")}
               </Typography.Text>
             </div>
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-              New Contract
+              {t("New Contract")}
             </Button>
           </div>
 
-          <div className="contracts-filters">
-            <Input.Search
-              placeholder="Search code, room, building, tenant"
-              value={searchInput}
-              allowClear
-              onChange={(event) => setSearchInput(event.target.value)}
-            />
-            <Select
-              value={statusFilter}
-              placeholder="Status"
-              allowClear
-              options={statusOptions.map((item) => ({ label: item.label, value: item.value }))}
-              onChange={(value) => setStatusFilter(value)}
-            />
-            <Select
-              value={businessStageFilter}
-              placeholder="Business stage"
-              allowClear
-              options={businessStageOptions.map((item) => ({ label: item.label, value: item.value }))}
-              onChange={(value) => setBusinessStageFilter(value)}
-            />
-            <Select
-              value={buildingFilter}
-              placeholder="Building"
-              allowClear
-              options={buildings.map((building) => ({ label: building.name, value: building.id }))}
-              onChange={(value) => {
-                setBuildingFilter(value)
-                setRoomFilter(undefined)
-              }}
-            />
-            <Select
-              value={roomFilter}
-              placeholder="Room"
-              allowClear
-              options={roomsForFilter.map((room) => ({ label: room.code, value: room.id }))}
-              onChange={(value) => setRoomFilter(value)}
-            />
-            <Select
-              value={tenantFilter}
-              placeholder="Tenant"
-              allowClear
-              showSearch
-              optionFilterProp="label"
-              options={tenants.map((tenant) => ({ label: tenant.full_name, value: tenant.id }))}
-              onChange={(value) => setTenantFilter(value)}
-            />
-            <Button icon={<ReloadOutlined />} onClick={() => void loadData()}>
-              Refresh
-            </Button>
-          </div>
-
-          {loading ? (
-            <Skeleton active paragraph={{ rows: 6 }} />
-          ) : error ? (
-            <Empty description={error}>
-              <Button type="primary" onClick={() => void loadData()}>
-                Retry
-              </Button>
-            </Empty>
-          ) : items.length === 0 ? (
-            <Empty description="No contracts found">
-              <Button type="primary" onClick={openCreate}>
-                New Contract
-              </Button>
-            </Empty>
-          ) : (
-            <Table<ContractListItem>
-              rowKey="id"
-              columns={columns}
-              dataSource={items}
-              pagination={{
-                current: page,
-                pageSize,
-                total,
-                showSizeChanger: true,
-                onChange: (nextPage, nextPageSize) => {
-                  setPage(nextPage)
-                  setPageSize(nextPageSize)
-                },
-              }}
-              scroll={{ x: 1420 }}
-            />
-          )}
+          <ContractFilters
+            search={searchInput}
+            status={statusFilter}
+            businessStage={businessStageFilter}
+            buildingId={buildingFilter}
+            roomId={roomFilter}
+            tenantId={tenantFilter}
+            buildings={buildings}
+            rooms={roomsForFilter}
+            tenants={tenants}
+            statusOptions={statusOptions}
+            businessStageOptions={businessStageOptions}
+            onSearchChange={setSearchInput}
+            onStatusChange={setStatusFilter}
+            onBusinessStageChange={setBusinessStageFilter}
+            onBuildingChange={(value) => { setBuildingFilter(value); setRoomFilter(undefined) }}
+            onRoomChange={setRoomFilter}
+            onTenantChange={setTenantFilter}
+            onRefresh={() => void loadData()}
+          />
+          <ContractTable
+            loading={loading}
+            error={error}
+            items={items}
+            columns={columns}
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onRetry={() => void loadData()}
+            onCreate={openCreate}
+            onPageChange={(nextPage, nextPageSize) => { setPage(nextPage); setPageSize(nextPageSize) }}
+          />
         </Space>
       </Card>
 
-      <Drawer
+      <ContractFormDrawer
         open={formDrawerOpen}
-        title={formDrawerMode === 'create' ? 'New Contract' : 'Edit Contract'}
-        placement="right"
+        mode={formDrawerMode}
+        loading={formDrawerLoading}
+        saving={saveLoading}
         width={screens.lg ? 620 : screens.md ? 540 : '100%'}
+        form={contractForm}
+        buildings={buildings}
+        rooms={roomsForForm}
+        tenants={tenants}
+        coTenantOptions={coTenantOptions}
+        selectedBuildingId={selectedFormBuildingId}
         onClose={() => setFormDrawerOpen(false)}
-        destroyOnClose
-      >
-        {formDrawerLoading ? (
-          <Skeleton active paragraph={{ rows: 8 }} />
-        ) : (
-          <Form form={contractForm} layout="vertical">
-            <div className="contract-form-grid">
-              <Form.Item name="building_id" label="Building" rules={[{ required: true, message: 'Please select a building' }]}>
-                <Select
-                  options={buildings.map((building) => ({ label: building.name, value: building.id }))}
-                  onChange={() => contractForm.setFieldValue('room_id', undefined)}
-                />
-              </Form.Item>
-              <Form.Item name="room_id" label="Room" rules={[{ required: true, message: 'Please select a room' }]}>
-                <Select
-                  disabled={!selectedFormBuildingId}
-                  options={roomsForForm.map((room) => ({ label: room.code, value: room.id }))}
-                  onChange={(roomId) => {
-                    const room = rooms.find((item) => item.id === roomId)
-                    if (room && formDrawerMode === 'create') {
-                      contractForm.setFieldsValue({
-                        rent_price: room.base_rent,
-                        deposit_amount: room.deposit_default,
-                      })
-                    }
-                  }}
-                />
-              </Form.Item>
-              <Form.Item name="contract_code" label="Contract code">
-                <Input placeholder="Auto-generated if empty" />
-              </Form.Item>
-              <Form.Item name="billing_day" label="Billing day" rules={[{ required: true, message: 'Please enter billing day' }]}>
-                <InputNumber min={1} max={28} precision={0} style={{ width: '100%' }} />
-              </Form.Item>
-              <Form.Item name="start_date" label="Start date" rules={[{ required: true, message: 'Please select start date' }]}>
-                <Input type="date" />
-              </Form.Item>
-              <Form.Item name="end_date" label="End date">
-                <Input type="date" />
-              </Form.Item>
-              <Form.Item name="move_in_date" label="Move-in date">
-                <Input type="date" />
-              </Form.Item>
-              <Form.Item name="move_out_date" label="Move-out date">
-                <Input type="date" />
-              </Form.Item>
-              <Form.Item name="rent_price" label="Rent" rules={[{ required: true, message: 'Please enter rent' }]}>
-                <InputNumber min={0} precision={0} style={{ width: '100%' }} />
-              </Form.Item>
-              <Form.Item name="deposit_amount" label="Deposit" rules={[{ required: true, message: 'Please enter deposit' }]}>
-                <InputNumber min={0} precision={0} style={{ width: '100%' }} />
-              </Form.Item>
-              {formDrawerMode === 'create' ? (
-                <>
-                  <Form.Item
-                    name="primary_tenant_id"
-                    label="Primary tenant"
-                    dependencies={['co_tenant_ids']}
-                    rules={[
-                      ({ getFieldValue }) => ({
-                        validator: async (_rule: unknown, value?: string) => {
-                          const coTenantIds = (getFieldValue('co_tenant_ids') as string[] | undefined) ?? []
-                          if (coTenantIds.length > 0 && !value) {
-                            throw new Error('Please select a primary tenant')
-                          }
-                        },
-                      }),
-                    ]}
-                  >
-                    <Select
-                      allowClear
-                      showSearch
-                      optionFilterProp="label"
-                      options={tenants.map((tenant) => ({ label: tenant.full_name, value: tenant.id }))}
-                      onChange={(value) => {
-                        const coTenantIds = (contractForm.getFieldValue('co_tenant_ids') as string[] | undefined) ?? []
-                        contractForm.setFieldValue('co_tenant_ids', coTenantIds.filter((tenantId) => tenantId !== value))
-                      }}
-                    />
-                  </Form.Item>
-                  <Form.Item name="co_tenant_ids" label="Co-tenants">
-                    <Select
-                      mode="multiple"
-                      allowClear
-                      showSearch
-                      optionFilterProp="label"
-                      options={coTenantOptions.map((tenant) => ({ label: tenant.full_name, value: tenant.id }))}
-                    />
-                  </Form.Item>
-                </>
-              ) : null}
-              <Form.Item name="note" label="Note" className="contract-form-full-row">
-                <Input.TextArea rows={3} placeholder="Internal note" />
-              </Form.Item>
-            </div>
-
-            <div className="contract-drawer-actions">
-              <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-                <Button onClick={() => setFormDrawerOpen(false)}>Cancel</Button>
-                <Button type="primary" loading={saveLoading} onClick={() => void submitContractForm()}>
-                  Save
-                </Button>
-              </Space>
-            </div>
-          </Form>
-        )}
-      </Drawer>
+        onSave={() => void submitContractForm()}
+      />
 
       <Drawer
         open={detailOpen}
-        title="Contract Detail"
+        title={t("Contract Detail")}
         placement="right"
         width={screens.xl ? 860 : screens.md ? 720 : '100%'}
         onClose={closeDetail}
@@ -1028,167 +787,79 @@ export function ContractsPage() {
               <Space direction="vertical" size={2}>
                 <Typography.Text strong>{detailItem.contract_code ?? detailItem.id}</Typography.Text>
                 <Typography.Text type="secondary">
-                  {detailItem.building_name} / Room {detailItem.room_code}
+                  {detailItem.building_name} {t("/ Room")} {detailItem.room_code}
                 </Typography.Text>
               </Space>
-              <Space wrap className="contract-detail-actions">
-                {statusTag(detailItem.status)}
-                {businessStageTag(detailItem.business_stage)}
-                <Button icon={<EditOutlined />} disabled={!detailCanChange} onClick={() => void openEdit(detailItem.id)}>
-                  Edit
-                </Button>
-                {detailItem.status === 'DRAFT' ? (
-                  <Button
-                    type="primary"
-                    loading={actionLoading === `activate-${detailItem.id}`}
-                    onClick={() => void handleActivate(detailItem.id)}
-                  >
-                    Activate
-                  </Button>
-                ) : null}
-                {detailCanChange ? (
-                  <>
-                    <Button onClick={() => openCloseModal('end')}>End</Button>
-                    <Button danger onClick={() => openCloseModal('cancel')}>Cancel</Button>
-                  </>
-                ) : null}
-              </Space>
+              <ContractStatusActions
+                contract={detailItem}
+                canChange={detailCanChange}
+                actionLoading={actionLoading}
+                statusTag={statusTag(detailItem.status)}
+                businessStageTag={businessStageTag(detailItem.business_stage)}
+                onEdit={() => void openEdit(detailItem.id)}
+                onActivate={() => void handleActivate(detailItem.id)}
+                onEnd={() => openCloseModal('end')}
+                onCancel={() => openCloseModal('cancel')}
+              />
             </div>
 
             <Descriptions bordered size="small" column={screens.lg ? 2 : 1}>
-              <Descriptions.Item label="Business stage">{businessStageTag(detailItem.business_stage)}</Descriptions.Item>
-              <Descriptions.Item label="Technical status">{statusTag(detailItem.status)}</Descriptions.Item>
-              <Descriptions.Item label="Rent">{currency.format(detailItem.rent_price)}</Descriptions.Item>
-              <Descriptions.Item label="Deposit">{currency.format(detailItem.deposit_amount)}</Descriptions.Item>
-              <Descriptions.Item label="Billing day">{detailItem.billing_day}</Descriptions.Item>
-              <Descriptions.Item label="Occupants">
-                {detailItem.active_tenants_count} / {detailItem.max_occupants}
+              <Descriptions.Item label={t("Business stage")}>{businessStageTag(detailItem.business_stage)}</Descriptions.Item>
+              <Descriptions.Item label={t("Technical status")}>{statusTag(detailItem.status)}</Descriptions.Item>
+              <Descriptions.Item label={t("Rent")}>{currency.format(detailItem.rent_price)}</Descriptions.Item>
+              <Descriptions.Item label={t("Deposit")}>{currency.format(detailItem.deposit_amount)}</Descriptions.Item>
+              <Descriptions.Item label={t("Billing day")}>{detailItem.billing_day}</Descriptions.Item>
+              <Descriptions.Item label={t("Occupants")}>
+                {detailItem.active_tenants_count} {t("/")} {detailItem.max_occupants}
               </Descriptions.Item>
-              <Descriptions.Item label="Start date">{formatDate(detailItem.start_date)}</Descriptions.Item>
-              <Descriptions.Item label="End date">{formatDate(detailItem.end_date)}</Descriptions.Item>
-              <Descriptions.Item label="Move-in">{formatDate(detailItem.move_in_date)}</Descriptions.Item>
-              <Descriptions.Item label="Move-out">{formatDate(detailItem.move_out_date)}</Descriptions.Item>
-              <Descriptions.Item label="Note" span={screens.lg ? 2 : 1}>{detailItem.note ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Start date")}>{formatDate(detailItem.start_date)}</Descriptions.Item>
+              <Descriptions.Item label={t("End date")}>{formatDate(detailItem.end_date)}</Descriptions.Item>
+              <Descriptions.Item label={t("Move-in")}>{formatDate(detailItem.move_in_date)}</Descriptions.Item>
+              <Descriptions.Item label={t("Move-out")}>{formatDate(detailItem.move_out_date)}</Descriptions.Item>
+              <Descriptions.Item label={t("Note")} span={screens.lg ? 2 : 1}>{detailItem.note ?? '-'}</Descriptions.Item>
             </Descriptions>
 
             <div>
-              <Typography.Title level={5}>Status history</Typography.Title>
+              <Typography.Title level={5}>{t("Status history")}</Typography.Title>
               <Timeline items={statusHistoryItems} />
             </div>
 
-            <Card size="small" title="Contract documents">
-              <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                <Form<ContractDocumentFormValues>
-                  form={documentForm}
-                  layout="vertical"
-                  initialValues={{ doc_type: 'SIGNED_SCAN' }}
-                >
-                  <div className="contract-tenant-form">
-                    <Form.Item name="doc_type" label="Document type" rules={[{ required: true, message: 'Please select document type' }]}>
-                      <Select
-                        options={(Object.keys(contractDocumentTypeLabel) as ContractDocumentType[]).map((value) => ({
-                          value,
-                          label: contractDocumentTypeLabel[value],
-                        }))}
-                      />
-                    </Form.Item>
-                    <Form.Item name="note" label="Note">
-                      <Input />
-                    </Form.Item>
-                    <Form.Item name="file_url" hidden rules={[{ required: true, message: 'Please upload a file' }]}>
-                      <Input />
-                    </Form.Item>
-                    <Form.Item name="file_name" hidden>
-                      <Input />
-                    </Form.Item>
-                    <Form.Item name="mime_type" hidden>
-                      <Input />
-                    </Form.Item>
-                    <Form.Item name="file_size" hidden>
-                      <InputNumber />
-                    </Form.Item>
-                    <Form.Item label="File" required>
-                      <Space wrap>
-                        <CloudinaryUploadButton
-                          accept={documentAccept}
-                          context="CONTRACT_DOCUMENT"
-                          onUploaded={(file) => documentForm.setFieldsValue(uploadedFileFields(file))}
-                        >
-                          Upload file
-                        </CloudinaryUploadButton>
-                        <Form.Item noStyle shouldUpdate={(prev, next) => prev.file_url !== next.file_url || prev.file_name !== next.file_name}>
-                          {({ getFieldValue }) => {
-                            const fileUrl = getFieldValue('file_url') as string | undefined
-                            const fileName = getFieldValue('file_name') as string | undefined
-                            return fileUrl ? (
-                              <Typography.Link href={fileUrl} target="_blank" rel="noreferrer">
-                                {fileName || 'Uploaded file'}
-                              </Typography.Link>
-                            ) : (
-                              <Typography.Text type="secondary">No file uploaded</Typography.Text>
-                            )
-                          }}
-                        </Form.Item>
-                      </Space>
-                    </Form.Item>
-                    <Button type="primary" loading={documentSaving} onClick={() => void submitContractDocument()}>
-                      Save document
-                    </Button>
-                  </div>
-                </Form>
-
-                <Table<ContractDocument>
-                  rowKey="id"
-                  size="small"
-                  pagination={false}
-                  dataSource={detailItem.documents}
-                  locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No documents uploaded" /> }}
-                  columns={[
-                    { title: 'Type', dataIndex: 'doc_type', render: (value: ContractDocumentType) => contractDocumentTypeLabel[value] ?? value },
-                    {
-                      title: 'File',
-                      dataIndex: 'file_url',
-                      render: (value: string | null, item) => value ? (
-                        <Typography.Link href={value} target="_blank" rel="noreferrer">
-                          {item.file_name ?? 'Open file'}
-                        </Typography.Link>
-                      ) : '-',
-                    },
-                    { title: 'Uploaded', dataIndex: 'uploaded_at', render: (value: string | null) => (value ? dayjs(value).format('DD/MM/YYYY HH:mm') : '-') },
-                  ]}
-                />
-              </Space>
-            </Card>
+            <ContractDocumentManager
+              documents={detailItem.documents}
+              form={documentForm}
+              saving={documentSaving}
+              onSave={() => void submitContractDocument()}
+            />
 
             <div className="contract-tenants-section">
               <div className="contract-section-title">
-                <Typography.Title level={5}>Tenants</Typography.Title>
+                <Typography.Title level={5}>{t("Tenants")}</Typography.Title>
                 <Typography.Text type="secondary">
-                  One active tenant must be marked primary before activation.
+                  {t("One active tenant must be marked primary before activation.")}
                 </Typography.Text>
               </div>
 
               {detailCanChange ? (
                 <Form form={addTenantForm} layout="vertical" className="contract-tenant-form">
-                  <Form.Item name="tenant_id" label="Tenant" rules={[{ required: true, message: 'Please select a tenant' }]}>
+                  <Form.Item name="tenant_id" label={t("Tenant")} rules={[{ required: true, message: t("Please select a tenant") }]}>
                     <Select
                       showSearch
                       optionFilterProp="label"
                       options={availableTenantsForDetail.map((tenant) => ({ label: tenant.full_name, value: tenant.id }))}
                     />
                   </Form.Item>
-                  <Form.Item name="joined_at" label="Joined at">
+                  <Form.Item name="joined_at" label={t("Joined at")}>
                     <Input type="date" />
                   </Form.Item>
                   <Form.Item name="is_primary" valuePropName="checked" className="contract-primary-checkbox">
-                    <Checkbox>Primary</Checkbox>
+                    <Checkbox>{t("Primary")}</Checkbox>
                   </Form.Item>
                   <Button
                     type="primary"
                     loading={actionLoading === `add-tenant-${detailItem.id}`}
                     onClick={() => void submitAddTenant()}
                   >
-                    Add tenant
+                    {t("Add tenant")}
                   </Button>
                 </Form>
               ) : null}
@@ -1217,15 +888,15 @@ export function ContractsPage() {
         destroyOnClose
       >
         <Form form={closeForm} layout="vertical">
-          <Form.Item name="close_date" label="Close date" rules={[{ required: true, message: 'Please select close date' }]}>
+          <Form.Item name="close_date" label={t("Close date")} rules={[{ required: true, message: t("Please select close date") }]}>
             <Input type="date" />
           </Form.Item>
-          <Form.Item name="note" label="Note">
+          <Form.Item name="note" label={t("Note")}>
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
       </Modal>
     </div>
-    </Localized>
+    </>
   )
 }

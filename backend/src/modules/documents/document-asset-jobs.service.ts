@@ -15,7 +15,6 @@ import {
   type UploadResourceType
 } from '../uploads/uploads.service';
 import type { DocumentKind } from './document-assets.service';
-import { processDueTenantAnonymization } from '../tenants/tenant-privacy.service';
 
 type AssetJobAction = 'DELETE' | 'MIGRATE_AUTHENTICATED';
 type AssetJobStatus = 'PENDING' | 'PROCESSING' | 'RETRY' | 'COMPLETED' | 'FAILED';
@@ -457,50 +456,4 @@ export const reconcileDocumentAssets = async (): Promise<{
   );
 
   return { databaseOrphans, cloudinaryOrphans, legacyAssets };
-};
-
-let scheduler: NodeJS.Timeout | null = null;
-let reconciliationScheduler: NodeJS.Timeout | null = null;
-let running = false;
-
-const runMaintenance = async (): Promise<void> => {
-  if (running) return;
-  running = true;
-  try {
-    await processDueTenantAnonymization();
-    await processExpiredDocumentRetention();
-    await processCloudinaryAssetJobs();
-  } catch (error) {
-    // Keep sensitive storage details out of logs.
-    // eslint-disable-next-line no-console
-    console.error('Document asset maintenance failed', { code: getErrorCode(error) });
-  } finally {
-    running = false;
-  }
-};
-
-const runReconciliation = async (): Promise<void> => {
-  try {
-    await reconcileDocumentAssets();
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error('Document asset reconciliation failed', { code: getErrorCode(error) });
-  }
-};
-
-export const startDocumentAssetScheduler = (): void => {
-  if (scheduler) return;
-  void runMaintenance();
-  void runReconciliation();
-  scheduler = setInterval(
-    () => void runMaintenance(),
-    env.DOCUMENT_JOB_INTERVAL_MINUTES * 60_000
-  );
-  scheduler.unref();
-
-  reconciliationScheduler = setInterval(
-    () => void runReconciliation(),
-    env.DOCUMENT_RECONCILIATION_INTERVAL_HOURS * 60 * 60_000
-  );
-  reconciliationScheduler.unref();
 };

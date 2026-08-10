@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -50,6 +50,7 @@ const paymentRequest = {
 describe('PaymentsPage filters', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    window.history.replaceState(null, '', '/payments')
     paymentServiceMocks.listPaymentRequests.mockResolvedValue({
       items: [paymentRequest],
       total: 1,
@@ -118,7 +119,7 @@ describe('PaymentsPage filters', () => {
     const user = userEvent.setup()
     render(<PaymentsPage />)
     await screen.findByText('Tenant One')
-    await user.click(screen.getByRole('button', { name: 'eye' }))
+    fireEvent.click(screen.getByRole('button', { name: 'View payment request' }))
     await waitFor(() => expect(paymentServiceMocks.getPaymentRequest).toHaveBeenCalledWith(paymentRequest.id))
     await screen.findByText('Payment ledger')
     await user.click(await screen.findByRole('button', { name: /reverse/i }))

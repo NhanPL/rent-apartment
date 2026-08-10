@@ -1,4 +1,5 @@
-import { DeleteOutlined, DownloadOutlined, EditOutlined, EyeOutlined, MailOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons'
+import { useI18n } from '../../i18n'
+import { DeleteOutlined, DownloadOutlined, EditOutlined, EyeOutlined, LockOutlined, MailOutlined, PlusOutlined, ReloadOutlined, UnlockOutlined } from '@ant-design/icons'
 import {
   Alert,
   Button,
@@ -33,10 +34,10 @@ import {
   listTenants,
   resendTenantActivation,
   updateTenant,
+  updateTenantAccountStatus,
   updateTenantIdentityDocuments,
 } from '../../services/tenantsService'
-import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
-import { Localized } from '../../shared/components/Localized'
+import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
 import { uploadFileToCloudinary } from '../../services/uploadService'
 import type {
   TenantDetail,
@@ -90,6 +91,7 @@ const toIdentityDocumentPayload = (
 })
 
 export function TenantsPage() {
+  const { t } = useI18n()
   const screens = Grid.useBreakpoint()
   const isDesktop = Boolean(screens.xl)
   const isMobile = !screens.md
@@ -120,6 +122,8 @@ export function TenantsPage() {
   const [deleteTarget, setDeleteTarget] = useState<TenantListItem | null>(null)
   const [deletingTenantId, setDeletingTenantId] = useState<string | null>(null)
   const [resendingTenantId, setResendingTenantId] = useState<string | null>(null)
+  const [accountStatusTarget, setAccountStatusTarget] = useState<TenantListItem | null>(null)
+  const [accountStatusUpdating, setAccountStatusUpdating] = useState(false)
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null)
   const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null)
   const [exportingTenantId, setExportingTenantId] = useState<string | null>(null)
@@ -284,6 +288,7 @@ export function TenantsPage() {
       setDrawerOpen(false)
       await loadTenants()
     } catch (saveError: unknown) {
+      applyApiFieldErrors(form, saveError)
       const formError = saveError as { errorFields?: Array<{ name: (string | number)[] }> }
       const firstError = formError.errorFields?.[0]
       let userMessage: string
@@ -386,10 +391,29 @@ export function TenantsPage() {
     }
   }, [resendingTenantId])
 
+  const confirmAccountStatusChange = useCallback(async () => {
+    if (!accountStatusTarget || accountStatusUpdating || accountStatusTarget.account_status === 'PENDING_ACTIVATION') return
+    const nextStatus = accountStatusTarget.account_status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE'
+    setAccountStatusUpdating(true)
+    try {
+      await updateTenantAccountStatus(accountStatusTarget.id, nextStatus)
+      message.success(t(nextStatus === 'ACTIVE' ? 'Tenant account activated.' : 'Tenant account deactivated and signed out.'))
+      setAccountStatusTarget(null)
+      if (selectedTenant?.id === accountStatusTarget.id) {
+        setSelectedTenant(await getTenant(accountStatusTarget.id))
+      }
+      await loadTenants()
+    } catch (accountError) {
+      message.error(getUserErrorMessage(accountError, 'Unable to update the tenant account status.'))
+    } finally {
+      setAccountStatusUpdating(false)
+    }
+  }, [accountStatusTarget, accountStatusUpdating, loadTenants, selectedTenant?.id, t])
+
   const columns: ColumnsType<TenantListItem> = useMemo(() => [
-    { title: 'Tenant name', dataIndex: 'full_name', key: 'full_name', width: 190 },
+    { title: t("Tenant name"), dataIndex: 'full_name', key: 'full_name', width: 190 },
     {
-      title: 'Phone / Email',
+      title: t("Phone / Email"),
       key: 'contact',
       width: 240,
       render: (_, item) => (
@@ -399,9 +423,9 @@ export function TenantsPage() {
         </Space>
       ),
     },
-    { title: 'Identity number', dataIndex: 'identity_number', key: 'identity_number', width: 180 },
+    { title: t("Identity number"), dataIndex: 'identity_number', key: 'identity_number', width: 180 },
     {
-      title: 'Status',
+      title: t("Status"),
       dataIndex: 'status',
       key: 'status',
       width: 130,
@@ -411,29 +435,29 @@ export function TenantsPage() {
       },
     },
     {
-      title: 'Account status',
+      title: t("Account status"),
       dataIndex: 'account_status',
       key: 'account_status',
       width: 170,
       render: (value: AccountStatus | null) => {
         if (!value) return '-'
         const settings: Record<AccountStatus, { label: string; color: string }> = {
-          PENDING_ACTIVATION: { label: 'Pending activation', color: 'gold' },
-          ACTIVE: { label: 'Active', color: 'green' },
-          DISABLED: { label: 'Disabled', color: 'default' },
+          PENDING_ACTIVATION: { label: t("Pending activation"), color: 'gold' },
+          ACTIVE: { label: t("Active"), color: 'green' },
+          DISABLED: { label: t("Disabled"), color: 'default' },
         }
         return <Tag color={settings[value].color}>{settings[value].label}</Tag>
       },
     },
     {
-      title: 'Updated at',
+      title: t("Updated at"),
       dataIndex: 'updated_at',
       key: 'updated_at',
       width: 170,
       render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm'),
     },
     {
-      title: 'Actions',
+      title: t("Actions"),
       key: 'actions',
       fixed: 'right',
       width: 176,
@@ -446,10 +470,18 @@ export function TenantsPage() {
               type="text"
               icon={<MailOutlined />}
               aria-label={`Resend activation invitation to ${item.full_name}`}
-              title="Resend activation invitation"
+              title={t("Resend activation invitation")}
               loading={resendingTenantId === item.id}
               disabled={Boolean(resendingTenantId)}
               onClick={() => void handleResendActivation(item)}
+            />
+          ) : item.account_status === 'ACTIVE' || item.account_status === 'DISABLED' ? (
+            <Button
+              type="text"
+              icon={item.account_status === 'ACTIVE' ? <LockOutlined /> : <UnlockOutlined />}
+              aria-label={`${item.account_status === 'ACTIVE' ? 'Deactivate' : 'Activate'} account for ${item.full_name}`}
+              title={t(item.account_status === 'ACTIVE' ? 'Deactivate account' : 'Activate account')}
+              onClick={() => setAccountStatusTarget(item)}
             />
           ) : null}
           <Button
@@ -467,35 +499,35 @@ export function TenantsPage() {
         </Space>
       ),
     },
-  ], [deletingTenantId, handleResendActivation, handleView, openEdit, resendingTenantId])
+  ], [deletingTenantId, handleResendActivation, handleView, openEdit, resendingTenantId, t])
 
   const renderIdentityDocument = (label: string, document: TenantIdentityDocument | null) => (
     <div className="tenant-identity-detail-item">
       <Typography.Text strong>{label}</Typography.Text>
       {document ? (
-        <Image src={document.file_url} alt={label} />
+        <Image src={document.file_url} alt={label} loading="lazy" />
       ) : (
-        <div className="tenant-identity-detail-empty">No image</div>
+        <div className="tenant-identity-detail-empty">{t("No image")}</div>
       )}
     </div>
   )
 
   return (
-    <Localized>
+    <>
     <div className="tenants-page">
       <Card>
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <div className="tenants-toolbar">
             <div>
-              <Typography.Title level={4} style={{ margin: 0 }}>Tenants</Typography.Title>
-              <Typography.Text type="secondary">Manage tenant profiles and identity information.</Typography.Text>
+              <Typography.Title level={4} style={{ margin: 0 }}>{t("Tenants")}</Typography.Title>
+              <Typography.Text type="secondary">{t("Manage tenant profiles and identity information.")}</Typography.Text>
             </div>
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Add Tenant</Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t("Add Tenant")}</Button>
           </div>
 
           <div className="tenants-filters">
             <Input.Search
-              placeholder="Search name, phone, email, identity number"
+              placeholder={t("Search name, phone, email, identity number")}
               value={searchInput}
               onChange={(event) => {
                 setSearchInput(event.target.value)
@@ -505,7 +537,7 @@ export function TenantsPage() {
             />
             <Select
               value={statusFilter}
-              placeholder="Status"
+              placeholder={t("Status")}
               allowClear
               options={statusOptions.map((item) => ({ label: item.label, value: item.value }))}
               onChange={(value) => {
@@ -513,15 +545,15 @@ export function TenantsPage() {
                 setPage(1)
               }}
             />
-            <Button icon={<ReloadOutlined />} onClick={() => void loadTenants()}>Refresh</Button>
+            <Button icon={<ReloadOutlined />} onClick={() => void loadTenants()}>{t("Refresh")}</Button>
           </div>
 
           {loading ? (
             <Skeleton active paragraph={{ rows: 6 }} />
           ) : error ? (
-            <Empty description={error}><Button type="primary" onClick={() => void loadTenants()}>Retry</Button></Empty>
+            <Empty description={error}><Button type="primary" onClick={() => void loadTenants()}>{t("Retry")}</Button></Empty>
           ) : items.length === 0 ? (
-            <Empty description="No tenants found"><Button type="primary" onClick={openCreate}>Add Tenant</Button></Empty>
+            <Empty description={t("No tenants found")}><Button type="primary" onClick={openCreate}>{t("Add Tenant")}</Button></Empty>
           ) : (
             <Table<TenantListItem>
               rowKey="id"
@@ -563,47 +595,47 @@ export function TenantsPage() {
               />
             ) : null}
             <div className={`tenant-tab-grid ${isDesktop ? 'desktop-two-cols' : ''}`}>
-              <Form.Item name="full_name" label="Full name" rules={[{ required: true, whitespace: true, message: 'Please enter the tenant name.' }]}>
-                <Input placeholder="Tenant full name" />
+              <Form.Item name="full_name" label={t("Full name")} rules={[{ required: true, whitespace: true, message: t("Please enter the tenant name.") }]}>
+                <Input placeholder={t("Tenant full name")} />
               </Form.Item>
-              <Form.Item name="phone" label="Phone" rules={[
-                { required: true, message: 'Please enter the phone number.' },
-                { pattern: /^[0-9+\-\s]{8,20}$/, message: 'Please enter a valid phone number.' },
+              <Form.Item name="phone" label={t("Phone")} rules={[
+                { required: true, message: t("Please enter the phone number.") },
+                { pattern: /^[0-9+\-\s]{8,20}$/, message: t("Please enter a valid phone number.") },
               ]}>
-                <Input placeholder="Phone number" />
+                <Input placeholder={t("Phone number")} />
               </Form.Item>
-              <Form.Item name="email" label="Email" rules={[
-                { required: true, message: 'Please enter the email address.' },
-                { type: 'email', message: 'Please enter a valid email address.' },
+              <Form.Item name="email" label={t("Email")} rules={[
+                { required: true, message: t("Please enter the email address.") },
+                { type: 'email', message: t("Please enter a valid email address.") },
               ]}>
-                <Input placeholder="Email address" />
+                <Input placeholder={t("Email address")} />
               </Form.Item>
-              <Form.Item name="gender" label="Gender">
+              <Form.Item name="gender" label={t("Gender")}>
                 <Radio.Group options={[
-                  { label: 'Male', value: 'MALE' },
-                  { label: 'Female', value: 'FEMALE' },
-                  { label: 'Other', value: 'OTHER' },
+                  { label: t("Male"), value: 'MALE' },
+                  { label: t("Female"), value: 'FEMALE' },
+                  { label: t("Other"), value: 'OTHER' },
                 ]} />
               </Form.Item>
-              <Form.Item name="dob" label="Date of birth"><Input type="date" /></Form.Item>
-              <Form.Item name="identity_number" label="Citizen ID number" rules={[
-                { required: true, whitespace: true, message: 'Please enter the citizen ID number.' },
-                { pattern: /^[A-Za-z0-9]{6,20}$/, message: 'Please enter a valid citizen ID number.' },
+              <Form.Item name="dob" label={t("Date of birth")}><Input type="date" /></Form.Item>
+              <Form.Item name="identity_number" label={t("Citizen ID number")} rules={[
+                { required: true, whitespace: true, message: t("Please enter the citizen ID number.") },
+                { pattern: /^[A-Za-z0-9]{6,20}$/, message: t("Please enter a valid citizen ID number.") },
               ]}>
-                <Input placeholder="Citizen ID number" />
+                <Input placeholder={t("Citizen ID number")} />
               </Form.Item>
-              <Form.Item name="identity_issued_date" label="Issue date"><Input type="date" /></Form.Item>
-              <Form.Item name="identity_issued_place" label="Place of issue"><Input placeholder="Place of issue" /></Form.Item>
-              <Form.Item name="status" label="Status" rules={[{ required: true, message: 'Please select a status.' }]}>
+              <Form.Item name="identity_issued_date" label={t("Issue date")}><Input type="date" /></Form.Item>
+              <Form.Item name="identity_issued_place" label={t("Place of issue")}><Input placeholder={t("Place of issue")} /></Form.Item>
+              <Form.Item name="status" label={t("Status")} rules={[{ required: true, message: t("Please select a status.") }]}>
                 <Select options={statusOptions.map((item) => ({ label: item.label, value: item.value }))} />
               </Form.Item>
-              <Form.Item name="permanent_address" label="Permanent address" className="tenant-tab-full-row">
-                <Input.TextArea rows={3} placeholder="Permanent address" />
+              <Form.Item name="permanent_address" label={t("Permanent address")} className="tenant-tab-full-row">
+                <Input.TextArea rows={3} placeholder={t("Permanent address")} />
               </Form.Item>
-              <Form.Item name="identity_front" label="Citizen ID - Front" className="tenant-identity-form-item">
+              <Form.Item name="identity_front" label={t("Citizen ID - Front")} className="tenant-identity-form-item">
                 <IdentityDocumentInput disabled={saveLoading} />
               </Form.Item>
-              <Form.Item name="identity_back" label="Citizen ID - Back" className="tenant-identity-form-item">
+              <Form.Item name="identity_back" label={t("Citizen ID - Back")} className="tenant-identity-form-item">
                 <IdentityDocumentInput disabled={saveLoading} />
               </Form.Item>
               {drawerMode === 'create' ? (
@@ -617,17 +649,17 @@ export function TenantsPage() {
                       : Promise.reject(new Error('Confirm that the tenant agreed to the privacy policy.')),
                   }]}
                 >
-                  <Checkbox>The tenant agreed to the privacy policy and use of personal data.</Checkbox>
+                  <Checkbox>{t("The tenant agreed to the privacy policy and use of personal data.")}</Checkbox>
                 </Form.Item>
               ) : null}
-              <Form.Item name="note" label="Note" className="tenant-tab-full-row">
-                <Input.TextArea rows={3} placeholder="Tenant note" />
+              <Form.Item name="note" label={t("Note")} className="tenant-tab-full-row">
+                <Input.TextArea rows={3} placeholder={t("Tenant note")} />
               </Form.Item>
             </div>
 
             <div className="tenant-drawer-actions">
               <Space style={{ width: '100%', justifyContent: isMobile ? 'space-between' : 'flex-end' }}>
-                <Button size={isMobile ? 'large' : 'middle'} onClick={requestCloseDrawer}>Cancel</Button>
+                <Button size={isMobile ? 'large' : 'middle'} onClick={requestCloseDrawer}>{t("Cancel")}</Button>
                 <Button
                   size={isMobile ? 'large' : 'middle'}
                   type="primary"
@@ -635,7 +667,7 @@ export function TenantsPage() {
                   loading={saveLoading}
                   disabled={saveLoading}
                 >
-                  Save
+                  {t("Save")}
                 </Button>
               </Space>
             </div>
@@ -645,7 +677,7 @@ export function TenantsPage() {
 
       <Drawer
         open={detailOpen}
-        title="Tenant Detail"
+        title={t("Tenant Detail")}
         placement="right"
         width={screens.md ? 560 : '100%'}
         onClose={() => setDetailOpen(false)}
@@ -655,26 +687,26 @@ export function TenantsPage() {
         ) : (
           <Space direction="vertical" style={{ width: '100%' }} size={20}>
             <Descriptions bordered size="small" column={1}>
-              <Descriptions.Item label="Full name">{selectedTenant.full_name}</Descriptions.Item>
-              <Descriptions.Item label="Phone">{selectedTenant.phone}</Descriptions.Item>
-              <Descriptions.Item label="Email">{selectedTenant.email ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="Gender">{selectedTenant.gender ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="Date of birth">{selectedTenant.dob ? dayjs(selectedTenant.dob).format('DD/MM/YYYY') : '-'}</Descriptions.Item>
-              <Descriptions.Item label="Citizen ID number">{selectedTenant.identity_number}</Descriptions.Item>
-              <Descriptions.Item label="Issue date">{selectedTenant.identity_issued_date ? dayjs(selectedTenant.identity_issued_date).format('DD/MM/YYYY') : '-'}</Descriptions.Item>
-              <Descriptions.Item label="Place of issue">{selectedTenant.identity_issued_place ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="Status">{selectedTenant.status}</Descriptions.Item>
-              <Descriptions.Item label="Account status">
+              <Descriptions.Item label={t("Full name")}>{selectedTenant.full_name}</Descriptions.Item>
+              <Descriptions.Item label={t("Phone")}>{selectedTenant.phone}</Descriptions.Item>
+              <Descriptions.Item label={t("Email")}>{selectedTenant.email ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Gender")}>{selectedTenant.gender ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Date of birth")}>{selectedTenant.dob ? dayjs(selectedTenant.dob).format('DD/MM/YYYY') : '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Citizen ID number")}>{selectedTenant.identity_number}</Descriptions.Item>
+              <Descriptions.Item label={t("Issue date")}>{selectedTenant.identity_issued_date ? dayjs(selectedTenant.identity_issued_date).format('DD/MM/YYYY') : '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Place of issue")}>{selectedTenant.identity_issued_place ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Status")}>{selectedTenant.status}</Descriptions.Item>
+              <Descriptions.Item label={t("Account status")}>
                 {selectedTenant.account_status ?? '-'}
               </Descriptions.Item>
-              <Descriptions.Item label="Permanent address">{selectedTenant.permanent_address ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="Note">{selectedTenant.note ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="Privacy consent">
+              <Descriptions.Item label={t("Permanent address")}>{selectedTenant.permanent_address ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Note")}>{selectedTenant.note ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Privacy consent")}>
                 {selectedTenant.privacy_consent_granted
                   ? `Granted (${selectedTenant.privacy_policy_version ?? 'unknown version'})`
                   : 'Not recorded'}
               </Descriptions.Item>
-              <Descriptions.Item label="Consent recorded">
+              <Descriptions.Item label={t("Consent recorded")}>
                 {selectedTenant.privacy_consent_recorded_at
                   ? dayjs(selectedTenant.privacy_consent_recorded_at).format('DD/MM/YYYY HH:mm')
                   : '-'}
@@ -685,10 +717,10 @@ export function TenantsPage() {
               loading={exportingTenantId === selectedTenant.id}
               onClick={() => void handleExportTenantData(selectedTenant)}
             >
-              Export tenant data
+              {t("Export tenant data")}
             </Button>
             <div>
-              <Typography.Title level={5}>Citizen ID images</Typography.Title>
+              <Typography.Title level={5}>{t("Citizen ID images")}</Typography.Title>
               <div className="tenant-identity-detail-grid">
                 {renderIdentityDocument('Front', selectedTenant.identity_documents.front)}
                 {renderIdentityDocument('Back', selectedTenant.identity_documents.back)}
@@ -699,16 +731,35 @@ export function TenantsPage() {
       </Drawer>
 
       <Modal
+        open={Boolean(accountStatusTarget)}
+        title={t(accountStatusTarget?.account_status === 'ACTIVE' ? 'Deactivate tenant account?' : 'Activate tenant account?')}
+        onCancel={() => setAccountStatusTarget(null)}
+        onOk={() => void confirmAccountStatusChange()}
+        okText={t(accountStatusTarget?.account_status === 'ACTIVE' ? 'Deactivate account' : 'Activate account')}
+        okButtonProps={{
+          danger: accountStatusTarget?.account_status === 'ACTIVE',
+          loading: accountStatusUpdating,
+        }}
+        cancelText={t("Cancel")}
+        maskClosable={!accountStatusUpdating}
+        keyboard={!accountStatusUpdating}
+      >
+        {t(accountStatusTarget?.account_status === 'ACTIVE'
+          ? 'The tenant will be signed out on every device. Their profile, contracts, invoices, and payments will be retained.'
+          : 'The tenant can sign in again with their existing password. Their rental history is unchanged.')}
+      </Modal>
+
+      <Modal
         open={Boolean(deleteTarget)}
-        title="Delete tenant data?"
+        title={t("Delete tenant data?")}
         onCancel={() => {
           setDeleteErrorMessage(null)
           setDeleteTarget(null)
         }}
         onOk={() => void confirmDeleteTenant()}
-        okText="Delete"
+        okText={t("Delete")}
         okButtonProps={{ danger: true, loading: Boolean(deletingTenantId) }}
-        cancelText="Cancel"
+        cancelText={t("Cancel")}
         maskClosable={!deletingTenantId}
         keyboard={!deletingTenantId}
         confirmLoading={Boolean(deletingTenantId)}
@@ -723,26 +774,26 @@ export function TenantsPage() {
             style={{ marginBottom: 16 }}
           />
         ) : null}
-        Login access and Citizen ID images will be removed. Personal data is anonymized immediately when no retained financial history exists; otherwise anonymization is scheduled after the retention period. Financial records are never deleted.
+        {t("Login access and Citizen ID images will be removed. Personal data is anonymized immediately when no retained financial history exists; otherwise anonymization is scheduled after the retention period. Financial records are never deleted.")}
       </Modal>
 
       <Modal
         open={discardModalOpen}
-        title="Discard unsaved changes?"
+        title={t("Discard unsaved changes?")}
         onCancel={() => setDiscardModalOpen(false)}
         onOk={() => {
           setDiscardModalOpen(false)
           setDrawerOpen(false)
         }}
-        okText="Discard"
+        okText={t("Discard")}
         okButtonProps={{ danger: true }}
-        cancelText="Keep editing"
+        cancelText={t("Keep editing")}
         zIndex={1200}
         getContainer={() => document.body}
       >
-        You have unsaved changes.
+        {t("You have unsaved changes.")}
       </Modal>
     </div>
-    </Localized>
+    </>
   )
 }

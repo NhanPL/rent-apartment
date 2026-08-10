@@ -1,8 +1,8 @@
+import { useI18n } from '../../../i18n'
 import { Alert, Button, Card, Col, Empty, Row, Skeleton, Space, Table, Tag, Typography } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import dayjs from 'dayjs'
 import type { DashboardRecentActivityItem, DashboardUnpaidInvoiceItem } from '../types'
-import { Localized } from '../../../shared/components/Localized'
 
 interface DashboardRecentActivityProps {
   loading: boolean
@@ -37,25 +37,26 @@ export function DashboardRecentActivity({
   onRetry,
   onNavigate,
 }: DashboardRecentActivityProps) {
+  const { t } = useI18n()
   const invoiceColumns: ColumnsType<DashboardUnpaidInvoiceItem> = [
-    { title: 'Room', dataIndex: 'roomCode', key: 'roomCode', width: 90 },
-    { title: 'Building', dataIndex: 'buildingName', key: 'buildingName', ellipsis: true },
+    { title: t("Room"), dataIndex: 'roomCode', key: 'roomCode', width: 90 },
+    { title: t("Building"), dataIndex: 'buildingName', key: 'buildingName', ellipsis: true },
     {
-      title: 'Month',
+      title: t("Month"),
       dataIndex: 'month',
       key: 'month',
       width: 110,
       render: (value: string) => dayjs(value).format('MM/YYYY'),
     },
     {
-      title: 'Status',
+      title: t("Status"),
       dataIndex: 'status',
       key: 'status',
       width: 110,
       render: (value: string) => <Tag color={value === 'PARTIALLY_PAID' ? 'gold' : 'blue'}>{value}</Tag>,
     },
     {
-      title: 'Total',
+      title: t("Total"),
       dataIndex: 'total',
       key: 'total',
       align: 'right',
@@ -65,21 +66,21 @@ export function DashboardRecentActivity({
   ]
 
   return (
-    <Localized>
+    <>
     <Space direction="vertical" size={16} className="dashboard-recent-wrap">
       <Card bordered={false} className="dashboard-card">
         <Row justify="space-between" align="middle" gutter={[12, 12]}>
           <Col>
             <Typography.Title level={5} style={{ margin: 0 }}>
-              Quick actions
+              {t("Quick actions")}
             </Typography.Title>
           </Col>
           <Col>
             <Space wrap>
-              <Button onClick={() => onNavigate('/buildings')}>Add Building</Button>
-              <Button onClick={() => onNavigate('/buildings')}>Manage Rooms</Button>
-              <Button onClick={() => onNavigate('/tenants')}>Add Tenant</Button>
-              <Button onClick={() => onNavigate('/invoices')}>View Invoices</Button>
+              <Button onClick={() => onNavigate('/buildings')}>{t("Add Building")}</Button>
+              <Button onClick={() => onNavigate('/buildings')}>{t("Manage Rooms")}</Button>
+              <Button onClick={() => onNavigate('/tenants')}>{t("Add Tenant")}</Button>
+              <Button onClick={() => onNavigate('/invoices')}>{t("View Invoices")}</Button>
             </Space>
           </Col>
         </Row>
@@ -88,11 +89,11 @@ export function DashboardRecentActivity({
       {error ? (
         <Alert
           type="error"
-          message="Dashboard data could not be loaded"
+          message={t("Dashboard data could not be loaded")}
           description={error}
           action={
             <Button size="small" onClick={onRetry}>
-              Retry
+              {t("Retry")}
             </Button>
           }
           showIcon
@@ -101,11 +102,11 @@ export function DashboardRecentActivity({
 
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={14}>
-          <Card title="Recent tenants" className="dashboard-card" bordered={false}>
+          <Card title={t("Recent tenants")} className="dashboard-card" bordered={false}>
             {loading ? (
               <Skeleton active paragraph={{ rows: 6 }} title={false} />
             ) : tenants.length === 0 ? (
-              <Empty description="No recent tenants" />
+              <Empty description={t("No recent tenants")} />
             ) : (
               <Table rowKey="id" pagination={false} size="small" columns={tenantColumns} dataSource={tenants} scroll={{ x: 680 }} />
             )}
@@ -113,11 +114,11 @@ export function DashboardRecentActivity({
         </Col>
 
         <Col xs={24} xl={10}>
-          <Card title="Recent unpaid bills" className="dashboard-card" bordered={false}>
+          <Card title={t("Recent unpaid bills")} className="dashboard-card" bordered={false}>
             {loading ? (
               <Skeleton active paragraph={{ rows: 6 }} title={false} />
             ) : unpaidInvoices.length === 0 ? (
-              <Empty description="No unpaid invoices" />
+              <Empty description={t("No unpaid invoices")} />
             ) : (
               <Table
                 rowKey="id"
@@ -132,6 +133,6 @@ export function DashboardRecentActivity({
         </Col>
       </Row>
     </Space>
-    </Localized>
+    </>
   )
 }

@@ -13,10 +13,12 @@ export interface ReportsFilters {
   monthFrom?: string;
   monthTo?: string;
   buildingId?: string;
+  roomId?: string;
+  tenantId?: string;
   status?: InvoiceStatus;
 }
 
-export type ReportDetailSection = 'revenue' | 'debt' | 'occupancy';
+export type ReportDetailSection = 'revenue' | 'debt' | 'occupancy' | 'reconciliation';
 export type ReportDetailSortBy =
   | 'building'
   | 'month'
@@ -30,13 +32,18 @@ export type ReportDetailSortBy =
   | 'occupiedRooms'
   | 'vacantRooms'
   | 'activeTenants'
-  | 'occupancyRate';
+  | 'occupancyRate'
+  | 'paymentDate'
+  | 'entryType'
+  | 'amount';
 export type ReportDetailPagination = PaginationParams<ReportDetailSortBy>;
 
 interface NormalizedReportsFilters {
   monthFrom: string;
   monthTo: string;
   buildingId?: string;
+  roomId?: string;
+  tenantId?: string;
   status?: InvoiceStatus;
 }
 
@@ -53,6 +60,8 @@ interface RevenueMonthRow {
   gross_payments: number | string | null;
   reversals: number | string | null;
   unpaid: number | string | null;
+  void_invoice_count: number;
+  void_amount: number | string | null;
 }
 
 interface RevenueBuildingRow {
@@ -64,6 +73,8 @@ interface RevenueBuildingRow {
   gross_payments: number | string | null;
   reversals: number | string | null;
   unpaid: number | string | null;
+  void_invoice_count: number;
+  void_amount: number | string | null;
 }
 
 interface DebtRow {
@@ -105,6 +116,23 @@ interface OccupancySummaryRow {
   occupied_rooms: number;
   vacant_rooms: number;
   active_tenants: number;
+}
+
+interface ReconciliationRow {
+  payment_id: string;
+  invoice_id: string;
+  original_payment_id: string | null;
+  building_name: string;
+  room_code: string;
+  tenant_name: string | null;
+  month: string;
+  invoice_status: InvoiceStatus;
+  entry_type: 'PAYMENT' | 'REVERSAL';
+  amount: number | string;
+  signed_amount: number | string;
+  paid_at: string;
+  reference_code: string | null;
+  reversal_reason: string | null;
 }
 
 const invoiceBalanceCte = `
@@ -171,6 +199,8 @@ const normalizeFilters = (filters: ReportsFilters): NormalizedReportsFilters => 
     monthFrom,
     monthTo,
     buildingId: filters.buildingId,
+    roomId: filters.roomId,
+    tenantId: filters.tenantId,
     status: filters.status
   };
 };
@@ -215,6 +245,16 @@ const buildInvoiceScope = (managerId: string, filters: NormalizedReportsFilters)
     conditions.push(`i.status=$${params.length}`);
   }
 
+  if (filters.roomId) {
+    params.push(filters.roomId);
+    conditions.push(`r.id=$${params.length}`);
+  }
+
+  if (filters.tenantId) {
+    params.push(filters.tenantId);
+    conditions.push(`tenant.tenant_id=$${params.length}`);
+  }
+
   return {
     where: conditions.join(' AND '),
     params
@@ -234,15 +274,18 @@ const scopedInvoiceCte = (scope: InvoiceScope): string => `
       b.name AS building_name,
       r.id AS room_id,
       r.code AS room_code,
+      tenant.tenant_id,
       tenant.full_name AS tenant_name
     FROM invoice i
     JOIN room r ON r.id=i.room_id
     JOIN building b ON b.id=r.building_id
     LEFT JOIN LATERAL (
-      SELECT t.full_name
+      SELECT t.id AS tenant_id, t.full_name
       FROM contract_tenant ct
       JOIN tenant t ON t.id=ct.tenant_id
-      WHERE ct.contract_id=i.contract_id AND ct.left_at IS NULL
+      WHERE ct.contract_id=i.contract_id
+        AND ct.joined_at < (i.month + interval '1 month')::date
+        AND (ct.left_at IS NULL OR ct.left_at >= i.month)
       ORDER BY ct.is_primary DESC, ct.joined_at DESC
       LIMIT 1
     ) tenant ON true
@@ -257,7 +300,9 @@ const mapRevenueMonth = (row: RevenueMonthRow) => ({
   collected: toNumber(row.collected),
   grossPayments: toNumber(row.gross_payments),
   reversals: toNumber(row.reversals),
-  unpaid: toNumber(row.unpaid)
+  unpaid: toNumber(row.unpaid),
+  voidInvoiceCount: row.void_invoice_count,
+  voidAmount: toNumber(row.void_amount)
 });
 
 const mapRevenueBuilding = (row: RevenueBuildingRow) => ({
@@ -268,7 +313,9 @@ const mapRevenueBuilding = (row: RevenueBuildingRow) => ({
   collected: toNumber(row.collected),
   grossPayments: toNumber(row.gross_payments),
   reversals: toNumber(row.reversals),
-  unpaid: toNumber(row.unpaid)
+  unpaid: toNumber(row.unpaid),
+  voidInvoiceCount: row.void_invoice_count,
+  voidAmount: toNumber(row.void_amount)
 });
 
 const mapDebtRow = (row: DebtRow) => ({
@@ -285,6 +332,23 @@ const mapDebtRow = (row: DebtRow) => ({
   paidAmount: toNumber(row.paid_amount),
   outstandingAmount: toNumber(row.outstanding_amount),
   isOverdue: row.is_overdue
+});
+
+const mapReconciliationRow = (row: ReconciliationRow) => ({
+  paymentId: row.payment_id,
+  invoiceId: row.invoice_id,
+  originalPaymentId: row.original_payment_id,
+  buildingName: row.building_name,
+  roomCode: row.room_code,
+  tenantName: row.tenant_name ?? '-',
+  month: row.month,
+  invoiceStatus: row.invoice_status,
+  entryType: row.entry_type,
+  amount: toNumber(row.amount),
+  signedAmount: toNumber(row.signed_amount),
+  paidAt: row.paid_at,
+  referenceCode: row.reference_code,
+  reversalReason: row.reversal_reason
 });
 
 const mapOccupancyRow = (row: OccupancyRow) => {
@@ -314,12 +378,14 @@ const getRevenueByMonth = async (managerId: string, filters: NormalizedReportsFi
      ${invoiceBalanceCte}
      SELECT
        to_char(ms.month_start, 'YYYY-MM') AS month,
-       COUNT(ib.id) FILTER (WHERE ib.status <> 'VOID')::int AS invoice_count,
-       COALESCE(SUM(ib.total) FILTER (WHERE ib.status <> 'VOID'), 0)::float AS billed,
+       COUNT(ib.id) FILTER (WHERE ib.status IN ('ISSUED', 'PARTIALLY_PAID', 'PAID'))::int AS invoice_count,
+       COALESCE(SUM(ib.total) FILTER (WHERE ib.status IN ('ISSUED', 'PARTIALLY_PAID', 'PAID')), 0)::float AS billed,
        COALESCE(SUM(ib.paid_amount), 0)::float AS collected,
        COALESCE(SUM(ib.gross_payments), 0)::float AS gross_payments,
        COALESCE(SUM(ib.reversals), 0)::float AS reversals,
-       COALESCE(SUM(ib.outstanding_amount) FILTER (WHERE ib.status IN ('ISSUED', 'PARTIALLY_PAID')), 0)::float AS unpaid
+       COALESCE(SUM(ib.outstanding_amount) FILTER (WHERE ib.status IN ('ISSUED', 'PARTIALLY_PAID')), 0)::float AS unpaid,
+       COUNT(ib.id) FILTER (WHERE ib.status='VOID')::int AS void_invoice_count,
+       COALESCE(SUM(ib.total) FILTER (WHERE ib.status='VOID'), 0)::float AS void_amount
      FROM month_series ms
      LEFT JOIN invoice_balances ib ON ib.month=ms.month_start
      GROUP BY ms.month_start
@@ -344,12 +410,14 @@ const getRevenueByBuilding = async (managerId: string, filters: NormalizedReport
      SELECT
        sb.id AS building_id,
        sb.name AS building_name,
-       COUNT(ib.id) FILTER (WHERE ib.status <> 'VOID')::int AS invoice_count,
-       COALESCE(SUM(ib.total) FILTER (WHERE ib.status <> 'VOID'), 0)::float AS billed,
+       COUNT(ib.id) FILTER (WHERE ib.status IN ('ISSUED', 'PARTIALLY_PAID', 'PAID'))::int AS invoice_count,
+       COALESCE(SUM(ib.total) FILTER (WHERE ib.status IN ('ISSUED', 'PARTIALLY_PAID', 'PAID')), 0)::float AS billed,
        COALESCE(SUM(ib.paid_amount), 0)::float AS collected,
        COALESCE(SUM(ib.gross_payments), 0)::float AS gross_payments,
        COALESCE(SUM(ib.reversals), 0)::float AS reversals,
-       COALESCE(SUM(ib.outstanding_amount) FILTER (WHERE ib.status IN ('ISSUED', 'PARTIALLY_PAID')), 0)::float AS unpaid
+       COALESCE(SUM(ib.outstanding_amount) FILTER (WHERE ib.status IN ('ISSUED', 'PARTIALLY_PAID')), 0)::float AS unpaid,
+       COUNT(ib.id) FILTER (WHERE ib.status='VOID')::int AS void_invoice_count,
+       COALESCE(SUM(ib.total) FILTER (WHERE ib.status='VOID'), 0)::float AS void_amount
      FROM scoped_buildings sb
      LEFT JOIN invoice_balances ib ON ib.building_id=sb.id
      GROUP BY sb.id, sb.name
@@ -387,6 +455,33 @@ const getDebtItems = async (managerId: string, filters: NormalizedReportsFilters
   );
 
   return rows.map(mapDebtRow);
+};
+
+const getPaymentReconciliation = async (managerId: string, filters: NormalizedReportsFilters) => {
+  const scope = buildInvoiceScope(managerId, filters);
+  const { rows } = await query<ReconciliationRow>(
+    `WITH ${scopedInvoiceCte(scope)}
+     SELECT payment.id AS payment_id,
+            payment.invoice_id,
+            payment.original_payment_id,
+            scoped_invoices.building_name,
+            scoped_invoices.room_code,
+            scoped_invoices.tenant_name,
+            scoped_invoices.month,
+            scoped_invoices.status AS invoice_status,
+            payment.entry_type,
+            payment.amount::float,
+            (CASE WHEN payment.entry_type='REVERSAL' THEN -payment.amount ELSE payment.amount END)::float AS signed_amount,
+            payment.paid_at,
+            payment.reference_code,
+            payment.reversal_reason
+     FROM payment
+     JOIN scoped_invoices ON scoped_invoices.id=payment.invoice_id
+     WHERE payment.status='SUCCEEDED'
+     ORDER BY payment.paid_at DESC, payment.created_at DESC, payment.id`,
+    scope.params
+  );
+  return rows.map(mapReconciliationRow);
 };
 
 const getDebtSummary = async (managerId: string, filters: NormalizedReportsFilters) => {
@@ -474,11 +569,12 @@ export const loadReportRows = async (managerId: string, filters: ReportsFilters)
   const normalizedFilters = normalizeFilters(filters);
   await ensureBuildingBelongsToManager(managerId, normalizedFilters.buildingId);
 
-  const [revenueByMonth, revenueByBuilding, debtItems, occupancyByBuilding] = await Promise.all([
+  const [revenueByMonth, revenueByBuilding, debtItems, occupancyByBuilding, reconciliationItems] = await Promise.all([
     getRevenueByMonth(managerId, normalizedFilters),
     getRevenueByBuilding(managerId, normalizedFilters),
     getDebtItems(managerId, normalizedFilters),
-    getOccupancyByBuilding(managerId, normalizedFilters)
+    getOccupancyByBuilding(managerId, normalizedFilters),
+    getPaymentReconciliation(managerId, normalizedFilters)
   ]);
 
   return {
@@ -486,7 +582,8 @@ export const loadReportRows = async (managerId: string, filters: ReportsFilters)
     revenueByMonth,
     revenueByBuilding,
     debtItems,
-    occupancyByBuilding
+    occupancyByBuilding,
+    reconciliationItems
   };
 };
 
@@ -525,6 +622,14 @@ const occupancyDetailSortColumns: Partial<Record<ReportDetailSortBy, string>> = 
   occupancyRate: '(COUNT(r.id) FILTER (WHERE ar.room_id IS NOT NULL)::numeric / NULLIF(COUNT(r.id), 0))'
 };
 
+const reconciliationSortColumns: Partial<Record<ReportDetailSortBy, string>> = {
+  building: 'scoped_invoices.building_name',
+  month: 'scoped_invoices.month',
+  paymentDate: 'payment.paid_at',
+  entryType: 'payment.entry_type',
+  amount: 'payment.amount'
+};
+
 const paginatedRevenueByBuilding = async (
   managerId: string,
   filters: NormalizedReportsFilters,
@@ -549,12 +654,14 @@ const paginatedRevenueByBuilding = async (
        SELECT
          sb.id AS building_id,
          sb.name AS building_name,
-         COUNT(ib.id) FILTER (WHERE ib.status <> 'VOID')::int AS invoice_count,
-         COALESCE(SUM(ib.total) FILTER (WHERE ib.status <> 'VOID'), 0)::float AS billed,
+         COUNT(ib.id) FILTER (WHERE ib.status IN ('ISSUED', 'PARTIALLY_PAID', 'PAID'))::int AS invoice_count,
+         COALESCE(SUM(ib.total) FILTER (WHERE ib.status IN ('ISSUED', 'PARTIALLY_PAID', 'PAID')), 0)::float AS billed,
          COALESCE(SUM(ib.paid_amount), 0)::float AS collected,
          COALESCE(SUM(ib.gross_payments), 0)::float AS gross_payments,
          COALESCE(SUM(ib.reversals), 0)::float AS reversals,
-         COALESCE(SUM(ib.outstanding_amount) FILTER (WHERE ib.status IN ('ISSUED', 'PARTIALLY_PAID')), 0)::float AS unpaid
+         COALESCE(SUM(ib.outstanding_amount) FILTER (WHERE ib.status IN ('ISSUED', 'PARTIALLY_PAID')), 0)::float AS unpaid,
+         COUNT(ib.id) FILTER (WHERE ib.status='VOID')::int AS void_invoice_count,
+         COALESCE(SUM(ib.total) FILTER (WHERE ib.status='VOID'), 0)::float AS void_amount
        FROM scoped_buildings sb
        LEFT JOIN invoice_balances ib ON ib.building_id=sb.id
        GROUP BY sb.id, sb.name
@@ -654,6 +761,46 @@ const paginatedOccupancyByBuilding = async (
   };
 };
 
+const paginatedPaymentReconciliation = async (
+  managerId: string,
+  filters: NormalizedReportsFilters,
+  pagination: ReportDetailPagination
+): Promise<PaginatedResult<ReturnType<typeof mapReconciliationRow>>> => {
+  const scope = buildInvoiceScope(managerId, filters);
+  const itemParams = [...scope.params, pagination.pageSize, paginationOffset(pagination)];
+  const sortColumn = reconciliationSortColumns[pagination.sortBy] ?? 'payment.paid_at';
+  const [countResult, itemResult] = await Promise.all([
+    query<{ total: number }>(
+      `WITH ${scopedInvoiceCte(scope)}
+       SELECT COUNT(*)::int AS total
+       FROM payment JOIN scoped_invoices ON scoped_invoices.id=payment.invoice_id
+       WHERE payment.status='SUCCEEDED'`,
+      scope.params
+    ),
+    query<ReconciliationRow>(
+      `WITH ${scopedInvoiceCte(scope)}
+       SELECT payment.id AS payment_id, payment.invoice_id, payment.original_payment_id,
+              scoped_invoices.building_name, scoped_invoices.room_code, scoped_invoices.tenant_name,
+              scoped_invoices.month, scoped_invoices.status AS invoice_status,
+              payment.entry_type, payment.amount::float,
+              (CASE WHEN payment.entry_type='REVERSAL' THEN -payment.amount ELSE payment.amount END)::float AS signed_amount,
+              payment.paid_at, payment.reference_code, payment.reversal_reason
+       FROM payment
+       JOIN scoped_invoices ON scoped_invoices.id=payment.invoice_id
+       WHERE payment.status='SUCCEEDED'
+       ORDER BY ${sortColumn} ${sqlSortDirection(pagination.sortOrder)} NULLS LAST, payment.id
+       LIMIT $${itemParams.length - 1} OFFSET $${itemParams.length}`,
+      itemParams
+    )
+  ]);
+  return {
+    total: countResult.rows[0]?.total ?? 0,
+    page: pagination.page,
+    pageSize: pagination.pageSize,
+    items: itemResult.rows.map(mapReconciliationRow)
+  };
+};
+
 export const loadReportDetailRows = async (
   managerId: string,
   filters: ReportsFilters,
@@ -667,5 +814,6 @@ export const loadReportDetailRows = async (
     case 'revenue': return paginatedRevenueByBuilding(managerId, normalizedFilters, pagination);
     case 'debt': return paginatedDebtItems(managerId, normalizedFilters, pagination);
     case 'occupancy': return paginatedOccupancyByBuilding(managerId, normalizedFilters, pagination);
+    case 'reconciliation': return paginatedPaymentReconciliation(managerId, normalizedFilters, pagination);
   }
 };

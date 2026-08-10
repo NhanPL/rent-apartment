@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ApiError } from './apiClient'
-import { getFormErrorMessage, getUserErrorMessage, isFormValidationError } from './errorMessage'
+import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage, isFormValidationError } from './errorMessage'
 
 describe('getUserErrorMessage', () => {
   it('translates business error codes into readable messages', () => {
@@ -34,6 +34,27 @@ describe('getUserErrorMessage', () => {
   it('explains network failures', () => {
     expect(getUserErrorMessage(new TypeError('Failed to fetch')))
       .toBe('Unable to connect to the system. Check your network connection or the backend service.')
+  })
+
+  it('does not expose SQL or backend stack details', () => {
+    expect(getUserErrorMessage(new Error('select * from app_user at Query.run()'), 'Unable to save.'))
+      .toBe('Unable to save.')
+  })
+
+  it('maps API validation errors to their related form fields', () => {
+    const setFields = vi.fn()
+    const error = new ApiError(
+      'Validation failed',
+      'VALIDATION_ERROR',
+      422,
+      { identity_number: ['Citizen ID is invalid.'], body: ['Invalid body.'] },
+      'request-field-errors',
+    )
+
+    expect(applyApiFieldErrors({ setFields }, error, { identity_number: 'identityNumber' })).toBe(true)
+    expect(setFields).toHaveBeenCalledWith([
+      { name: 'identityNumber', errors: ['Citizen ID is invalid.'] },
+    ])
   })
 
   it('uses the first field message for form validation failures', () => {

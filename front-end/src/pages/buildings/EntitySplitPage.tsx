@@ -1,3 +1,4 @@
+import { useI18n } from '../../i18n'
 import { ArrowLeftOutlined } from '@ant-design/icons'
 import { Button, Card, Grid, message } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
@@ -7,11 +8,11 @@ import { UpsertDrawer } from './components/UpsertDrawer'
 import type { BuildingEntity, BuildingFormValues } from './components/types'
 import { createBuilding, deleteBuilding, listBuildings, updateBuilding } from './components/roomService'
 import { getUserErrorMessage } from '../../services/errorMessage'
-import { Localized } from '../../shared/components/Localized'
 import './EntitySplitPage.css'
 
 
 export function EntitySplitPage() {
+  const { t } = useI18n()
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
   const isTablet = Boolean(screens.md) && !screens.lg
@@ -144,7 +145,7 @@ export function EntitySplitPage() {
   }, [drawerMode, items, selectedItem])
 
   return (
-    <Localized>
+    <>
     <div className="split-page">
       {(!isMobile || !showMobileDetail) && (
         <Card className="master-card" styles={{ body: { padding: isTablet ? 12 : 16 } }}>
@@ -164,7 +165,7 @@ export function EntitySplitPage() {
         <Card className="detail-card" styles={{ body: { padding: isTablet ? 16 : 20 } }}>
           {isMobile && (
             <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => setShowMobileDetail(false)} style={{ marginBottom: 8 }}>
-              Back to list
+              {t("Back to list")}
             </Button>
           )}
           <DetailPanel loading={loadingDetail || loadingList} item={selectedItem} onEdit={openEdit} onDelete={handleDelete} />
@@ -181,6 +182,6 @@ export function EntitySplitPage() {
         onSubmit={handleSubmit}
       />
     </div>
-    </Localized>
+    </>
   )
 }

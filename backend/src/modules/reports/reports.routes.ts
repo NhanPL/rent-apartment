@@ -11,7 +11,7 @@ import { paginationQueryFields } from '../../shared/utils/pagination';
 const router = Router();
 
 const invoiceStatusSchema = z.enum(INVOICE_STATUSES);
-const reportSectionSchema = z.enum(['revenue', 'debt', 'occupancy']);
+const reportSectionSchema = z.enum(['revenue', 'debt', 'occupancy', 'reconciliation']);
 
 const reportsQuerySchema = z.object({
   month_from: z.string().trim().min(1).optional(),
@@ -20,6 +20,10 @@ const reportsQuerySchema = z.object({
   monthTo: z.string().trim().min(1).optional(),
   building_id: z.string().uuid().optional(),
   buildingId: z.string().uuid().optional(),
+  room_id: z.string().uuid().optional(),
+  roomId: z.string().uuid().optional(),
+  tenant_id: z.string().uuid().optional(),
+  tenantId: z.string().uuid().optional(),
   status: invoiceStatusSchema.optional()
 });
 
@@ -29,17 +33,20 @@ const reportsExportQuerySchema = reportsQuerySchema.extend({
 
 const reportDetailSortFields = [
   'building', 'month', 'invoiceCount', 'billed', 'collected', 'unpaid', 'dueDate',
-  'outstandingAmount', 'totalRooms', 'occupiedRooms', 'vacantRooms', 'activeTenants', 'occupancyRate'
+  'outstandingAmount', 'totalRooms', 'occupiedRooms', 'vacantRooms', 'activeTenants', 'occupancyRate',
+  'paymentDate', 'entryType', 'amount'
 ] as const;
 const detailSortDefaults = {
   revenue: 'billed',
   debt: 'dueDate',
-  occupancy: 'occupancyRate'
+  occupancy: 'occupancyRate',
+  reconciliation: 'paymentDate'
 } as const;
 const detailSortFieldsBySection: Record<z.infer<typeof reportSectionSchema>, readonly string[]> = {
   revenue: ['building', 'invoiceCount', 'billed', 'collected', 'unpaid'],
   debt: ['building', 'month', 'dueDate', 'outstandingAmount'],
-  occupancy: ['building', 'totalRooms', 'occupiedRooms', 'vacantRooms', 'activeTenants', 'occupancyRate']
+  occupancy: ['building', 'totalRooms', 'occupiedRooms', 'vacantRooms', 'activeTenants', 'occupancyRate'],
+  reconciliation: ['building', 'month', 'paymentDate', 'entryType', 'amount']
 };
 const reportsDetailQuerySchema = reportsQuerySchema.extend({
   ...paginationQueryFields,
@@ -59,6 +66,8 @@ const toFilters = (query: z.infer<typeof reportsQuerySchema>) => ({
   monthFrom: query.month_from ?? query.monthFrom,
   monthTo: query.month_to ?? query.monthTo,
   buildingId: query.building_id ?? query.buildingId,
+  roomId: query.room_id ?? query.roomId,
+  tenantId: query.tenant_id ?? query.tenantId,
   status: query.status
 });
 

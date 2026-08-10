@@ -4,7 +4,7 @@ Fullstack apartment rental management app built with React, TypeScript, Ant Desi
 
 ## Prerequisites
 
-- Node.js 20 or newer
+- Node.js 22 (see `.nvmrc`)
 - npm
 - PostgreSQL 14 or newer
 - PowerShell, Bash, or another terminal
@@ -61,6 +61,23 @@ JWT_REFRESH_SECRET=<different_random_refresh_secret_at_least_32_characters>
 JWT_ACCESS_EXPIRES_IN=15m
 REFRESH_TOKEN_EXPIRES_DAYS=7
 ```
+
+The environment contract is validated at startup. The most important groups
+are:
+
+| Group | Required | Optional / feature-gated |
+| --- | --- | --- |
+| Core | `APP_ENV`, `DATABASE_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | `PORT`, pool sizing, log level |
+| Browser security | `CORS_ALLOWED_ORIGINS`, `FRONTEND_URL`, exact `TRUST_PROXY_HOPS` in staging/production | Refresh-cookie name/domain/SameSite |
+| Database TLS | `DB_SSL=true` and verified certificates in staging/production | `DB_SSL_CA` when the provider CA is not publicly trusted |
+| Private documents | `DOCUMENT_ACCESS_SECRET`, Cloudinary cloud/key/secret in shared environments | Retention/job intervals and upload-size limits |
+| Payments | Manager-supplied bank details or deploy defaults | `DEFAULT_BANK_*`, VietQR base URL/template |
+| Email | None when `SMTP_ENABLED=false` | Complete SMTP credentials when enabled; `EMAIL_NOTIFICATIONS_ENABLED` controls product notifications |
+| Operations | `APP_VERSION` for immutable releases | Sentry DSN, metric thresholds, job cadence |
+
+Use [`backend/.env.example`](backend/.env.example) as the canonical variable
+list and [`docs/environments.md`](docs/environments.md) for environment-specific
+requirements. Do not put production secrets in repository files.
 
 The access and refresh secrets are both required, must contain at least 32
 characters, and must be different. The refresh secret keys the HMAC stored for
@@ -199,6 +216,7 @@ to application logs.
 SMTP is optional in local development. If these values are blank, account activation and password reset emails are skipped and the API keeps running. Managers can resend the invitation after SMTP is configured:
 
 ```env
+SMTP_ENABLED=false
 SMTP_HOST=
 SMTP_PORT=587
 SMTP_SECURE=false
@@ -206,9 +224,16 @@ SMTP_USER=
 SMTP_PASS=
 SMTP_FROM_NAME=
 SMTP_FROM_EMAIL=
+EMAIL_NOTIFICATIONS_ENABLED=true
 ```
 
-For production or a shared staging environment, configure all SMTP variables so account invitation emails can be sent. Activation links are single-use and expire after `ACCOUNT_ACTIVATION_EXPIRES_HOURS` (48 hours by default).
+Set `SMTP_ENABLED=true` only with `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, and
+`SMTP_FROM_EMAIL`; partial configuration fails startup. Shared staging and
+production should enable SMTP when account invitation and password reset email
+are supported. Activation links are single-use and expire after
+`ACCOUNT_ACTIVATION_EXPIRES_HOURS` (48 hours by default). The complete
+environment matrix and container workflow are documented in
+[`docs/environments.md`](docs/environments.md).
 
 ## API Documentation
 
@@ -312,6 +337,7 @@ cd backend
 npm run db:migrate
 npm run db:seed
 npm run check
+npm test
 npm run build
 npm start
 ```
@@ -321,9 +347,56 @@ Frontend:
 ```bash
 cd front-end
 npm run lint
+npm test
 npm run build
+npm run bundle:check
 npm run preview
 ```
+
+## Production Build And Deployment
+
+Build both applications from clean dependency installs:
+
+```bash
+cd backend
+npm ci
+npm run check
+npm test
+npm run build
+
+cd ../front-end
+npm ci
+npm run lint
+npm test
+npm run build
+npm run bundle:check
+```
+
+The frontend artifact is `front-end/dist`. The API runs with
+`node backend/dist/server.js`. For containers, build from the repository root
+so migrations are included:
+
+```bash
+docker build -f backend/Dockerfile -t rent-apartment-api:<version> .
+docker run --rm -p 4000:4000 --env-file <secure-backend-env> rent-apartment-api:<version>
+```
+
+Before shifting traffic, run `npm run db:migrate` as a one-off release job using
+the same release image. Never run local seed data in staging or production.
+Detailed deployment, migration, rollback, backup, and recovery procedures live
+in [`docs/environments.md`](docs/environments.md),
+[`docs/database-migrations.md`](docs/database-migrations.md), and
+[`docs/disaster-recovery.md`](docs/disaster-recovery.md).
+
+After deployment, verify:
+
+```bash
+curl --fail https://<api-host>/health
+curl --fail https://<api-host>/ready
+```
+
+`/health` is the liveness probe. `/ready` checks database readiness and should
+only receive traffic when it returns HTTP 200.
 
 ## Environment Reference
 

@@ -1,8 +1,8 @@
+import { useI18n } from '../../i18n'
 import {
   FileDoneOutlined,
   FileTextOutlined,
   HomeOutlined,
-  ReloadOutlined,
   DeleteOutlined,
   StopOutlined,
 } from '@ant-design/icons'
@@ -18,7 +18,6 @@ import {
   Modal,
   Select,
   Space,
-  Steps,
   Table,
   Tabs,
   Tag,
@@ -51,46 +50,23 @@ import {
 } from '../../services/rentalRegistrationService'
 import type {
   AvailableRoom,
-  HandoverPayload,
-  ReservePayload,
 } from '../../services/rentalRegistrationService'
 import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
 import { uploadFileToCloudinary, type UploadedCloudinaryFile } from '../../services/uploadService'
-import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
-import { Localized } from '../../shared/components/Localized'
+import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
 import { vndCurrency } from '../../i18n'
 import './RentalRegistrationPage.css'
-
-interface ReserveFormValues {
-  building_id?: string
-  room_id?: string
-  tenant_mode: 'existing' | 'new'
-  tenant_id?: string
-  full_name?: string
-  phone?: string
-  identity_number?: string
-  email?: string
-  permanent_address?: string
-  privacy_consent?: boolean
-  start_date?: string
-  end_date?: string
-  rent_price?: number
-  deposit_amount?: number
-  billing_day?: number
-  note?: string
-}
+import { RegistrationQueueStep, ReserveRegistrationStep } from './components/RegistrationSteps'
+import {
+  nullableText,
+  toHandoverPayload,
+  toReservePayload,
+  type HandoverFormValues,
+  type ReserveFormValues,
+} from './rentalRegistrationPayload'
 
 interface DocumentFormValues {
   doc_type: ContractDocumentType
-  note?: string
-}
-
-interface HandoverFormValues {
-  move_in_date?: string
-  electricity_curr?: number
-  water_curr?: number
-  persons_count?: number
-  vehicles_count?: number
   note?: string
 }
 
@@ -117,14 +93,10 @@ const stageLabels: Record<string, string> = {
 }
 
 const today = () => new Date().toISOString().slice(0, 10)
-const nullableText = (value: string | undefined): string | null => {
-  const trimmed = value?.trim() ?? ''
-  return trimmed.length > 0 ? trimmed : null
-}
-
 const documentFileKey = (file: File): string => `${file.name}:${file.size}:${file.lastModified}`
 
 export function RentalRegistrationPage() {
+  const { t } = useI18n()
   const screens = Grid.useBreakpoint()
   const [reserveForm] = Form.useForm<ReserveFormValues>()
   const [documentForm] = Form.useForm<DocumentFormValues>()
@@ -223,43 +195,13 @@ export function RentalRegistrationPage() {
     setSaving(true)
     try {
       const values = await reserveForm.validateFields()
-      if (!values.room_id || !values.start_date || !values.rent_price || values.deposit_amount === undefined || !values.billing_day) {
-        throw new Error('Please complete all required reservation fields.')
-      }
-      const payload: ReservePayload = {
-        room_id: values.room_id,
-        start_date: values.start_date,
-        end_date: values.end_date ?? null,
-        rent_price: values.rent_price,
-        deposit_amount: values.deposit_amount,
-        billing_day: values.billing_day,
-        note: nullableText(values.note),
-      }
-
-      if (values.tenant_mode === 'new') {
-        if (!values.full_name || !values.phone || !values.identity_number) {
-          throw new Error('Please complete all required new tenant fields.')
-        }
-        payload.tenant = {
-          full_name: values.full_name,
-          phone: values.phone,
-          identity_number: values.identity_number,
-          email: nullableText(values.email),
-          permanent_address: nullableText(values.permanent_address),
-          privacy_consent: true,
-        }
-      } else if (values.tenant_id) {
-        payload.tenant_id = values.tenant_id
-      } else {
-        throw new Error('Please select a tenant.')
-      }
-
-      const reserved = await reserveRoom(payload)
+      const reserved = await reserveRoom(toReservePayload(values))
       setLastReserved(reserved)
       resetReserveForm()
       await Promise.all([loadOptions(), loadWorkQueues()])
       message.success('Room reserved. Documents and handover can be completed later.')
     } catch (error: unknown) {
+      applyApiFieldErrors(reserveForm, error)
       message.error(getFormErrorMessage(error, 'Unable to reserve the room.'))
     } finally {
       setSaving(false)
@@ -327,6 +269,7 @@ export function RentalRegistrationPage() {
       await loadWorkQueues()
       message.success(`Added ${savedCount} and removed ${deletedCount} document(s).`)
     } catch (error: unknown) {
+      applyApiFieldErrors(documentForm, error)
       const reason = getFormErrorMessage(error, 'Unable to save documents.')
       const completedCount = savedCount + deletedCount
       message.error(completedCount > 0 ? `Completed ${completedCount} change(s). The remaining changes failed: ${reason}` : reason)
@@ -355,22 +298,12 @@ export function RentalRegistrationPage() {
     setHandoverSaving(true)
     try {
       const values = await handoverForm.validateFields()
-      if (!values.move_in_date || values.electricity_curr === undefined || values.water_curr === undefined || values.persons_count === undefined || values.vehicles_count === undefined) {
-        throw new Error('Please complete all required handover fields.')
-      }
-      const payload: HandoverPayload = {
-        move_in_date: values.move_in_date,
-        electricity_curr: values.electricity_curr,
-        water_curr: values.water_curr,
-        persons_count: values.persons_count,
-        vehicles_count: values.vehicles_count,
-        note: nullableText(values.note),
-      }
-      await handoverContract(handoverContractDetail.id, payload)
+      await handoverContract(handoverContractDetail.id, toHandoverPayload(values))
       setHandoverContractDetail(null)
       await Promise.all([loadOptions(), loadWorkQueues()])
       message.success('Contract activated and initial utility readings recorded.')
     } catch (error) {
+      applyApiFieldErrors(handoverForm, error)
       message.error(getFormErrorMessage(error, 'Unable to complete the room handover.'))
     } finally {
       setHandoverSaving(false)
@@ -397,6 +330,7 @@ export function RentalRegistrationPage() {
       await Promise.all([loadOptions(), loadWorkQueues()])
       message.success('Rental registration cancelled.')
     } catch (error) {
+      applyApiFieldErrors(cancelForm, error)
       message.error(getFormErrorMessage(error, 'Unable to cancel the rental registration.'))
     } finally {
       setCancelSaving(false)
@@ -405,7 +339,7 @@ export function RentalRegistrationPage() {
 
   const roomColumns: ColumnsType<AvailableRoom> = [
     {
-      title: 'Room',
+      title: t("Room"),
       dataIndex: 'code',
       render: (value: string, room) => (
         <Space direction="vertical" size={0}>
@@ -414,9 +348,9 @@ export function RentalRegistrationPage() {
         </Space>
       ),
     },
-    { title: 'Floor', dataIndex: 'floor', responsive: ['md'], render: (value: number | null) => value ?? '-' },
-    { title: 'Capacity', dataIndex: 'max_occupants', responsive: ['sm'] },
-    { title: 'Suggested rent', dataIndex: 'base_rent', render: (value: number) => currency.format(value) },
+    { title: t("Floor"), dataIndex: 'floor', responsive: ['md'], render: (value: number | null) => value ?? '-' },
+    { title: t("Capacity"), dataIndex: 'max_occupants', responsive: ['sm'] },
+    { title: t("Suggested rent"), dataIndex: 'base_rent', render: (value: number) => currency.format(value) },
     {
       title: '',
       key: 'action',
@@ -433,7 +367,7 @@ export function RentalRegistrationPage() {
             })
           }}
         >
-          Select
+          {t("Select")}
         </Button>
       ),
     },
@@ -441,7 +375,7 @@ export function RentalRegistrationPage() {
 
   const queueBaseColumns: ColumnsType<ContractListItem> = [
     {
-      title: 'Contract',
+      title: t("Contract"),
       key: 'contract',
       render: (_, contract) => (
         <Space direction="vertical" size={0}>
@@ -451,17 +385,17 @@ export function RentalRegistrationPage() {
       ),
     },
     {
-      title: 'Room',
+      title: t("Room"),
       key: 'room',
       render: (_, contract) => `${contract.building_name} / ${contract.room_code}`,
     },
     {
-      title: 'Expected move-in',
+      title: t("Expected move-in"),
       dataIndex: 'start_date',
       responsive: ['md'],
     },
     {
-      title: 'Status',
+      title: t("Status"),
       dataIndex: 'business_stage',
       render: (stage: string | undefined) => <Tag color={stage === 'WAITING_HANDOVER' ? 'cyan' : 'gold'}>{stageLabels[stage ?? ''] ?? stage ?? 'DRAFT'}</Tag>,
     },
@@ -476,10 +410,10 @@ export function RentalRegistrationPage() {
       render: (_, contract) => (
         <Space wrap>
           <Button type="primary" icon={<FileTextOutlined />} onClick={() => void openDocument(contract)}>
-            Add documents
+            {t("Add documents")}
           </Button>
           <Button danger icon={<StopOutlined />} onClick={() => openCancel(contract)}>
-            Cancel
+            {t("Cancel")}
           </Button>
         </Space>
       ),
@@ -495,10 +429,10 @@ export function RentalRegistrationPage() {
       render: (_, contract) => (
         <Space wrap>
           <Button type="primary" icon={<HomeOutlined />} onClick={() => void openHandover(contract)}>
-            Handover
+            {t("Handover")}
           </Button>
           <Button danger icon={<StopOutlined />} onClick={() => openCancel(contract)}>
-            Cancel
+            {t("Cancel")}
           </Button>
         </Space>
       ),
@@ -506,16 +440,7 @@ export function RentalRegistrationPage() {
   ]
 
   const reserveContent = (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Steps
-        size={screens.md ? 'default' : 'small'}
-        direction={screens.md ? 'horizontal' : 'vertical'}
-        items={[
-          { title: 'Available room', status: selectedRoomId ? 'finish' : 'process' },
-          { title: 'Tenant', status: selectedRoomId ? 'process' : 'wait' },
-          { title: 'Reserve room', status: 'wait' },
-        ]}
-      />
+    <ReserveRegistrationStep compact={!screens.md} roomSelected={Boolean(selectedRoomId)}>
 
       {lastReserved ? (
         <Alert
@@ -524,20 +449,20 @@ export function RentalRegistrationPage() {
           closable
           onClose={() => setLastReserved(null)}
           message={`Room reserved for ${lastReserved.tenant_names || lastReserved.tenant_name || 'tenant'}`}
-          description="The registration has been saved. Documents and room handover can be completed when ready."
-          action={<Button onClick={() => setActiveTab('documents')}>Open document queue</Button>}
+          description={t("The registration has been saved. Documents and room handover can be completed when ready.")}
+          action={<Button onClick={() => setActiveTab('documents')}>{t("Open document queue")}</Button>}
         />
       ) : null}
 
       <div className="registration-grid">
         <section className="registration-panel">
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
-            <Typography.Title level={5}>1. Select an available room</Typography.Title>
+            <Typography.Title level={5}>{t("1. Select an available room")}</Typography.Title>
             <Form form={reserveForm} layout="vertical">
-              <Form.Item name="building_id" label="Building">
+              <Form.Item name="building_id" label={t("Building")}>
                 <Select allowClear options={buildings.map((building) => ({ label: building.name, value: building.id }))} />
               </Form.Item>
-              <Form.Item name="room_id" hidden rules={[{ required: true, message: 'Please select a room.' }]}>
+              <Form.Item name="room_id" hidden rules={[{ required: true, message: t("Please select a room.") }]}>
                 <Input />
               </Form.Item>
             </Form>
@@ -547,14 +472,14 @@ export function RentalRegistrationPage() {
               columns={roomColumns}
               dataSource={rooms}
               pagination={{ pageSize: 6 }}
-              locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No available rooms" /> }}
+              locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("No available rooms")} /> }}
             />
           </Space>
         </section>
 
         <section className="registration-panel">
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
-            <Typography.Title level={5}>2. Tenant details and reservation</Typography.Title>
+            <Typography.Title level={5}>{t("2. Tenant details and reservation")}</Typography.Title>
             {selectedRoom ? (
               <Alert
                 type="info"
@@ -567,21 +492,21 @@ export function RentalRegistrationPage() {
               <Alert
                 type="warning"
                 showIcon
-                message="Possible duplicate tenant"
+                message={t("Possible duplicate tenant")}
                 description={duplicateTenants.map((tenant) => `${tenant.full_name} (${tenant.phone ?? '-'} / ${tenant.identity_number ?? '-'})`).join(', ')}
               />
             ) : null}
 
             <Form form={reserveForm} layout="vertical">
-              <Form.Item name="tenant_mode" label="Tenant">
+              <Form.Item name="tenant_mode" label={t("Tenant")}>
                 <Select options={[
-                  { label: 'Select existing tenant', value: 'existing' },
-                  { label: 'Create new tenant', value: 'new' },
+                  { label: t("Select existing tenant"), value: 'existing' },
+                  { label: t("Create new tenant"), value: 'new' },
                 ]} />
               </Form.Item>
 
               {tenantMode === 'existing' ? (
-                <Form.Item name="tenant_id" label="Tenant" rules={[{ required: true, message: 'Please select a tenant.' }]}>
+                <Form.Item name="tenant_id" label={t("Tenant")} rules={[{ required: true, message: t("Please select a tenant.") }]}>
                   <Select
                     showSearch
                     optionFilterProp="label"
@@ -594,11 +519,11 @@ export function RentalRegistrationPage() {
                 </Form.Item>
               ) : (
                 <div className="registration-form-grid">
-                  <Form.Item name="full_name" label="Full name" rules={[{ required: true, message: 'Please enter the full name.' }]}><Input /></Form.Item>
-                  <Form.Item name="phone" label="Phone number" rules={[{ required: true, message: 'Please enter the phone number.' }]}><Input /></Form.Item>
-                  <Form.Item name="identity_number" label="ID/Passport number" rules={[{ required: true, message: 'Please enter the ID or passport number.' }]}><Input /></Form.Item>
-                  <Form.Item name="email" label="Email"><Input /></Form.Item>
-                  <Form.Item name="permanent_address" label="Permanent address" className="registration-form-full"><Input /></Form.Item>
+                  <Form.Item name="full_name" label={t("Full name")} rules={[{ required: true, message: t("Please enter the full name.") }]}><Input /></Form.Item>
+                  <Form.Item name="phone" label={t("Phone number")} rules={[{ required: true, message: t("Please enter the phone number.") }]}><Input /></Form.Item>
+                  <Form.Item name="identity_number" label={t("ID/Passport number")} rules={[{ required: true, message: t("Please enter the ID or passport number.") }]}><Input /></Form.Item>
+                  <Form.Item name="email" label={t("Email")}><Input /></Form.Item>
+                  <Form.Item name="permanent_address" label={t("Permanent address")} className="registration-form-full"><Input /></Form.Item>
                   <Form.Item
                     name="privacy_consent"
                     valuePropName="checked"
@@ -609,50 +534,38 @@ export function RentalRegistrationPage() {
                         : Promise.reject(new Error('Confirm that the tenant agreed to the privacy policy.')),
                     }]}
                   >
-                    <Checkbox>The tenant agreed to the privacy policy and use of personal data.</Checkbox>
+                    <Checkbox>{t("The tenant agreed to the privacy policy and use of personal data.")}</Checkbox>
                   </Form.Item>
                 </div>
               )}
 
               <div className="registration-form-grid">
-                <Form.Item name="start_date" label="Expected move-in date" rules={[{ required: true, message: 'Please select a date.' }]}><Input type="date" /></Form.Item>
-                <Form.Item name="end_date" label="Expected end date"><Input type="date" /></Form.Item>
-                <Form.Item name="rent_price" label="Expected rent" rules={[{ required: true, message: 'Please enter the rent.' }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item>
-                <Form.Item name="deposit_amount" label="Deposit" rules={[{ required: true, message: 'Please enter the deposit.' }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item>
-                <Form.Item name="billing_day" label="Billing day" rules={[{ required: true, message: 'Please enter the billing day.' }]}><InputNumber min={1} max={28} precision={0} style={{ width: '100%' }} /></Form.Item>
-                <Form.Item name="note" label="Reservation terms" className="registration-form-full"><Input.TextArea rows={3} /></Form.Item>
+                <Form.Item name="start_date" label={t("Expected move-in date")} rules={[{ required: true, message: t("Please select a date.") }]}><Input type="date" /></Form.Item>
+                <Form.Item name="end_date" label={t("Expected end date")}><Input type="date" /></Form.Item>
+                <Form.Item name="rent_price" label={t("Expected rent")} rules={[{ required: true, message: t("Please enter the rent.") }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item>
+                <Form.Item name="deposit_amount" label={t("Deposit")} rules={[{ required: true, message: t("Please enter the deposit.") }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item>
+                <Form.Item name="billing_day" label={t("Billing day")} rules={[{ required: true, message: t("Please enter the billing day.") }]}><InputNumber min={1} max={28} precision={0} style={{ width: '100%' }} /></Form.Item>
+                <Form.Item name="note" label={t("Reservation terms")} className="registration-form-full"><Input.TextArea rows={3} /></Form.Item>
               </div>
             </Form>
             <div className="registration-actions">
               <Button type="primary" icon={<FileDoneOutlined />} loading={saving} onClick={() => void submitReserve()}>
-                Create draft reservation
+                {t("Create draft reservation")}
               </Button>
             </div>
           </Space>
         </section>
       </div>
-    </Space>
-  )
-
-  const queueHeader = (title: string, description: string) => (
-    <div className="registration-toolbar">
-      <div>
-        <Typography.Title level={5} style={{ margin: 0 }}>{title}</Typography.Title>
-        <Typography.Text type="secondary">{description}</Typography.Text>
-      </div>
-      <Button icon={<ReloadOutlined />} loading={queueLoading} onClick={() => void loadWorkQueues()}>
-        Reload
-      </Button>
-    </div>
+    </ReserveRegistrationStep>
   )
 
   return (
-    <Localized>
+    <>
     <div className="rental-registration-page">
       <div className="registration-toolbar registration-page-header">
         <div>
-          <Typography.Title level={4} style={{ margin: 0 }}>Rental registration</Typography.Title>
-          <Typography.Text type="secondary">Reserve rooms, add documents, and complete handovers when each step is ready.</Typography.Text>
+          <Typography.Title level={4} style={{ margin: 0 }}>{t("Rental registration")}</Typography.Title>
+          <Typography.Text type="secondary">{t("Reserve rooms, add documents, and complete handovers when each step is ready.")}</Typography.Text>
         </div>
       </div>
 
@@ -660,42 +573,16 @@ export function RentalRegistrationPage() {
         activeKey={activeTab}
         onChange={(key) => setActiveTab(key as WorkspaceTab)}
         items={[
-          { key: 'reserve', label: 'Reserve room', children: reserveContent },
+          { key: 'reserve', label: t("Reserve room"), children: reserveContent },
           {
             key: 'documents',
             label: `Add documents (${draftContracts.length})`,
-            children: (
-              <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                {queueHeader('Pending registrations', 'Select a draft contract to add documents when the tenant provides them.')}
-                <Table<ContractListItem>
-                  rowKey="id"
-                  loading={queueLoading}
-                  columns={documentColumns}
-                  dataSource={draftContracts}
-                  pagination={{ pageSize: 10 }}
-                  scroll={{ x: 820 }}
-                  locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No registrations awaiting documents" /> }}
-                />
-              </Space>
-            ),
+            children: <RegistrationQueueStep title={t("Pending registrations")} description={t("Select a draft contract to add documents when the tenant provides them.")} emptyText={t("No registrations awaiting documents")} loading={queueLoading} items={draftContracts} columns={documentColumns} onReload={() => void loadWorkQueues()} />,
           },
           {
             key: 'handover',
             label: `Room handover (${handoverContracts.length})`,
-            children: (
-              <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                {queueHeader('Ready for handover', 'Only contracts with a signed scan or PDF are shown.')}
-                <Table<ContractListItem>
-                  rowKey="id"
-                  loading={queueLoading}
-                  columns={handoverColumns}
-                  dataSource={handoverContracts}
-                  pagination={{ pageSize: 10 }}
-                  scroll={{ x: 820 }}
-                  locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No registrations ready for handover" /> }}
-                />
-              </Space>
-            ),
+            children: <RegistrationQueueStep title={t("Ready for handover")} description={t("Only contracts with a signed scan or PDF are shown.")} emptyText={t("No registrations ready for handover")} loading={queueLoading} items={handoverContracts} columns={handoverColumns} onReload={() => void loadWorkQueues()} />,
           },
         ]}
       />
@@ -703,7 +590,7 @@ export function RentalRegistrationPage() {
       <Modal
         open={Boolean(documentContract)}
         title={`Add documents - ${documentContract?.contract_code ?? ''}`}
-        okText="Save documents"
+        okText={t("Save documents")}
         confirmLoading={documentSaving}
         onCancel={() => {
           setDocumentContract(null)
@@ -726,9 +613,9 @@ export function RentalRegistrationPage() {
         ) : null}
         <Form form={documentForm} layout="vertical">
           <div className="registration-form-grid">
-            <Form.Item name="doc_type" label="Document type" rules={[{ required: true, message: 'Please select a document type.' }]}><Select options={documentTypeOptions} /></Form.Item>
-            <Form.Item name="note" label="Note"><Input /></Form.Item>
-            <Form.Item label="File" required className="registration-form-full">
+            <Form.Item name="doc_type" label={t("Document type")} rules={[{ required: true, message: t("Please select a document type.") }]}><Select options={documentTypeOptions} /></Form.Item>
+            <Form.Item name="note" label={t("Note")}><Input /></Form.Item>
+            <Form.Item label={t("File")} required className="registration-form-full">
               <Space wrap>
                 <CloudinaryUploadButton
                   accept={documentAccept}
@@ -741,9 +628,9 @@ export function RentalRegistrationPage() {
                     setDocumentFiles((current) => current.some((item) => documentFileKey(item) === key) ? current : [...current, file])
                   }}
                 >
-                  Select files
+                  {t("Select files")}
                 </CloudinaryUploadButton>
-                {documentFiles.length === 0 ? <Typography.Text type="secondary">No files selected</Typography.Text> : null}
+                {documentFiles.length === 0 ? <Typography.Text type="secondary">{t("No files selected")}</Typography.Text> : null}
               </Space>
               {documentFiles.length > 0 ? (
                 <div className="registration-file-list">
@@ -776,7 +663,7 @@ export function RentalRegistrationPage() {
           </div>
         </Form>
         <div className="registration-existing-documents">
-          <Typography.Title level={5}>Existing documents</Typography.Title>
+          <Typography.Title level={5}>{t("Existing documents")}</Typography.Title>
           {documentContract?.documents.some((document) => !documentIdsToDelete.includes(document.id)) ? documentContract.documents.filter((document) => !documentIdsToDelete.includes(document.id)).map((document) => (
             <div className="registration-document-row" key={document.id}>
               <div>
@@ -796,14 +683,14 @@ export function RentalRegistrationPage() {
                 onClick={() => setDocumentIdsToDelete((current) => current.includes(document.id) ? current : [...current, document.id])}
               />
             </div>
-          )) : <Typography.Text type="secondary">No documents added</Typography.Text>}
+          )) : <Typography.Text type="secondary">{t("No documents added")}</Typography.Text>}
         </div>
       </Modal>
 
       <Modal
         open={Boolean(handoverContractDetail)}
         title={`Room handover - ${handoverContractDetail?.contract_code ?? ''}`}
-        okText="Handover and activate"
+        okText={t("Handover and activate")}
         okButtonProps={{ icon: <HomeOutlined /> }}
         confirmLoading={handoverSaving}
         onCancel={() => setHandoverContractDetail(null)}
@@ -822,12 +709,12 @@ export function RentalRegistrationPage() {
         ) : null}
         <Form form={handoverForm} layout="vertical">
           <div className="registration-form-grid">
-            <Form.Item name="move_in_date" label="Actual move-in date" rules={[{ required: true, message: 'Please select a date.' }]}><Input type="date" /></Form.Item>
-            <Form.Item name="persons_count" label="Occupants" rules={[{ required: true, message: 'Please enter the number of occupants.' }]}><InputNumber min={1} precision={0} style={{ width: '100%' }} /></Form.Item>
-            <Form.Item name="vehicles_count" label="Vehicles" rules={[{ required: true, message: 'Please enter the number of vehicles.' }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item>
-            <Form.Item name="electricity_curr" label="Initial electricity reading" rules={[{ required: true, message: 'Please enter the electricity reading.' }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item>
-            <Form.Item name="water_curr" label="Initial water reading" rules={[{ required: true, message: 'Please enter the water reading.' }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item>
-            <Form.Item name="note" label="Room condition / notes" className="registration-form-full"><Input.TextArea rows={3} /></Form.Item>
+            <Form.Item name="move_in_date" label={t("Actual move-in date")} rules={[{ required: true, message: t("Please select a date.") }]}><Input type="date" /></Form.Item>
+            <Form.Item name="persons_count" label={t("Occupants")} rules={[{ required: true, message: t("Please enter the number of occupants.") }]}><InputNumber min={1} precision={0} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="vehicles_count" label={t("Vehicles")} rules={[{ required: true, message: t("Please enter the number of vehicles.") }]}><InputNumber min={0} precision={0} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="electricity_curr" label={t("Initial electricity reading")} rules={[{ required: true, message: t("Please enter the electricity reading.") }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="water_curr" label={t("Initial water reading")} rules={[{ required: true, message: t("Please enter the water reading.") }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item>
+            <Form.Item name="note" label={t("Room condition / notes")} className="registration-form-full"><Input.TextArea rows={3} /></Form.Item>
           </div>
         </Form>
       </Modal>
@@ -835,7 +722,7 @@ export function RentalRegistrationPage() {
       <Modal
         open={Boolean(cancelContractTarget)}
         title={`Cancel registration - ${cancelContractTarget?.contract_code ?? ''}`}
-        okText="Cancel registration"
+        okText={t("Cancel registration")}
         okButtonProps={{ danger: true }}
         confirmLoading={cancelSaving}
         onCancel={() => setCancelContractTarget(null)}
@@ -843,11 +730,11 @@ export function RentalRegistrationPage() {
         destroyOnHidden
       >
         <Form form={cancelForm} layout="vertical">
-          <Form.Item name="cancel_date" label="Cancellation date"><Input type="date" /></Form.Item>
-          <Form.Item name="reason" label="Cancellation reason" rules={[{ required: true, message: 'Please enter a cancellation reason.' }]}><Input.TextArea rows={3} /></Form.Item>
+          <Form.Item name="cancel_date" label={t("Cancellation date")}><Input type="date" /></Form.Item>
+          <Form.Item name="reason" label={t("Cancellation reason")} rules={[{ required: true, message: t("Please enter a cancellation reason.") }]}><Input.TextArea rows={3} /></Form.Item>
         </Form>
       </Modal>
     </div>
-    </Localized>
+    </>
   )
 }

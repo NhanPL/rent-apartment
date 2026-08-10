@@ -124,6 +124,17 @@ const tenantPaths = {
   '/tenants/{id}/resend-activation': {
     post: operation('Tenants', 'Resend activation invitation', 'MANAGER', { parameters: [id], responses: { '200': jsonResponse('Activation invitation renewed.', { type: 'object', properties: { message: { type: 'string' }, emailSent: { type: 'boolean' }, expiresAt: { type: 'string', format: 'date-time' } } }) }, errorCodes: ['TENANT_NOT_FOUND', 'ACCOUNT_ALREADY_ACTIVE'] })
   },
+  '/tenants/{id}/account-status': {
+    patch: operation('Tenants', 'Activate or deactivate tenant login', 'MANAGER', {
+      description: 'Changes login access without deleting the tenant profile or rental and financial history. Deactivation revokes every session.',
+      parameters: [id],
+      body: requestBody('TenantAccountStatusRequest'),
+      responses: { '200': jsonResponse('Tenant account status updated.', {
+        type: 'object', required: ['accountStatus'], properties: { accountStatus: { type: 'string', enum: ['ACTIVE', 'DISABLED'] } }
+      }) },
+      errorCodes: ['TENANT_NOT_FOUND', 'TENANT_ACCOUNT_NOT_FOUND', 'TENANT_ACCOUNT_PENDING_ACTIVATION', 'TENANT_ACCOUNT_PASSWORD_REQUIRED']
+    })
+  },
   '/tenants/{id}/identity-documents': {
     put: operation('Tenants', 'Replace identity documents', 'MANAGER', {
       parameters: [id], body: requestBody('IdentityDocumentsUpdate'),

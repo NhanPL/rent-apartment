@@ -1,9 +1,9 @@
+import { useI18n } from '../../i18n'
 import { DeleteOutlined, IdcardOutlined } from '@ant-design/icons'
 import { Button, Image, Space, Typography } from 'antd'
 import { useEffect, useState } from 'react'
 import type { TenantIdentityDocument, TenantIdentityDocumentFilePayload } from './types'
 import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
-import { Localized } from '../../shared/components/Localized'
 
 export type IdentityDocumentValue = TenantIdentityDocument | TenantIdentityDocumentFilePayload | File | null
 
@@ -18,6 +18,7 @@ const isFile = (value: IdentityDocumentValue | undefined): value is File => (
 )
 
 export function IdentityDocumentInput({ value = null, onChange, disabled }: IdentityDocumentInputProps) {
+  const { t } = useI18n()
   const [localPreviewUrl, setLocalPreviewUrl] = useState<string | null>(null)
 
   useEffect(() => {
@@ -38,15 +39,15 @@ export function IdentityDocumentInput({ value = null, onChange, disabled }: Iden
   const fileName = isFile(value) ? value.name : value?.file_name
 
   return (
-    <Localized>
+    <>
     <div className="tenant-identity-image-input">
       <div className="tenant-identity-image-preview">
         {previewUrl ? (
-          <Image src={previewUrl} alt={fileName || 'Identity card'} preview={!isFile(value)} />
+          <Image src={previewUrl} alt={fileName || 'Identity card'} loading="lazy" preview={!isFile(value)} />
         ) : (
           <div className="tenant-identity-image-empty">
             <IdcardOutlined />
-            <Typography.Text type="secondary">No image selected</Typography.Text>
+            <Typography.Text type="secondary">{t("No image selected")}</Typography.Text>
           </div>
         )}
       </div>
@@ -64,7 +65,7 @@ export function IdentityDocumentInput({ value = null, onChange, disabled }: Iden
           <Button
             danger
             icon={<DeleteOutlined />}
-            aria-label="Remove image"
+            aria-label={t("Remove image")}
             disabled={disabled}
             onClick={() => onChange?.(null)}
           />
@@ -72,6 +73,6 @@ export function IdentityDocumentInput({ value = null, onChange, disabled }: Iden
       </Space>
       {fileName ? <Typography.Text type="secondary" ellipsis={{ tooltip: fileName }}>{fileName}</Typography.Text> : null}
     </div>
-    </Localized>
+    </>
   )
 }

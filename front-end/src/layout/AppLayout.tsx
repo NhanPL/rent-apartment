@@ -1,14 +1,13 @@
 import { DisconnectOutlined, LockOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, UserOutlined } from '@ant-design/icons'
 import { Alert, Button, Drawer, Dropdown, Form, Grid, Input, Layout, Menu, Modal, Typography, message } from 'antd'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { ChangePasswordPayload } from '../features/auth/types/auth'
 import { PASSWORD_MAX_LENGTH, passwordLengthRules } from '../features/auth/passwordPolicy'
 import type { SidebarRouteItem } from '../routes/routeConfig'
-import { getFormErrorMessage, getUserErrorMessage } from '../services/errorMessage'
+import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../services/errorMessage'
 import { useI18n } from '../i18n'
 import { LanguageSwitcher } from '../shared/components/LanguageSwitcher'
-import { Localized } from '../shared/components/Localized'
 import './AppLayout.css'
 
 const { Header, Sider, Content, Footer } = Layout
@@ -47,10 +46,17 @@ export function AppLayout({
   const [changingPassword, setChangingPassword] = useState(false)
   const [changePasswordError, setChangePasswordError] = useState<string | null>(null)
   const [changePasswordForm] = Form.useForm<ChangePasswordPayload>()
+  const contentRef = useRef<HTMLElement>(null)
+  const previousPath = useRef(pathname)
 
   useEffect(() => {
     localStorage.setItem(SIDEBAR_STORAGE_KEY, String(collapsed))
   }, [collapsed])
+
+  useEffect(() => {
+    if (previousPath.current !== pathname) contentRef.current?.focus()
+    previousPath.current = pathname
+  }, [pathname])
 
   const menuItems = useMemo(
     () =>
@@ -64,15 +70,17 @@ export function AppLayout({
   )
 
   const navMenu = (
-    <Menu
-      mode="inline"
-      selectedKeys={[pathname]}
-      items={menuItems}
-      onClick={(info: { key: string }) => {
-        onNavigate(info.key)
-        setMobileOpen(false)
-      }}
-    />
+    <nav aria-label={t("Main navigation")}>
+      <Menu
+        mode="inline"
+        selectedKeys={[pathname]}
+        items={menuItems}
+        onClick={(info: { key: string }) => {
+          onNavigate(info.key)
+          setMobileOpen(false)
+        }}
+      />
+    </nav>
   )
 
   const handleChangePassword = async (values: ChangePasswordPayload) => {
@@ -84,6 +92,7 @@ export function AppLayout({
       setChangePasswordOpen(false)
       changePasswordForm.resetFields()
     } catch (error) {
+      applyApiFieldErrors(changePasswordForm, error)
       setChangePasswordError(getUserErrorMessage(error, t('Unable to change your password.')))
     } finally {
       setChangingPassword(false)
@@ -91,7 +100,8 @@ export function AppLayout({
   }
 
   return (
-    <Localized>
+    <>
+    <a className="skip-link" href="#main-content">{t("Skip to main content")}</a>
     <Layout className="app-layout">
       {isDesktop ? (
         <Sider theme="light" collapsible collapsed={collapsed} trigger={null} width={240} collapsedWidth={80} className="app-sider">
@@ -99,7 +109,7 @@ export function AppLayout({
           {navMenu}
         </Sider>
       ) : (
-        <Drawer title="Rent Apartment" placement="left" open={mobileOpen} onClose={() => setMobileOpen(false)} width={280} styles={{ body: { padding: 0 } }}>
+        <Drawer title={t("Rent Apartment")} placement="left" open={mobileOpen} onClose={() => setMobileOpen(false)} width={280} styles={{ body: { padding: 0 } }}>
           {navMenu}
         </Drawer>
       )}
@@ -109,6 +119,7 @@ export function AppLayout({
           <div className="header-main">
             <Button
               type="text"
+              aria-label={t(isDesktop && !collapsed ? 'Collapse navigation' : 'Expand navigation')}
               icon={isDesktop ? (collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />) : <MenuUnfoldOutlined />}
               onClick={() => (isDesktop ? setCollapsed((current) => !current) : setMobileOpen((current) => !current))}
             />
@@ -117,7 +128,7 @@ export function AppLayout({
                 {pageTitle}
               </Typography.Title>
               <Typography.Text type="secondary" className="header-subtitle" ellipsis>
-                Rent Apartment Management
+                {t("Rent Apartment Management")}
               </Typography.Text>
             </div>
           </div>
@@ -128,7 +139,7 @@ export function AppLayout({
               items: [
                 {
                   key: 'change-password',
-                  label: 'Change password',
+                  label: t("Change password"),
                   icon: <LockOutlined />,
                   onClick: () => {
                     setChangePasswordError(null)
@@ -137,7 +148,7 @@ export function AppLayout({
                 },
                 {
                   key: 'revoke-all-sessions',
-                  label: 'Sign out all devices',
+                  label: t("Sign out all devices"),
                   icon: <DisconnectOutlined />,
                   onClick: () => {
                     Modal.confirm({
@@ -163,7 +174,7 @@ export function AppLayout({
                 },
                 {
                   key: 'logout',
-                  label: 'Logout',
+                  label: t("Logout"),
                   icon: <LogoutOutlined />,
                   onClick: () => {
                     void onLogout()
@@ -177,13 +188,14 @@ export function AppLayout({
             </Button>
           </Dropdown>
         </Header>
-        <Content className="app-content">{content}</Content>
-        <Footer className="app-footer">© {new Date().getFullYear()} Rent Apartment Management</Footer>
+        <div className="sr-only" role="status" aria-live="polite">{pageTitle}</div>
+        <Content ref={contentRef} id="main-content" role="main" tabIndex={-1} className="app-content">{content}</Content>
+        <Footer className="app-footer">{t("©")} {new Date().getFullYear()} {t("Rent Apartment Management")}</Footer>
       </Layout>
       <Modal
-        title="Change password"
+        title={t("Change password")}
         open={changePasswordOpen}
-        okText="Change password"
+        okText={t("Change password")}
         confirmLoading={changingPassword}
         onOk={() => changePasswordForm.submit()}
         onCancel={() => {
@@ -201,7 +213,7 @@ export function AppLayout({
           <Alert
             showIcon
             type="error"
-            message="Password change failed"
+            message={t("Password change failed")}
             description={changePasswordError}
             style={{ marginBottom: 16 }}
           />
@@ -215,9 +227,9 @@ export function AppLayout({
         >
           <Form.Item
             name="currentPassword"
-            label="Current password"
+            label={t("Current password")}
             rules={[
-              { required: true, message: 'Please enter your current password.' },
+              { required: true, message: t("Please enter your current password.") },
               {
                 max: PASSWORD_MAX_LENGTH,
                 message: `The password cannot exceed ${PASSWORD_MAX_LENGTH} characters.`,
@@ -228,10 +240,10 @@ export function AppLayout({
           </Form.Item>
           <Form.Item
             name="newPassword"
-            label="New password"
+            label={t("New password")}
             dependencies={['currentPassword']}
             rules={[
-              { required: true, message: 'Please enter a new password.' },
+              { required: true, message: t("Please enter a new password.") },
               ...passwordLengthRules,
               ({ getFieldValue }) => ({
                 validator(_, value: string) {
@@ -245,10 +257,10 @@ export function AppLayout({
           </Form.Item>
           <Form.Item
             name="confirmPassword"
-            label="Confirm new password"
+            label={t("Confirm new password")}
             dependencies={['newPassword']}
             rules={[
-              { required: true, message: 'Please confirm your new password.' },
+              { required: true, message: t("Please confirm your new password.") },
               ({ getFieldValue }) => ({
                 validator(_, value: string) {
                   if (!value || value === getFieldValue('newPassword')) return Promise.resolve()
@@ -262,6 +274,6 @@ export function AppLayout({
         </Form>
       </Modal>
     </Layout>
-    </Localized>
+    </>
   )
 }

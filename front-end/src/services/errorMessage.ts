@@ -1,5 +1,7 @@
 import { ApiError } from './apiClient'
 import { translate } from '../i18n'
+import type { FormInstance } from 'antd'
+import type { NamePath } from 'antd/es/form/interface'
 
 const errorMessages: Record<string, string> = {
   VALIDATION_ERROR: 'Some fields are invalid. Please review them and try again.',
@@ -121,15 +123,42 @@ export function isFormValidationError(error: unknown): error is FormValidationEr
 
 export function getUserErrorMessage(error: unknown, fallback = 'Unable to complete this action. Please try again.'): string {
   if (error instanceof ApiError) {
-    return translate(errorMessages[error.code] ?? (error.status ? statusMessages[error.status] : undefined) ?? error.message ?? fallback)
+    return translate(errorMessages[error.code] ?? (error.status ? statusMessages[error.status] : undefined) ?? fallback)
   }
 
   if (error instanceof TypeError && /fetch|network|load failed/i.test(error.message)) {
     return translate('Unable to connect to the system. Check your network connection or the backend service.')
   }
 
-  if (error instanceof Error && error.message.trim()) return translate(error.message)
+  if (error instanceof Error && error.message.trim() && !looksLikeInternalError(error.message)) {
+    return translate(error.message)
+  }
   return translate(fallback)
+}
+
+const internalErrorPattern = /(?:\b(?:select|insert|update|delete)\b.+\bfrom\b|sqlstate|postgres|stack trace|\bat\s+\w+\s*\(|relation\s+["']?.+["']?\s+does not exist|violates?\s+.+constraint)/i
+
+function looksLikeInternalError(message: string) {
+  return internalErrorPattern.test(message)
+}
+
+export function applyApiFieldErrors(
+  form: Pick<FormInstance, 'setFields'>,
+  error: unknown,
+  fieldMap: Record<string, NamePath> = {},
+): boolean {
+  if (!(error instanceof ApiError) || !error.fieldErrors) return false
+
+  const fields = Object.entries(error.fieldErrors)
+    .filter(([name, errors]) => name !== 'body' && errors.length > 0)
+    .map(([name, errors]) => ({
+      name: fieldMap[name] ?? name,
+      errors: errors.map((fieldError) => translate(fieldError)),
+    }))
+
+  if (fields.length === 0) return false
+  form.setFields(fields)
+  return true
 }
 
 export function getFormErrorMessage(

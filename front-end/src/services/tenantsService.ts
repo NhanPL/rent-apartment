@@ -2,7 +2,6 @@ import { API_ROUTES } from './apiRoutes'
 import { apiRequest } from './apiClient'
 import type {
   BuildingOption,
-  RentalContractExportData,
   RoomOption,
   TenantCreateResult,
   TenantDetail,
@@ -12,6 +11,7 @@ import type {
   TenantIdentityDocuments,
   TenantListItem,
   TenantListParams,
+  AccountStatus,
 } from '../pages/tenants/types'
 
 interface PaginatedTenantsResponse {
@@ -66,6 +66,13 @@ export function resendTenantActivation(id: string): Promise<{
   return apiRequest(API_ROUTES.tenants.resendActivation(id), { method: 'POST' })
 }
 
+export function updateTenantAccountStatus(
+  id: string,
+  status: Extract<AccountStatus, 'ACTIVE' | 'DISABLED'>,
+): Promise<{ accountStatus: Extract<AccountStatus, 'ACTIVE' | 'DISABLED'> }> {
+  return apiRequest(API_ROUTES.tenants.accountStatus(id), { method: 'PATCH', body: { status } })
+}
+
 export function listTenantContracts(id: string) {
   return apiRequest<Array<Record<string, unknown>>>(`${API_ROUTES.tenants.detail(id)}/contracts`)
 }
@@ -74,38 +81,6 @@ export function listTenantInvoices(id: string) {
 }
 export function listTenantPayments(id: string) {
   return apiRequest<Array<Record<string, unknown>>>(`${API_ROUTES.tenants.detail(id)}/payments`)
-}
-
-export async function getTenantContractExportData(tenantId: string): Promise<RentalContractExportData> {
-  const detail = await apiRequest<Record<string, unknown>>(`${API_ROUTES.tenants.detail(tenantId)}/export-contract`, {
-    method: 'POST',
-  })
-
-  return {
-    landlord: { full_name: 'Manager', phone: null, address: String(detail.address ?? '') },
-    tenant: {
-      full_name: String(detail.tenant_name ?? ''),
-      phone: String(detail.phone ?? ''),
-      email: (detail.email as string | null) ?? null,
-      identity_number: String(detail.identity_number ?? ''),
-      permanent_address: (detail.permanent_address as string | null) ?? null,
-    },
-    building: { name: String(detail.building_name ?? ''), address: String(detail.address ?? '') },
-    room: {
-      code: String(detail.room_code ?? ''),
-      floor: detail.floor ? Number(detail.floor) : null,
-      area_m2: detail.area_m2 ? Number(detail.area_m2) : null,
-    },
-    contract: {
-      contract_code: (detail.contract_code as string | null) ?? null,
-      start_date: String(detail.start_date ?? ''),
-      end_date: (detail.end_date as string | null) ?? null,
-      rent_price: Number(detail.rent_price ?? 0),
-      deposit_amount: Number(detail.deposit_amount ?? 0),
-      billing_day: Number(detail.billing_day ?? 1),
-      note: (detail.contract_note as string | null) ?? null,
-    },
-  }
 }
 
 export function listBuildings(): Promise<BuildingOption[]> {

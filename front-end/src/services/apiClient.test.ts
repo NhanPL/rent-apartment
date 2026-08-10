@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { clearAuthStorage, getAccessToken, setAccessToken } from '../features/auth/authStorage'
-import { apiRequest, refreshAuthSession } from './apiClient'
+import { ApiError, apiRequest, refreshAuthSession } from './apiClient'
 
 const jsonResponse = (body: unknown, status = 200) => new Response(
   JSON.stringify(body),
@@ -101,6 +101,25 @@ describe('apiClient token handling', () => {
       accessToken: 'recovered-access-token',
     })
     expect(refreshCalls).toBe(2)
+  })
+
+  it('preserves the structured error contract for form handling and support', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({
+      code: 'VALIDATION_ERROR',
+      message: 'Validation failed',
+      fieldErrors: { email: ['Enter a valid email address.'] },
+      requestId: 'request-structured-error',
+    }, 422)))
+
+    const error = await apiRequest('/test', { skipAuth: true }).catch((requestError) => requestError)
+
+    expect(error).toBeInstanceOf(ApiError)
+    expect(error).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      status: 422,
+      fieldErrors: { email: ['Enter a valid email address.'] },
+      requestId: 'request-structured-error',
+    })
   })
 
   it('shares one cookie refresh across concurrent unauthorized requests', async () => {

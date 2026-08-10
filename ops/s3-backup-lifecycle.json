@@ -1,0 +1,25 @@
+{
+  "Rules": [
+    {
+      "ID": "expire-daily-database-backups",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "rent-apartment/daily/" },
+      "Expiration": { "Days": 35 },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 7 }
+    },
+    {
+      "ID": "expire-weekly-database-backups",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "rent-apartment/weekly/" },
+      "Expiration": { "Days": 98 },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 14 }
+    },
+    {
+      "ID": "expire-monthly-database-backups",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "rent-apartment/monthly/" },
+      "Expiration": { "Days": 2555 },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 30 }
+    }
+  ]
+}

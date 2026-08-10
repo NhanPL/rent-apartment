@@ -6,6 +6,7 @@ import { AppError } from '../../shared/errors/app-error';
 import { writeAuditLog } from '../../shared/services/audit-log.service';
 import { assertPasswordPolicy, hashPassword } from '../../shared/utils/password';
 import { sendTenantActivationEmail } from '../../shared/services/email.service';
+import { logger } from '../../shared/services/logger.service';
 
 type ActivationClient = Pick<PoolClient, 'query'>;
 
@@ -281,11 +282,11 @@ export const resendTenantActivation = async (
       source: 'MANAGER_RESEND'
     });
   } catch (error) {
-    console.error('Failed to resend tenant activation email', {
+    logger.error({
       tenantId,
       userId: account.user_id,
-      error: error instanceof Error ? error.message : 'Unknown email error'
-    });
+      error
+    }, 'Failed to resend tenant activation email');
   }
 
   return { emailSent, expiresAt: invitation.expiresAt };

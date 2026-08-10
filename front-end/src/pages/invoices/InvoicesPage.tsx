@@ -1,14 +1,11 @@
+import { useI18n } from '../../i18n'
 import {
   BankOutlined,
-  CheckOutlined,
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
   PlusOutlined,
-  QrcodeOutlined,
-  ReloadOutlined,
   StopOutlined,
-  ThunderboltOutlined,
 } from '@ant-design/icons'
 import {
   Alert,
@@ -23,10 +20,8 @@ import {
   Input,
   InputNumber,
   Modal,
-  Select,
   Skeleton,
   Space,
-  Spin,
   Statistic,
   Table,
   Tag,
@@ -44,19 +39,11 @@ import {
   deleteInvoice,
   getInvoice,
   getInvoicePrefill,
-  getInvoicesSummary,
-  generateInvoices,
   issueInvoice,
-  listBuildings,
-  listContracts,
-  listInvoices,
-  listRooms,
-  listTenants,
   updateInvoice,
   voidInvoice,
 } from '../../services/invoicesService'
-import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
-import { Localized } from '../../shared/components/Localized'
+import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
 import { vndCurrency } from '../../i18n'
 import { getUtilityReading } from '../../services/utilitiesService'
 import {
@@ -69,17 +56,16 @@ import {
   type PaymentRequest,
   type PaymentRequestStatus,
 } from '../../services/paymentsService'
-import {
-  getInvoiceFormDefaultValues,
-  invoiceFormDefaultValues,
-  type InvoiceFormValues,
-} from './components/invoiceFormState'
-import { InvoiceFormFields } from './components/invoiceFormShared'
+import { getInvoiceFormDefaultValues, type InvoiceFormValues } from './components/invoiceFormState'
 import './components/invoiceFormShared.css'
+import { InvoiceDetailHeader } from './components/InvoiceDetailHeader'
+import { InvoiceFilters } from './components/InvoiceFilters'
+import { InvoiceFormDrawer } from './components/InvoiceFormDrawer'
+import { InvoiceList } from './components/InvoiceList'
+import { VietQrDisplay } from './components/VietQrDisplay'
+import { useInvoicesData } from './hooks/useInvoicesData'
 import type {
-  Contract,
   InvoiceDetail,
-  InvoiceGenerateScope,
   InvoiceListItem,
   InvoiceStatus,
   PaymentStatus,
@@ -114,6 +100,16 @@ const paymentRequestStatusColor: Record<PaymentRequestStatus, string> = {
 
 const currency = vndCurrency
 
+const invoiceQuery = () => new URLSearchParams(window.location.search)
+const initialInvoiceStatus = () => {
+  const value = invoiceQuery().get('invoiceStatus') as InvoiceStatus | null
+  return invoiceStatusOptions.some((option) => option.value === value) ? value ?? undefined : undefined
+}
+const initialPaymentStatus = () => {
+  const value = invoiceQuery().get('paymentStatus') as PaymentStatus | null
+  return paymentStatusOptions.some((option) => option.value === value) ? value ?? undefined : undefined
+}
+
 interface PaymentRequestFormValues {
   amount: number
   bank_code?: string
@@ -137,82 +133,73 @@ interface IssueInvoiceFormValues {
 }
 
 function VietQrBankFields() {
+  const { t } = useI18n()
   return (
-    <Localized>
+    <>
     <>
       <Form.Item
         name="bank_code"
-        label="Bank code or BIN"
+        label={t("Bank code or BIN")}
         rules={[
-          { required: true, whitespace: true, message: 'Please enter the receiving bank code.' },
-          { pattern: /^[A-Za-z0-9]{2,20}$/, message: 'Use a VietQR bank code or bank BIN.' },
+          { required: true, whitespace: true, message: t("Please enter the receiving bank code.") },
+          { pattern: /^[A-Za-z0-9]{2,20}$/, message: t("Use a VietQR bank code or bank BIN.") },
         ]}
       >
-        <Input placeholder="970436 or VCB" maxLength={20} />
+        <Input placeholder={t("970436 or VCB")} maxLength={20} />
       </Form.Item>
       <Form.Item
         name="bank_account_no"
-        label="Bank account number"
+        label={t("Bank account number")}
         rules={[
-          { required: true, whitespace: true, message: 'Please enter the bank account number.' },
-          { pattern: /^\d{6,19}$/, message: 'The account number must contain 6 to 19 digits.' },
+          { required: true, whitespace: true, message: t("Please enter the bank account number.") },
+          { pattern: /^\d{6,19}$/, message: t("The account number must contain 6 to 19 digits.") },
         ]}
       >
         <Input inputMode="numeric" maxLength={19} />
       </Form.Item>
       <Form.Item
         name="bank_account_name"
-        label="Bank account name"
-        rules={[{ required: true, whitespace: true, message: 'Please enter the bank account name.' }]}
+        label={t("Bank account name")}
+        rules={[{ required: true, whitespace: true, message: t("Please enter the bank account name.") }]}
       >
         <Input maxLength={100} />
       </Form.Item>
       <Form.Item
         name="transfer_note"
-        label="Transfer note"
+        label={t("Transfer note")}
         rules={[
-          { required: true, whitespace: true, message: 'Please enter the transfer note.' },
-          { max: 25, message: 'The transfer note must not exceed 25 characters.' },
+          { required: true, whitespace: true, message: t("Please enter the transfer note.") },
+          { max: 25, message: t("The transfer note must not exceed 25 characters.") },
         ]}
       >
         <Input maxLength={25} showCount />
       </Form.Item>
     </>
-    </Localized>
+    </>
   )
 }
 
 export function InvoicesPage() {
+  const { t } = useI18n()
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
   const [form] = Form.useForm<InvoiceFormValues>()
-  const [generateForm] = Form.useForm<{ scope: InvoiceGenerateScope; month: string; building_id?: string; room_id?: string }>()
   const [paymentRequestForm] = Form.useForm<PaymentRequestFormValues>()
   const [adjustmentForm] = Form.useForm<AdjustmentFormValues>()
   const [issueForm] = Form.useForm<IssueInvoiceFormValues>()
   const [voidForm] = Form.useForm<VoidInvoiceFormValues>()
 
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [items, setItems] = useState<InvoiceListItem[]>([])
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
-  const [total, setTotal] = useState(0)
-  const [summary, setSummary] = useState({ totalInvoices: 0, paidInvoices: 0, unpaidInvoices: 0, totalRevenue: 0 })
 
-  const [searchInput, setSearchInput] = useState('')
-  const [search, setSearch] = useState('')
-  const [monthFilter, setMonthFilter] = useState('')
-  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<InvoiceStatus | undefined>()
-  const [paymentStatusFilter, setPaymentStatusFilter] = useState<PaymentStatus | undefined>()
-  const [buildingFilter, setBuildingFilter] = useState<string | undefined>()
-  const [roomFilter, setRoomFilter] = useState<string | undefined>()
-  const [tenantFilter, setTenantFilter] = useState<string | undefined>()
-
-  const [buildings, setBuildings] = useState<{ id: string; name: string }[]>([])
-  const [rooms, setRooms] = useState<{ id: string; building_id: string; code: string; base_rent: number }[]>([])
-  const [tenants, setTenants] = useState<{ id: string; full_name: string }[]>([])
-  const [contracts, setContracts] = useState<Contract[]>([])
+  const [searchInput, setSearchInput] = useState(() => invoiceQuery().get('search') ?? '')
+  const [search, setSearch] = useState(() => invoiceQuery().get('search') ?? '')
+  const [monthFilter, setMonthFilter] = useState(() => invoiceQuery().get('month') ?? '')
+  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<InvoiceStatus | undefined>(initialInvoiceStatus)
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState<PaymentStatus | undefined>(initialPaymentStatus)
+  const [buildingFilter, setBuildingFilter] = useState<string | undefined>(() => invoiceQuery().get('buildingId') ?? undefined)
+  const [roomFilter, setRoomFilter] = useState<string | undefined>(() => invoiceQuery().get('roomId') ?? undefined)
+  const [tenantFilter, setTenantFilter] = useState<string | undefined>(() => invoiceQuery().get('tenantId') ?? undefined)
 
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('create')
@@ -226,9 +213,6 @@ export function InvoicesPage() {
   const [detailItem, setDetailItem] = useState<InvoiceDetail | null>(null)
   const [detailPaymentRequest, setDetailPaymentRequest] = useState<PaymentRequest | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
-  const [generateOpen, setGenerateOpen] = useState(false)
-  const [generateLoading, setGenerateLoading] = useState(false)
-  const [generateResult, setGenerateResult] = useState<{ generated: number; skipped: number; total: number } | null>(null)
   const [voidingInvoiceId, setVoidingInvoiceId] = useState<string | null>(null)
   const [voidLoading, setVoidLoading] = useState(false)
   const [replacementLoading, setReplacementLoading] = useState(false)
@@ -252,63 +236,33 @@ export function InvoicesPage() {
     return () => window.clearTimeout(timer)
   }, [searchInput])
 
-  const loadOptions = useCallback(async () => {
-    try {
-      const [buildingRows, roomRows, tenantRows, contractRows] = await Promise.all([
-        listBuildings(),
-        listRooms(),
-        listTenants(),
-        listContracts(),
-      ])
-
-      setBuildings(buildingRows)
-      setRooms(roomRows)
-      setTenants(tenantRows)
-      setContracts(contractRows)
-    } catch (error) {
-      message.error(getUserErrorMessage(error, 'Unable to load the invoice form options.'))
-    }
-  }, [])
-
-  const loadData = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-
-    try {
-      const [invoicePage, summaryRows] = await Promise.all([
-        listInvoices({
-          search,
-          month: monthFilter,
-          invoice_status: invoiceStatusFilter,
-          payment_status: paymentStatusFilter,
-          building_id: buildingFilter,
-          room_id: roomFilter,
-          tenant_id: tenantFilter,
-          page,
-          pageSize,
-          sortBy: 'month',
-          sortOrder: 'desc',
-        }),
-        getInvoicesSummary(monthFilter),
-      ])
-
-      setItems(invoicePage.items)
-      setTotal(invoicePage.total)
-      setSummary(summaryRows)
-    } catch (error) {
-      setError(getUserErrorMessage(error, 'Khong tai duoc danh sach hoa don.'))
-    } finally {
-      setLoading(false)
-    }
-  }, [search, monthFilter, invoiceStatusFilter, paymentStatusFilter, buildingFilter, roomFilter, tenantFilter, page, pageSize])
-
   useEffect(() => {
-    void loadOptions()
-  }, [loadOptions])
+    const params = invoiceQuery()
+    const values: Record<string, string | undefined> = {
+      search: search || undefined,
+      month: monthFilter || undefined,
+      invoiceStatus: invoiceStatusFilter,
+      paymentStatus: paymentStatusFilter,
+      buildingId: buildingFilter,
+      roomId: roomFilter,
+      tenantId: tenantFilter,
+    }
+    Object.entries(values).forEach(([key, value]) => value ? params.set(key, value) : params.delete(key))
+    const query = params.toString()
+    window.history.replaceState(null, '', `/invoices${query ? `?${query}` : ''}`)
+  }, [search, monthFilter, invoiceStatusFilter, paymentStatusFilter, buildingFilter, roomFilter, tenantFilter])
 
-  useEffect(() => {
-    void loadData()
-  }, [loadData])
+  const dataFilters = useMemo(() => ({
+    search,
+    month: monthFilter,
+    invoiceStatus: invoiceStatusFilter,
+    paymentStatus: paymentStatusFilter,
+    buildingId: buildingFilter,
+    roomId: roomFilter,
+    tenantId: tenantFilter,
+  }), [search, monthFilter, invoiceStatusFilter, paymentStatusFilter, buildingFilter, roomFilter, tenantFilter])
+  const { loading, error, items, total, summary, references, reload: loadData } = useInvoicesData(dataFilters, page, pageSize)
+  const { buildings, rooms, tenants, contracts } = references
 
   const roomFilterOptions = useMemo(() => {
     if (!buildingFilter) {
@@ -447,7 +401,9 @@ export function InvoicesPage() {
 
   const openDetail = useCallback(async (id: string, syncUrl = true) => {
     if (syncUrl) {
-      window.history.pushState(null, '', `/invoices?invoiceId=${encodeURIComponent(id)}`)
+      const params = invoiceQuery()
+      params.set('invoiceId', id)
+      window.history.pushState(null, '', `/invoices?${params.toString()}`)
     }
     setDetailOpen(true)
     setDetailLoading(true)
@@ -539,6 +495,7 @@ export function InvoicesPage() {
       closeInvoiceDrawer()
       void loadData()
     } catch (error) {
+      applyApiFieldErrors(form, error)
       message.error(getFormErrorMessage(error, 'Unable to save the invoice. Please review the submitted data.'))
     } finally {
       setSaveLoading(false)
@@ -562,35 +519,6 @@ export function InvoicesPage() {
     }
   }, [closeDetail, deletingInvoiceId, detailItem?.id, loadData])
 
-  const openGenerate = useCallback(() => {
-    setGenerateResult(null)
-    generateForm.resetFields()
-    generateForm.setFieldsValue({ scope: 'all', month: dayjs().format('YYYY-MM') })
-    setGenerateOpen(true)
-  }, [generateForm])
-
-  const selectedGenerateScope = Form.useWatch('scope', generateForm)
-  const selectedGenerateBuilding = Form.useWatch('building_id', generateForm)
-  const generateRoomOptions = useMemo(() => {
-    if (!selectedGenerateBuilding) return rooms
-    return rooms.filter((room) => room.building_id === selectedGenerateBuilding)
-  }, [rooms, selectedGenerateBuilding])
-
-  const onGenerate = useCallback(async () => {
-    setGenerateLoading(true)
-    try {
-      const values = await generateForm.validateFields()
-      const result = await generateInvoices(values)
-      setGenerateResult({ generated: result.generated.length, skipped: result.skipped.length, total: result.total })
-      message.success(`Generated ${result.generated.length} invoice(s).`)
-      await loadData()
-    } catch (error) {
-      message.error(getFormErrorMessage(error, 'Unable to generate invoices.'))
-    } finally {
-      setGenerateLoading(false)
-    }
-  }, [generateForm, loadData])
-
   const openVoidModal = useCallback((invoiceId: string) => {
     voidForm.resetFields()
     setVoidingInvoiceId(invoiceId)
@@ -608,6 +536,7 @@ export function InvoicesPage() {
       await loadData()
       message.success('Invoice voided. Financial history has been retained.')
     } catch (error) {
+      applyApiFieldErrors(voidForm, error)
       message.error(getFormErrorMessage(error, 'Unable to void the invoice.'))
     } finally {
       setVoidLoading(false)
@@ -641,6 +570,7 @@ export function InvoicesPage() {
       await loadData()
       message.success('Adjustment added to the draft invoice.')
     } catch (error) {
+      applyApiFieldErrors(adjustmentForm, error)
       message.error(getFormErrorMessage(error, 'Unable to add the adjustment.'))
     } finally { setAdjustmentLoading(false) }
   }, [adjustmentForm, detailItem, loadData])
@@ -683,6 +613,7 @@ export function InvoicesPage() {
       await loadData()
       message.success('Invoice issued and VietQR payment request created.')
     } catch (error) {
+      applyApiFieldErrors(issueForm, error)
       message.error(getFormErrorMessage(error, 'Unable to issue the invoice and create its VietQR payment request.'))
     } finally {
       setIssueLoading(false)
@@ -752,6 +683,7 @@ export function InvoicesPage() {
       setPaymentRequestOpen(false)
       message.success('Payment request created.')
     } catch (error) {
+      applyApiFieldErrors(paymentRequestForm, error)
       message.error(getFormErrorMessage(error, 'Unable to create the payment request.'))
     } finally {
       setPaymentRequestLoading(false)
@@ -777,54 +709,54 @@ export function InvoicesPage() {
   }, [detailPaymentRequest, refreshDetailPaymentRequest])
 
   const columns: ColumnsType<InvoiceListItem> = [
-    { title: 'Month', dataIndex: 'month', width: 110, render: (value: string) => dayjs(value).format('MM/YYYY') },
-    { title: 'Building', dataIndex: 'building_name', width: 170 },
-    { title: 'Room', dataIndex: 'room_code', width: 100 },
-    { title: 'Tenant', dataIndex: 'tenant_name', width: 170 },
-    { title: 'Room rent', dataIndex: 'rent_amount', width: 130, align: 'right', render: (value: number) => currency.format(value) },
-    { title: 'Electric amount', dataIndex: 'electric_amount', width: 140, align: 'right', render: (value: number) => currency.format(value) },
-    { title: 'Water amount', dataIndex: 'water_amount', width: 130, align: 'right', render: (value: number) => currency.format(value) },
-    { title: 'Other fees', dataIndex: 'other_fees', width: 120, align: 'right', render: (value: number) => currency.format(value) },
-    { title: 'Total', dataIndex: 'total', width: 130, align: 'right', render: (value: number) => <strong>{currency.format(value)}</strong> },
+    { title: t("Month"), dataIndex: 'month', width: 110, render: (value: string) => dayjs(value).format('MM/YYYY') },
+    { title: t("Building"), dataIndex: 'building_name', width: 170 },
+    { title: t("Room"), dataIndex: 'room_code', width: 100 },
+    { title: t("Tenant"), dataIndex: 'tenant_name', width: 170 },
+    { title: t("Room rent"), dataIndex: 'rent_amount', width: 130, align: 'right', render: (value: number) => currency.format(value) },
+    { title: t("Electric amount"), dataIndex: 'electric_amount', width: 140, align: 'right', render: (value: number) => currency.format(value) },
+    { title: t("Water amount"), dataIndex: 'water_amount', width: 130, align: 'right', render: (value: number) => currency.format(value) },
+    { title: t("Other fees"), dataIndex: 'other_fees', width: 120, align: 'right', render: (value: number) => currency.format(value) },
+    { title: t("Total"), dataIndex: 'total', width: 130, align: 'right', render: (value: number) => <strong>{currency.format(value)}</strong> },
     {
-      title: 'Invoice status',
+      title: t("Invoice status"),
       dataIndex: 'status',
       width: 130,
       render: (value: InvoiceStatus) => <Tag color={invoiceStatusOptions.find((item) => item.value === value)?.color}>{value}</Tag>,
     },
     {
-      title: 'Payment status',
+      title: t("Payment status"),
       dataIndex: 'payment_status',
       width: 130,
       render: (value: PaymentStatus | null) => {
         if (!value) {
-          return <Tag>NO_PAYMENT</Tag>
+          return <Tag>{t("NO_PAYMENT")}</Tag>
         }
         return <Tag color={paymentStatusOptions.find((item) => item.value === value)?.color}>{value}</Tag>
       },
     },
-    { title: 'Due date', dataIndex: 'due_date', width: 120, render: (value: string | null) => (value ? dayjs(value).format('DD/MM/YYYY') : '-') },
-    { title: 'Paid date', dataIndex: 'paid_at', width: 120, render: (value: string | null) => (value ? dayjs(value).format('DD/MM/YYYY') : '-') },
+    { title: t("Due date"), dataIndex: 'due_date', width: 120, render: (value: string | null) => (value ? dayjs(value).format('DD/MM/YYYY') : '-') },
+    { title: t("Paid date"), dataIndex: 'paid_at', width: 120, render: (value: string | null) => (value ? dayjs(value).format('DD/MM/YYYY') : '-') },
     {
-      title: 'Actions',
+      title: t("Actions"),
       key: 'actions',
       fixed: 'right',
       width: 170,
       render: (_, row) => (
         <Space size={4}>
-          <Button size="small" icon={<EyeOutlined />} aria-label="View invoice" onClick={() => void openDetail(row.id)} />
+          <Button size="small" icon={<EyeOutlined />} aria-label={t("View invoice")} onClick={() => void openDetail(row.id)} />
           {row.status === 'DRAFT' ? (
             <>
-              <Tooltip title="Edit draft">
-                <Button size="small" icon={<EditOutlined />} aria-label="Edit draft invoice" onClick={() => void openEdit(row.id)} />
+              <Tooltip title={t("Edit draft")}>
+                <Button size="small" icon={<EditOutlined />} aria-label={t("Edit draft invoice")} onClick={() => void openEdit(row.id)} />
               </Tooltip>
-              <Tooltip title="Delete draft permanently">
-                <Button size="small" danger icon={<DeleteOutlined />} aria-label="Delete draft invoice" onClick={() => setDeletingInvoiceId(row.id)} />
+              <Tooltip title={t("Delete draft permanently")}>
+                <Button size="small" danger icon={<DeleteOutlined />} aria-label={t("Delete draft invoice")} onClick={() => setDeletingInvoiceId(row.id)} />
               </Tooltip>
             </>
           ) : ['ISSUED', 'PARTIALLY_PAID', 'PAID'].includes(row.status) ? (
-            <Tooltip title="Void invoice and retain financial history">
-              <Button size="small" danger icon={<StopOutlined />} aria-label="Void invoice" onClick={() => openVoidModal(row.id)} />
+            <Tooltip title={t("Void invoice and retain financial history")}>
+              <Button size="small" danger icon={<StopOutlined />} aria-label={t("Void invoice")} onClick={() => openVoidModal(row.id)} />
             </Tooltip>
           ) : null}
         </Space>
@@ -833,163 +765,123 @@ export function InvoicesPage() {
   ]
 
   return (
-    <Localized>
+    <>
     <Space direction="vertical" size={16} className="invoices-page">
       <div className="invoices-toolbar">
         <div>
-          <Typography.Title level={3} style={{ margin: 0 }}>Invoices</Typography.Title>
-          <Typography.Text type="secondary">Manage monthly invoices from contracts, utility readings, and payment status.</Typography.Text>
+          <Typography.Title level={3} style={{ margin: 0 }}>{t("Invoices")}</Typography.Title>
+          <Typography.Text type="secondary">{t("Manage monthly invoices from contracts, utility readings, and payment status.")}</Typography.Text>
         </div>
         <Space wrap>
-          <Button icon={<ThunderboltOutlined />} onClick={openGenerate}>Generate Monthly</Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Create Manual Invoice</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t("Create Manual Invoice")}</Button>
         </Space>
       </div>
 
       <Card>
-        <div className="invoices-filters">
-          <Input placeholder="Search building, room, tenant" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} allowClear />
-          <Input type="month" value={monthFilter} onChange={(event) => { setMonthFilter(event.target.value); setPage(1) }} />
-          <Select allowClear placeholder="Invoice status" value={invoiceStatusFilter} onChange={(value) => { setInvoiceStatusFilter(value); setPage(1) }} options={invoiceStatusOptions.map((item) => ({ label: item.label, value: item.value }))} />
-          <Select allowClear placeholder="Payment status" value={paymentStatusFilter} onChange={(value) => { setPaymentStatusFilter(value); setPage(1) }} options={paymentStatusOptions.map((item) => ({ label: item.label, value: item.value }))} />
-          <Select
-            allowClear
-            placeholder="Building"
-            value={buildingFilter}
-            onChange={(value) => {
-              setBuildingFilter(value)
-              setRoomFilter(undefined)
-              setPage(1)
-            }}
-            options={buildings.map((item) => ({ label: item.name, value: item.id }))}
-          />
-          <Select allowClear placeholder="Room" value={roomFilter} onChange={(value) => { setRoomFilter(value); setPage(1) }} options={roomFilterOptions.map((item) => ({ label: item.code, value: item.id }))} />
-          <Select allowClear placeholder="Tenant" value={tenantFilter} onChange={(value) => { setTenantFilter(value); setPage(1) }} options={tenants.map((item) => ({ label: item.full_name, value: item.id }))} />
-          <Button icon={<ReloadOutlined />} onClick={() => void loadData()}>Refresh</Button>
-        </div>
+        <InvoiceFilters
+          search={searchInput}
+          month={monthFilter}
+          invoiceStatus={invoiceStatusFilter}
+          paymentStatus={paymentStatusFilter}
+          buildingId={buildingFilter}
+          roomId={roomFilter}
+          tenantId={tenantFilter}
+          buildings={buildings}
+          rooms={roomFilterOptions}
+          tenants={tenants}
+          invoiceStatuses={invoiceStatusOptions}
+          paymentStatuses={paymentStatusOptions}
+          onSearchChange={setSearchInput}
+          onMonthChange={(value) => { setMonthFilter(value); setPage(1) }}
+          onInvoiceStatusChange={(value) => { setInvoiceStatusFilter(value); setPage(1) }}
+          onPaymentStatusChange={(value) => { setPaymentStatusFilter(value); setPage(1) }}
+          onBuildingChange={(value) => { setBuildingFilter(value); setRoomFilter(undefined); setPage(1) }}
+          onRoomChange={(value) => { setRoomFilter(value); setPage(1) }}
+          onTenantChange={(value) => { setTenantFilter(value); setPage(1) }}
+          onRefresh={() => void loadData()}
+        />
       </Card>
 
       <div className="invoices-summary-grid">
-        <Card><Statistic title="Total invoices" value={summary.totalInvoices} /></Card>
-        <Card><Statistic title="Paid invoices" value={summary.paidInvoices} /></Card>
-        <Card><Statistic title="Unpaid invoices" value={summary.unpaidInvoices} /></Card>
-        <Card><Statistic title="Revenue (paid)" value={summary.totalRevenue} formatter={(value) => currency.format(Number(value))} /></Card>
+        <Card><Statistic title={t("Total invoices")} value={summary.totalInvoices} /></Card>
+        <Card><Statistic title={t("Paid invoices")} value={summary.paidInvoices} /></Card>
+        <Card><Statistic title={t("Unpaid invoices")} value={summary.unpaidInvoices} /></Card>
+        <Card><Statistic title={t("Revenue (paid)")} value={summary.totalRevenue} formatter={(value) => currency.format(Number(value))} /></Card>
       </div>
 
-      <Card title="Monthly invoices">
-        {loading ? (
-          <Skeleton active paragraph={{ rows: 8 }} />
-        ) : error ? (
-          <Empty description={error}><Button onClick={() => void loadData()}>Retry</Button></Empty>
-        ) : (
-          <Table
-            rowKey="id"
-            columns={columns}
-            dataSource={items}
-            scroll={{ x: 1950 }}
-            pagination={{
-              current: page,
-              pageSize,
-              total,
-              showSizeChanger: true,
-              pageSizeOptions: [10, 20, 50, 100],
-              showTotal: (value) => `${value} invoices`,
-              onChange: (nextPage, nextPageSize) => {
-                setPage(nextPageSize === pageSize ? nextPage : 1)
-                setPageSize(nextPageSize)
-              },
-            }}
-            locale={{ emptyText: <Empty description="No invoices found" /> }}
-          />
-        )}
+      <Card title={t("Monthly invoices")}>
+        <InvoiceList
+          loading={loading}
+          error={error}
+          items={items}
+          columns={columns}
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          onRetry={() => void loadData()}
+          onPageChange={(nextPage, nextPageSize) => {
+            setPage(nextPageSize === pageSize ? nextPage : 1)
+            setPageSize(nextPageSize)
+          }}
+        />
       </Card>
 
-      <Drawer
-        title={drawerMode === 'create' ? (utilitySourceId ? 'Create invoice from utility reading' : 'Add invoice') : 'Edit invoice'}
-        placement="right"
+      <InvoiceFormDrawer
         open={drawerOpen}
+        mode={drawerMode}
         width={isMobile ? '100%' : 500}
+        form={form}
+        loading={utilityPrefillLoading}
+        saveLoading={saveLoading}
+        utilitySourceId={utilitySourceId}
+        buildings={buildings}
+        rooms={rooms}
+        contracts={contracts}
+        tenantName={selectedTenantName ?? undefined}
+        currencyFormatter={(value) => currency.format(value)}
         onClose={closeInvoiceDrawer}
-        destroyOnClose
-      >
-        <Spin spinning={utilityPrefillLoading} tip="Loading approved utility reading...">
-          <Form form={form} layout="vertical" initialValues={invoiceFormDefaultValues}>
-            <InvoiceFormFields
-              form={form}
-              buildings={buildings}
-              rooms={rooms}
-              contracts={contracts}
-              tenantName={selectedTenantName ?? undefined}
-              invoiceStatusOptions={[{ label: 'Draft', value: 'DRAFT' }]}
-              currencyFormatter={(value) => currency.format(value)}
-              sourceLocked={Boolean(utilitySourceId)}
-              autoFillFromLatest={drawerMode === 'create' && !utilitySourceId}
-            />
-            <Space className="invoice-drawer-actions">
-              <Button onClick={closeInvoiceDrawer}>Cancel</Button>
-              <Button type="primary" loading={saveLoading} disabled={utilityPrefillLoading} onClick={() => void onSave()}>Save</Button>
-            </Space>
-          </Form>
-        </Spin>
-      </Drawer>
+        onSave={() => void onSave()}
+      />
 
-      <Drawer title="Invoice detail" placement="right" open={detailOpen} width={isMobile ? '100%' : 720} onClose={closeDetail}>
+      <Drawer title={t("Invoice detail")} placement="right" open={detailOpen} width={isMobile ? '100%' : 720} onClose={closeDetail}>
         {detailLoading || !detailItem ? (
           <Skeleton active paragraph={{ rows: 8 }} />
         ) : (
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
-            <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
-              <Space direction="vertical" size={2}>
-                <Typography.Text strong>{detailItem.building_name} / Room {detailItem.room_code}</Typography.Text>
-                <Typography.Text type="secondary">{dayjs(detailItem.month).format('MM/YYYY')}</Typography.Text>
-              </Space>
-              <Space wrap>
-                {pendingPaymentProof ? (
-                  <Button
-                    type="primary"
-                    icon={<CheckOutlined />}
-                    onClick={() => setConfirmingPaymentProof(pendingPaymentProof)}
-                  >
-                    {pendingPaymentProof.transfer_amount >= paymentRemainingAmount
-                      ? 'Confirm and complete invoice'
-                      : 'Confirm payment'}
-                  </Button>
-                ) : null}
-                {detailItem.status === 'DRAFT' ? <Button type="primary" icon={<QrcodeOutlined />} onClick={openIssueModal}>Issue and create QR</Button> : null}
-                {detailItem.status === 'DRAFT' ? <Button icon={<PlusOutlined />} onClick={() => setAdjustmentOpen(true)}>Adjustment</Button> : null}
-                {detailItem.status === 'DRAFT' ? (
-                  <Button danger icon={<DeleteOutlined />} onClick={() => setDeletingInvoiceId(detailItem.id)}>Delete draft</Button>
-                ) : null}
-                {['ISSUED', 'PARTIALLY_PAID', 'PAID'].includes(detailItem.status) ? (
-                  <Button danger icon={<StopOutlined />} onClick={() => openVoidModal(detailItem.id)}>Void invoice</Button>
-                ) : null}
-                {detailItem.status === 'VOID' && !detailItem.replacement_invoice_id ? (
-                  <Button type="primary" icon={<PlusOutlined />} loading={replacementLoading} onClick={() => void createReplacement()}>Create replacement</Button>
-                ) : null}
-              </Space>
-            </Space>
+            <InvoiceDetailHeader
+              invoice={detailItem}
+              hasPendingProof={Boolean(pendingPaymentProof)}
+              pendingProofCompletesInvoice={Boolean(pendingPaymentProof && pendingPaymentProof.transfer_amount >= paymentRemainingAmount)}
+              replacementLoading={replacementLoading}
+              onConfirmPayment={() => pendingPaymentProof && setConfirmingPaymentProof(pendingPaymentProof)}
+              onIssue={openIssueModal}
+              onAdjustment={() => setAdjustmentOpen(true)}
+              onDelete={() => setDeletingInvoiceId(detailItem.id)}
+              onVoid={() => openVoidModal(detailItem.id)}
+              onCreateReplacement={() => void createReplacement()}
+            />
             <Descriptions column={isMobile ? 1 : 2} size="small" bordered>
-              <Descriptions.Item label="Tenant">{detailItem.tenant_name}</Descriptions.Item>
-              <Descriptions.Item label="Invoice status"><Tag color={invoiceStatusOptions.find((item) => item.value === detailItem.status)?.color}>{detailItem.status}</Tag></Descriptions.Item>
-              <Descriptions.Item label="Payment status">{detailItem.payment_status ?? 'NO_PAYMENT'}</Descriptions.Item>
-              <Descriptions.Item label="Due date">{detailItem.due_date ? dayjs(detailItem.due_date).format('DD/MM/YYYY') : '-'}</Descriptions.Item>
-              <Descriptions.Item label="Subtotal">{currency.format(detailItem.subtotal)}</Descriptions.Item>
-              <Descriptions.Item label="Discount">{currency.format(detailItem.discount)}</Descriptions.Item>
-              <Descriptions.Item label="Paid">{currency.format(detailItem.paid_amount)}</Descriptions.Item>
-              <Descriptions.Item label="Total">{currency.format(detailItem.total)}</Descriptions.Item>
-              <Descriptions.Item label="Note" span={isMobile ? 1 : 2}>{detailItem.note ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Tenant")}>{detailItem.tenant_name}</Descriptions.Item>
+              <Descriptions.Item label={t("Invoice status")}><Tag color={invoiceStatusOptions.find((item) => item.value === detailItem.status)?.color}>{detailItem.status}</Tag></Descriptions.Item>
+              <Descriptions.Item label={t("Payment status")}>{detailItem.payment_status ?? 'NO_PAYMENT'}</Descriptions.Item>
+              <Descriptions.Item label={t("Due date")}>{detailItem.due_date ? dayjs(detailItem.due_date).format('DD/MM/YYYY') : '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Subtotal")}>{currency.format(detailItem.subtotal)}</Descriptions.Item>
+              <Descriptions.Item label={t("Discount")}>{currency.format(detailItem.discount)}</Descriptions.Item>
+              <Descriptions.Item label={t("Paid")}>{currency.format(detailItem.paid_amount)}</Descriptions.Item>
+              <Descriptions.Item label={t("Total")}>{currency.format(detailItem.total)}</Descriptions.Item>
+              <Descriptions.Item label={t("Note")} span={isMobile ? 1 : 2}>{detailItem.note ?? '-'}</Descriptions.Item>
               {detailItem.status === 'VOID' ? (
                 <>
-                  <Descriptions.Item label="Void reason" span={isMobile ? 1 : 2}>{detailItem.void_reason}</Descriptions.Item>
-                  <Descriptions.Item label="Voided at">{detailItem.voided_at ? dayjs(detailItem.voided_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
-                  <Descriptions.Item label="Replacement">
-                    {detailItem.replacement_invoice_id ? <Button type="link" onClick={() => void openDetail(detailItem.replacement_invoice_id!)}>Open replacement</Button> : 'Not created'}
+                  <Descriptions.Item label={t("Void reason")} span={isMobile ? 1 : 2}>{detailItem.void_reason}</Descriptions.Item>
+                  <Descriptions.Item label={t("Voided at")}>{detailItem.voided_at ? dayjs(detailItem.voided_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
+                  <Descriptions.Item label={t("Replacement")}>
+                    {detailItem.replacement_invoice_id ? <Button type="link" onClick={() => void openDetail(detailItem.replacement_invoice_id!)}>{t("Open replacement")}</Button> : 'Not created'}
                   </Descriptions.Item>
                 </>
               ) : null}
               {detailItem.replaces_invoice_id ? (
-                <Descriptions.Item label="Replaces invoice" span={isMobile ? 1 : 2}>
-                  <Button type="link" onClick={() => void openDetail(detailItem.replaces_invoice_id!)}>Open original void invoice</Button>
+                <Descriptions.Item label={t("Replaces invoice")} span={isMobile ? 1 : 2}>
+                  <Button type="link" onClick={() => void openDetail(detailItem.replaces_invoice_id!)}>{t("Open original void invoice")}</Button>
                 </Descriptions.Item>
               ) : null}
             </Descriptions>
@@ -999,90 +891,84 @@ export function InvoicesPage() {
               pagination={false}
               dataSource={detailItem.items}
               columns={[
-                { title: 'Item', dataIndex: 'name' },
-                { title: 'Qty', dataIndex: 'quantity', align: 'right' },
-                { title: 'Unit price', dataIndex: 'unit_price', align: 'right', render: (value: number) => currency.format(value) },
-                { title: 'Amount', dataIndex: 'amount', align: 'right', render: (value: number) => currency.format(value) },
-                { title: 'Source', render: (_, item) => String(item.meta?.source ?? '-') },
+                { title: t("Item"), dataIndex: 'name' },
+                { title: t("Qty"), dataIndex: 'quantity', align: 'right' },
+                { title: t("Unit price"), dataIndex: 'unit_price', align: 'right', render: (value: number) => currency.format(value) },
+                { title: t("Amount"), dataIndex: 'amount', align: 'right', render: (value: number) => currency.format(value) },
+                { title: t("Source"), render: (_, item) => String(item.meta?.source ?? '-') },
               ]}
             />
             {detailItem.adjustments.length > 0 ? (
-              <Card size="small" title="Adjustments">
+              <Card size="small" title={t("Adjustments")}>
                 <Table
                   rowKey="id"
                   size="small"
                   pagination={false}
                   dataSource={detailItem.adjustments}
                   columns={[
-                    { title: 'Type', dataIndex: 'adjustment_type' },
-                    { title: 'Amount', dataIndex: 'amount', align: 'right', render: (value: number) => currency.format(value) },
-                    { title: 'Reason', dataIndex: 'reason' },
+                    { title: t("Type"), dataIndex: 'adjustment_type' },
+                    { title: t("Amount"), dataIndex: 'amount', align: 'right', render: (value: number) => currency.format(value) },
+                    { title: t("Reason"), dataIndex: 'reason' },
                   ]}
                 />
               </Card>
             ) : null}
             <Card
               size="small"
-              title="Bank transfer payment"
+              title={t("Bank transfer payment")}
               extra={
                 paymentRequestIsClosed && ['ISSUED', 'PARTIALLY_PAID'].includes(detailItem.status) ? (
                   <Button size="small" type="primary" icon={<BankOutlined />} onClick={openPaymentRequestModal}>
-                    Create payment request
+                    {t("Create payment request")}
                   </Button>
                 ) : null
               }
             >
               {!detailPaymentRequest ? (
-                <Alert showIcon type="info" message="No payment request has been sent for this invoice." />
+                <Alert showIcon type="info" message={t("No payment request has been sent for this invoice.")} />
               ) : (
                 <Space direction="vertical" size={12} style={{ width: '100%' }}>
                   <Descriptions column={isMobile ? 1 : 2} size="small" bordered>
-                    <Descriptions.Item label="Request status">
+                    <Descriptions.Item label={t("Request status")}>
                       <Tag color={paymentRequestStatusColor[detailPaymentRequest.status]}>{detailPaymentRequest.status}</Tag>
                     </Descriptions.Item>
-                    <Descriptions.Item label="Request amount">{currency.format(detailPaymentRequest.amount)}</Descriptions.Item>
-                    <Descriptions.Item label="Paid amount">{currency.format(detailPaymentRequest.paid_amount ?? 0)}</Descriptions.Item>
-                    <Descriptions.Item label="Remaining">{currency.format(detailPaymentRequest.remaining_amount ?? paymentRemainingAmount)}</Descriptions.Item>
-                    <Descriptions.Item label="Bank">{detailPaymentRequest.bank_code ?? '-'}</Descriptions.Item>
-                    <Descriptions.Item label="Account no.">{detailPaymentRequest.bank_account_no ?? '-'}</Descriptions.Item>
-                    <Descriptions.Item label="Account name">{detailPaymentRequest.bank_account_name ?? '-'}</Descriptions.Item>
-                    <Descriptions.Item label="Transfer note">{detailPaymentRequest.transfer_note ?? '-'}</Descriptions.Item>
-                    <Descriptions.Item label="Expires at">{detailPaymentRequest.expires_at ? dayjs(detailPaymentRequest.expires_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
-                    <Descriptions.Item label="Sent at">{detailPaymentRequest.sent_at ? dayjs(detailPaymentRequest.sent_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
+                    <Descriptions.Item label={t("Request amount")}>{currency.format(detailPaymentRequest.amount)}</Descriptions.Item>
+                    <Descriptions.Item label={t("Paid amount")}>{currency.format(detailPaymentRequest.paid_amount ?? 0)}</Descriptions.Item>
+                    <Descriptions.Item label={t("Remaining")}>{currency.format(detailPaymentRequest.remaining_amount ?? paymentRemainingAmount)}</Descriptions.Item>
+                    <Descriptions.Item label={t("Bank")}>{detailPaymentRequest.bank_code ?? '-'}</Descriptions.Item>
+                    <Descriptions.Item label={t("Account no.")}>{detailPaymentRequest.bank_account_no ?? '-'}</Descriptions.Item>
+                    <Descriptions.Item label={t("Account name")}>{detailPaymentRequest.bank_account_name ?? '-'}</Descriptions.Item>
+                    <Descriptions.Item label={t("Transfer note")}>{detailPaymentRequest.transfer_note ?? '-'}</Descriptions.Item>
+                    <Descriptions.Item label={t("Expires at")}>{detailPaymentRequest.expires_at ? dayjs(detailPaymentRequest.expires_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
+                    <Descriptions.Item label={t("Sent at")}>{detailPaymentRequest.sent_at ? dayjs(detailPaymentRequest.sent_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
                   </Descriptions>
-                  {detailPaymentRequest.qr_image_url ? (
-                    <img
-                      src={detailPaymentRequest.qr_image_url}
-                      alt="VietQR bank transfer"
-                      style={{ display: 'block', width: '100%', maxWidth: 280, margin: '0 auto' }}
-                    />
-                  ) : null}
+                  <VietQrDisplay src={detailPaymentRequest.qr_image_url} />
                   {!['VERIFIED', 'CANCELLED', 'EXPIRED'].includes(detailPaymentRequest.status) ? (
                     <Space>
-                      <Button danger loading={paymentActionLoading === 'cancel'} onClick={() => void runPaymentRequestAction('cancel')}>Cancel request</Button>
-                      <Button loading={paymentActionLoading === 'expire'} onClick={() => void runPaymentRequestAction('expire')}>Expire request</Button>
+                      <Button danger loading={paymentActionLoading === 'cancel'} onClick={() => void runPaymentRequestAction('cancel')}>{t("Cancel request")}</Button>
+                      <Button loading={paymentActionLoading === 'expire'} onClick={() => void runPaymentRequestAction('expire')}>{t("Expire request")}</Button>
                     </Space>
                   ) : null}
                   <Divider style={{ margin: '4px 0' }} />
-                  <Typography.Text strong>Payment history</Typography.Text>
+                  <Typography.Text strong>{t("Payment history")}</Typography.Text>
                   <Table<PaymentProof>
                     rowKey="id"
                     size="small"
                     pagination={false}
                     dataSource={detailPaymentRequest.proofs ?? []}
-                    locale={{ emptyText: <Empty description="No proof submitted" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+                    locale={{ emptyText: <Empty description={t("No proof submitted")} image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
                     columns={[
-                      { title: 'Submitted', dataIndex: 'submitted_at', render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm') },
-                      { title: 'Amount', dataIndex: 'transfer_amount', align: 'right', render: (value: number) => currency.format(value) },
-                      { title: 'Status', dataIndex: 'status', render: (value: string) => <Tag>{value}</Tag> },
+                      { title: t("Submitted"), dataIndex: 'submitted_at', render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm') },
+                      { title: t("Amount"), dataIndex: 'transfer_amount', align: 'right', render: (value: number) => currency.format(value) },
+                      { title: t("Status"), dataIndex: 'status', render: (value: string) => <Tag>{value}</Tag> },
                       {
-                        title: 'Proof',
+                        title: t("Proof"),
                         dataIndex: 'file_url',
                         render: (value: string, row) => (
                           <a href={value} target="_blank" rel="noreferrer">{row.file_name || 'Open file'}</a>
                         ),
                       },
-                      { title: 'Reason', dataIndex: 'rejection_reason', render: (value: string | null) => value ?? '-' },
+                      { title: t("Reason"), dataIndex: 'rejection_reason', render: (value: string | null) => value ?? '-' },
                     ]}
                   />
                 </Space>
@@ -1094,8 +980,8 @@ export function InvoicesPage() {
 
       <Modal
         open={Boolean(confirmingPaymentProof)}
-        title="Confirm invoice payment?"
-        okText="Confirm payment"
+        title={t("Confirm invoice payment?")}
+        okText={t("Confirm payment")}
         confirmLoading={paymentConfirmationLoading}
         cancelButtonProps={{ disabled: paymentConfirmationLoading }}
         closable={!paymentConfirmationLoading}
@@ -1104,18 +990,18 @@ export function InvoicesPage() {
         onCancel={() => setConfirmingPaymentProof(null)}
       >
         <Typography.Paragraph>
-          Confirm receipt of {currency.format(confirmingPaymentProof?.transfer_amount ?? 0)} for the{' '}
-          {detailItem ? dayjs(detailItem.month).format('MM/YYYY') : ''} invoice.
+          {t("Confirm receipt of")} {currency.format(confirmingPaymentProof?.transfer_amount ?? 0)} {t("for the")}{' '}
+          {detailItem ? dayjs(detailItem.month).format('MM/YYYY') : ''} {t("invoice.")}
         </Typography.Paragraph>
         <Typography.Text type="secondary">
-          This will approve the tenant's payment proof and complete the invoice when the full balance has been received.
+          {t("This will approve the tenant's payment proof and complete the invoice when the full balance has been received.")}
         </Typography.Text>
       </Modal>
 
       <Modal
         open={Boolean(deletingInvoiceId)}
-        title="Delete this invoice?"
-        okText="Delete"
+        title={t("Delete this invoice?")}
+        okText={t("Delete")}
         okButtonProps={{ danger: true }}
         cancelButtonProps={{ disabled: deleteLoading }}
         confirmLoading={deleteLoading}
@@ -1127,15 +1013,15 @@ export function InvoicesPage() {
         <Alert
           showIcon
           type="warning"
-          message="Only a draft with no payment history can be deleted."
-          description="This permanently removes the draft and its line items. Its utility reading becomes reusable only when no other invoice references it. Issued invoices must be voided instead."
+          message={t("Only a draft with no payment history can be deleted.")}
+          description={t("This permanently removes the draft and its line items. Its utility reading becomes reusable only when no other invoice references it. Issued invoices must be voided instead.")}
         />
       </Modal>
 
       <Modal
         open={Boolean(voidingInvoiceId)}
-        title="Void this invoice?"
-        okText="Void invoice"
+        title={t("Void this invoice?")}
+        okText={t("Void invoice")}
         okButtonProps={{ danger: true }}
         confirmLoading={voidLoading}
         cancelButtonProps={{ disabled: voidLoading }}
@@ -1152,16 +1038,16 @@ export function InvoicesPage() {
           <Alert
             showIcon
             type="warning"
-            message="Voiding is permanent and preserves the financial audit trail."
-            description="Payments, payment requests, and proofs will not be deleted. Any open request will be closed, and the utility reading will remain invoiced until you explicitly create a replacement invoice."
+            message={t("Voiding is permanent and preserves the financial audit trail.")}
+            description={t("Payments, payment requests, and proofs will not be deleted. Any open request will be closed, and the utility reading will remain invoiced until you explicitly create a replacement invoice.")}
           />
           <Form form={voidForm} layout="vertical">
             <Form.Item
               name="reason"
-              label="Void reason"
+              label={t("Void reason")}
               rules={[
-                { required: true, whitespace: true, message: 'Please explain why this invoice is being voided.' },
-                { min: 3, max: 500, message: 'The reason must contain 3 to 500 characters.' },
+                { required: true, whitespace: true, message: t("Please explain why this invoice is being voided.") },
+                { min: 3, max: 500, message: t("The reason must contain 3 to 500 characters.") },
               ]}
             >
               <Input.TextArea rows={4} maxLength={500} showCount />
@@ -1172,8 +1058,8 @@ export function InvoicesPage() {
 
       <Modal
         open={issueOpen}
-        title="Issue invoice and create VietQR"
-        okText="Issue invoice"
+        title={t("Issue invoice and create VietQR")}
+        okText={t("Issue invoice")}
         confirmLoading={issueLoading}
         closable={!issueLoading}
         maskClosable={!issueLoading}
@@ -1182,7 +1068,7 @@ export function InvoicesPage() {
         destroyOnHidden
       >
         <Form form={issueForm} layout="vertical">
-          <Form.Item label="Transfer amount">
+          <Form.Item label={t("Transfer amount")}>
             <Input value={currency.format(paymentRemainingAmount)} disabled />
           </Form.Item>
           <VietQrBankFields />
@@ -1191,92 +1077,42 @@ export function InvoicesPage() {
 
       <Modal
         open={adjustmentOpen}
-        title="Add draft adjustment"
-        okText="Add adjustment"
+        title={t("Add draft adjustment")}
+        okText={t("Add adjustment")}
         confirmLoading={adjustmentLoading}
         onOk={() => void submitAdjustment()}
         onCancel={() => setAdjustmentOpen(false)}
         destroyOnClose
       >
         <Form form={adjustmentForm} layout="vertical">
-          <Form.Item name="amount" label="Amount" extra="Use a negative amount for a discount." rules={[{ required: true, type: 'number', message: 'Please enter a non-zero amount.' }]}>
+          <Form.Item name="amount" label={t("Amount")} extra="Use a negative amount for a discount." rules={[{ required: true, type: 'number', message: t("Please enter a non-zero amount.") }]}>
             <InputNumber style={{ width: '100%' }} precision={0} />
           </Form.Item>
-          <Form.Item name="reason" label="Reason" rules={[{ required: true, whitespace: true, message: 'Please enter a reason.' }]}><Input.TextArea rows={3} /></Form.Item>
+          <Form.Item name="reason" label={t("Reason")} rules={[{ required: true, whitespace: true, message: t("Please enter a reason.") }]}><Input.TextArea rows={3} /></Form.Item>
         </Form>
       </Modal>
 
       <Modal
         open={paymentRequestOpen}
-        title="Create payment request"
-        okText="Create request"
+        title={t("Create payment request")}
+        okText={t("Create request")}
         confirmLoading={paymentRequestLoading}
         onOk={() => void onCreatePaymentRequest()}
         onCancel={() => setPaymentRequestOpen(false)}
         destroyOnClose
       >
         <Form form={paymentRequestForm} layout="vertical">
-          <Form.Item name="amount" label="Amount" rules={[{ required: true, type: 'number', min: 1, message: 'Please enter amount' }]}>
+          <Form.Item name="amount" label={t("Amount")} rules={[{ required: true, type: 'number', min: 1, message: t("Please enter amount") }]}>
             <InputNumber min={1} max={paymentRemainingAmount || undefined} precision={0} style={{ width: '100%' }} formatter={(value) => `${value ?? ''}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')} parser={(value) => Number(value?.replace(/\D/g, '') || 0)} />
           </Form.Item>
           <VietQrBankFields />
-          <Form.Item name="expires_at" label="Expires at">
+          <Form.Item name="expires_at" label={t("Expires at")}>
             <Input type="datetime-local" />
           </Form.Item>
         </Form>
       </Modal>
 
-      <Modal
-        open={generateOpen}
-        title="Generate monthly invoices"
-        okText="Generate"
-        confirmLoading={generateLoading}
-        onOk={() => void onGenerate()}
-        onCancel={() => setGenerateOpen(false)}
-        destroyOnClose
-      >
-        <Form form={generateForm} layout="vertical" initialValues={{ scope: 'all', month: dayjs().format('YYYY-MM') }}>
-          <Form.Item name="scope" label="Scope" rules={[{ required: true }]}>
-            <Select
-              options={[
-                { label: 'All active contracts', value: 'all' },
-                { label: 'Building', value: 'building' },
-                { label: 'Room', value: 'room' },
-              ]}
-            />
-          </Form.Item>
-          <Form.Item name="month" label="Month" rules={[{ required: true, message: 'Please select month' }]}>
-            <Input type="month" />
-          </Form.Item>
-          {selectedGenerateScope === 'building' || selectedGenerateScope === 'room' ? (
-            <Form.Item name="building_id" label="Building" rules={[{ required: true, message: 'Please select building' }]}>
-              <Select
-                options={buildings.map((item) => ({ label: item.name, value: item.id }))}
-                onChange={() => generateForm.setFieldValue('room_id', undefined)}
-              />
-            </Form.Item>
-          ) : null}
-          {selectedGenerateScope === 'room' ? (
-            <Form.Item name="room_id" label="Room" rules={[{ required: true, message: 'Please select room' }]}>
-              <Select options={generateRoomOptions.map((item) => ({ label: item.code, value: item.id }))} />
-            </Form.Item>
-          ) : null}
-          <Alert
-            showIcon
-            type="info"
-            message="Generation requires an approved utility reading and an effective utility rate for each contract/month."
-          />
-          {generateResult ? (
-            <Alert
-              showIcon
-              type={generateResult.skipped > 0 ? 'warning' : 'success'}
-              style={{ marginTop: 12 }}
-              message={`Generated ${generateResult.generated}/${generateResult.total}; skipped ${generateResult.skipped}.`}
-            />
-          ) : null}
-        </Form>
-      </Modal>
     </Space>
-    </Localized>
+    </>
   )
 }

@@ -5,6 +5,8 @@ import type {
   DebtSummary,
   OccupancyReportRow,
   ReportBuildingOption,
+  ReportRoomOption,
+  ReportTenantOption,
   ReportFilters,
   ReportDetailItem,
   ReportDetailParams,
@@ -13,11 +15,13 @@ import type {
   ReportsSummary,
   RevenueBuildingRow,
   RevenueMonthRow,
+  ReconciliationReportRow,
 } from '../pages/reports/types'
 import { appendPaginationParams, type PaginatedResponse } from './pagination'
+import { listRooms, listTenants } from './invoicesService'
 
 type NumericSummaryField = keyof ReportsSummary
-type NumericRevenueField = 'invoiceCount' | 'billed' | 'grossPayments' | 'reversals' | 'collected' | 'unpaid'
+type NumericRevenueField = 'invoiceCount' | 'billed' | 'grossPayments' | 'reversals' | 'collected' | 'unpaid' | 'voidInvoiceCount' | 'voidAmount'
 type NumericDebtField = 'total' | 'paidAmount' | 'outstandingAmount'
 type NumericDebtSummaryField = keyof DebtSummary
 type NumericOccupancyField =
@@ -35,9 +39,14 @@ type RevenueBuildingApiRow = Omit<RevenueBuildingRow, NumericRevenueField> & Rec
 type DebtApiRow = Omit<DebtReportRow, NumericDebtField> & Record<NumericDebtField, number | string | null>
 type DebtSummaryApi = Omit<DebtSummary, NumericDebtSummaryField> & Record<NumericDebtSummaryField, number | string | null>
 type OccupancyApiRow = Omit<OccupancyReportRow, NumericOccupancyField> & Record<NumericOccupancyField, number | string | null>
+type ReconciliationApiRow = Omit<ReconciliationReportRow, 'amount' | 'signedAmount'> & {
+  amount: number | string
+  signedAmount: number | string
+}
 
 interface ReportsApiData {
   filters: ReportFilters
+  definitions: ReportsData['definitions']
   summary: ReportsApiSummary
   revenueByMonth: RevenueMonthApiRow[]
   debtSummary: DebtSummaryApi
@@ -58,6 +67,9 @@ const buildReportsParams = (filters: ReportFilters, section?: ReportSection) => 
     params.set('building_id', filters.buildingId)
   }
 
+  if (filters.roomId) params.set('room_id', filters.roomId)
+  if (filters.tenantId) params.set('tenant_id', filters.tenantId)
+
   if (filters.status) {
     params.set('status', filters.status)
   }
@@ -76,6 +88,8 @@ const toReportsSummary = (row: ReportsApiSummary): ReportsSummary => ({
   reversals: toNumber(row.reversals),
   unpaid: toNumber(row.unpaid),
   invoiceCount: toNumber(row.invoiceCount),
+  voidInvoiceCount: toNumber(row.voidInvoiceCount),
+  voidAmount: toNumber(row.voidAmount),
   unpaidInvoices: toNumber(row.unpaidInvoices),
   unpaidAmount: toNumber(row.unpaidAmount),
   overdueInvoices: toNumber(row.overdueInvoices),
@@ -95,6 +109,8 @@ const toRevenueMonth = (row: RevenueMonthApiRow): RevenueMonthRow => ({
   grossPayments: toNumber(row.grossPayments),
   reversals: toNumber(row.reversals),
   unpaid: toNumber(row.unpaid),
+  voidInvoiceCount: toNumber(row.voidInvoiceCount),
+  voidAmount: toNumber(row.voidAmount),
 })
 
 const toRevenueBuilding = (row: RevenueBuildingApiRow): RevenueBuildingRow => ({
@@ -106,6 +122,8 @@ const toRevenueBuilding = (row: RevenueBuildingApiRow): RevenueBuildingRow => ({
   grossPayments: toNumber(row.grossPayments),
   reversals: toNumber(row.reversals),
   unpaid: toNumber(row.unpaid),
+  voidInvoiceCount: toNumber(row.voidInvoiceCount),
+  voidAmount: toNumber(row.voidAmount),
 })
 
 const toDebtRow = (row: DebtApiRow): DebtReportRow => ({
@@ -143,8 +161,15 @@ const toOccupancyRow = (row: OccupancyApiRow): OccupancyReportRow => ({
   occupancyRate: toNumber(row.occupancyRate),
 })
 
+const toReconciliationRow = (row: ReconciliationApiRow): ReconciliationReportRow => ({
+  ...row,
+  amount: toNumber(row.amount),
+  signedAmount: toNumber(row.signedAmount),
+})
+
 const toReportsData = (data: ReportsApiData): ReportsData => ({
   filters: data.filters,
+  definitions: data.definitions,
   summary: toReportsSummary(data.summary),
   revenueByMonth: data.revenueByMonth.map(toRevenueMonth),
   revenueByBuilding: [],
@@ -166,14 +191,16 @@ export async function getReportDetails(
 ): Promise<PaginatedResponse<ReportDetailItem>> {
   const params = buildReportsParams(filters, section)
   appendPaginationParams(params, pagination)
-  const response = await apiRequest<PaginatedResponse<RevenueBuildingApiRow | DebtApiRow | OccupancyApiRow>>(
+  const response = await apiRequest<PaginatedResponse<RevenueBuildingApiRow | DebtApiRow | OccupancyApiRow | ReconciliationApiRow>>(
     `${API_ROUTES.reports.details}?${params.toString()}`,
   )
   const items = section === 'revenue'
     ? (response.items as RevenueBuildingApiRow[]).map(toRevenueBuilding)
     : section === 'debt'
       ? (response.items as DebtApiRow[]).map(toDebtRow)
-      : (response.items as OccupancyApiRow[]).map(toOccupancyRow)
+      : section === 'occupancy'
+        ? (response.items as OccupancyApiRow[]).map(toOccupancyRow)
+        : (response.items as ReconciliationApiRow[]).map(toReconciliationRow)
   return { ...response, items }
 }
 
@@ -185,4 +212,12 @@ export async function exportReportsCsv(filters: ReportFilters, section: ReportSe
 export async function listReportBuildings(): Promise<ReportBuildingOption[]> {
   const rows = await apiRequest<Array<ReportBuildingOption & { units?: number }>>(API_ROUTES.buildings.list)
   return rows.map((row) => ({ id: row.id, name: row.name }))
+}
+
+export async function listReportRooms(): Promise<ReportRoomOption[]> {
+  return (await listRooms()).map((room) => ({ id: room.id, buildingId: room.building_id, code: room.code }))
+}
+
+export async function listReportTenants(): Promise<ReportTenantOption[]> {
+  return (await listTenants()).map((tenant) => ({ id: tenant.id, fullName: tenant.full_name }))
 }

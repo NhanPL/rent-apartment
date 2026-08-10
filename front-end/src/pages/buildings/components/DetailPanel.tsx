@@ -1,3 +1,4 @@
+import { useI18n } from '../../../i18n'
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 import { Button, Descriptions, Empty, Grid, Input, Modal, Select, Skeleton, Space, Tabs, Tag, Timeline, Typography, message } from 'antd'
 import { useCallback, useEffect, useState } from 'react'
@@ -7,7 +8,6 @@ import { RoomsUpsertDrawer } from './RoomsUpsertDrawer'
 import type { Room } from './roomTypes'
 import type { BuildingEntity } from './types'
 import { getUserErrorMessage } from '../../../services/errorMessage'
-import { Localized } from '../../../shared/components/Localized'
 
 interface DetailPanelProps {
   loading: boolean
@@ -17,6 +17,7 @@ interface DetailPanelProps {
 }
 
 export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProps) {
+  const { t } = useI18n()
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
   const isTablet = Boolean(screens.md) && !screens.lg
@@ -68,7 +69,7 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
   }, [item, loadRooms])
 
   if (!item && !loading) {
-    return <Empty description="Select an item from the list to see details" style={{ marginTop: 90 }} />
+    return <Empty description={t("Select an item from the list to see details")} style={{ marginTop: 90 }} />
   }
 
   if (loading || !item) {
@@ -82,7 +83,7 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
   const activeRooms = roomsLoading ? item.activeUnits : roomsData.filter((room) => room.status === 'ACTIVE').length
 
   return (
-    <Localized>
+    <>
     <>
       <Space direction="vertical" size={16} style={{ width: '100%' }}>
         <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
@@ -91,15 +92,15 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
               {item.name}
             </Typography.Title>
             <Tag color={activeRooms > 0 ? 'green' : 'default'}>
-              {activeRooms}/{totalRooms} active rooms
+              {activeRooms}{t("/")}{totalRooms} {t("active rooms")}
             </Tag>
           </Space>
           <Space wrap>
             <Button size={isMobile ? 'large' : 'middle'} icon={<EditOutlined />} onClick={() => onEdit(item)}>
-              Edit
+              {t("Edit")}
             </Button>
             <Button size={isMobile ? 'large' : 'middle'} danger icon={<DeleteOutlined />} onClick={() => setDeleteBuildingModalOpen(true)}>
-              Delete
+              {t("Delete")}
             </Button>
           </Space>
         </Space>
@@ -109,17 +110,17 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
           items={[
             {
               key: 'overview',
-              label: 'Overview',
+              label: t("Overview"),
               children: (
                 <Descriptions bordered column={isMobile ? 1 : 2}>
-                  <Descriptions.Item label="Code">{item.code}</Descriptions.Item>
-                  <Descriptions.Item label="Manager">{item.manager}</Descriptions.Item>
-                  <Descriptions.Item label="Rooms">{totalRooms}</Descriptions.Item>
-                  <Descriptions.Item label="Active rooms">{activeRooms}</Descriptions.Item>
-                  <Descriptions.Item label="Address" span={isMobile ? 1 : 2}>
+                  <Descriptions.Item label={t("Code")}>{item.code}</Descriptions.Item>
+                  <Descriptions.Item label={t("Manager")}>{item.manager}</Descriptions.Item>
+                  <Descriptions.Item label={t("Rooms")}>{totalRooms}</Descriptions.Item>
+                  <Descriptions.Item label={t("Active rooms")}>{activeRooms}</Descriptions.Item>
+                  <Descriptions.Item label={t("Address")} span={isMobile ? 1 : 2}>
                     {item.address}
                   </Descriptions.Item>
-                  <Descriptions.Item label="Note" span={isMobile ? 1 : 2}>
+                  <Descriptions.Item label={t("Note")} span={isMobile ? 1 : 2}>
                     {item.note || '-'}
                   </Descriptions.Item>
                 </Descriptions>
@@ -127,17 +128,17 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
             },
             {
               key: 'related',
-              label: 'Related',
+              label: t("Related"),
               children: (
                 <Space direction="vertical" size={16} style={{ width: '100%' }}>
                   <Typography.Title level={5} style={{ margin: 0 }}>
-                    Rooms in this building
+                    {t("Rooms in this building")}
                   </Typography.Title>
                   <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
                     <Space wrap>
                       <Input.Search
                         value={roomsSearchInput}
-                        placeholder="Search room code"
+                        placeholder={t("Search room code")}
                         allowClear
                         onChange={(event) => setRoomsSearchInput(event.target.value)}
                         style={{ width: isMobile ? '100%' : 260 }}
@@ -147,10 +148,10 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
                         onChange={setRoomsFilter}
                         style={{ width: 180 }}
                         options={[
-                          { label: 'All statuses', value: 'ALL' },
-                          { label: 'Active', value: 'ACTIVE' },
-                          { label: 'Maintenance', value: 'MAINTENANCE' },
-                          { label: 'Inactive', value: 'INACTIVE' },
+                          { label: t("All statuses"), value: 'ALL' },
+                          { label: t("Active"), value: 'ACTIVE' },
+                          { label: t("Maintenance"), value: 'MAINTENANCE' },
+                          { label: t("Inactive"), value: 'INACTIVE' },
                         ]}
                       />
                     </Space>
@@ -163,7 +164,7 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
                         setDrawerOpen(true)
                       }}
                     >
-                      Add Room
+                      {t("Add Room")}
                     </Button>
                   </Space>
 
@@ -188,7 +189,7 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
             },
             {
               key: 'history',
-              label: 'History',
+              label: t("History"),
               children: (
                 <Timeline
                   items={[
@@ -233,18 +234,18 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
 
       <Modal
         open={deleteBuildingModalOpen}
-        title="Delete this building?"
+        title={t("Delete this building?")}
         onCancel={() => setDeleteBuildingModalOpen(false)}
         onOk={async () => {
           await onDelete(item.id)
           setDeleteBuildingModalOpen(false)
         }}
-        okText="Delete"
+        okText={t("Delete")}
         okButtonProps={{ danger: true }}
-        cancelText="Cancel"
+        cancelText={t("Cancel")}
         maskClosable
       >
-        This action cannot be undone.
+        {t("This action cannot be undone.")}
       </Modal>
 
       <Modal
@@ -263,14 +264,14 @@ export function DetailPanel({ loading, item, onEdit, onDelete }: DetailPanelProp
             message.error(getUserErrorMessage(error, 'Khong the xoa phong.'))
           }
         }}
-        okText="Delete"
+        okText={t("Delete")}
         okButtonProps={{ danger: true }}
-        cancelText="Cancel"
+        cancelText={t("Cancel")}
         maskClosable
       >
-        This action cannot be undone.
+        {t("This action cannot be undone.")}
       </Modal>
     </>
-    </Localized>
+    </>
   )
 }

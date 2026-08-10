@@ -1,6 +1,5 @@
 export type ContractStatus = 'DRAFT' | 'ACTIVE' | 'ENDED' | 'CANCELLED'
 export type InvoiceStatus = 'DRAFT' | 'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'VOID'
-export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'VNPAY' | 'MOMO'
 export type PaymentStatus = 'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUNDED' | 'CANCELLED'
 
 export interface Building {
@@ -96,15 +95,6 @@ export interface InvoiceAdjustment {
   reason: string
   created_by_user_id: string | null
   created_at: string
-}
-
-export interface Payment {
-  id: string
-  invoice_id: string
-  method: PaymentMethod
-  status: PaymentStatus
-  amount: number
-  paid_at: string | null
 }
 
 export interface InvoiceListParams {

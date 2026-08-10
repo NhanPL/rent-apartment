@@ -28,8 +28,11 @@ import { globalRateLimit } from './config/rate-limit';
 import { securityHeaders } from './config/security';
 import { rejectDirectFileUploads } from './shared/middleware/request-hardening';
 import { auditRequestContext } from './shared/middleware/audit-context';
+import { requestLogger } from './shared/middleware/request-logger';
 import { AppError } from './shared/errors/app-error';
 import openApiDocsRoutes from './openapi/docs.routes';
+import operationsRoutes from './modules/operations/operations.routes';
+import { checkApplicationReadiness } from './shared/services/readiness.service';
 
 export const app = express();
 const frontendDistPath = path.resolve(__dirname, '../../front-end/dist');
@@ -41,6 +44,7 @@ if (env.TRUST_PROXY_HOPS > 0) {
 
 app.use(securityHeaders);
 app.use(auditRequestContext);
+app.use(requestLogger);
 app.use(cors(corsOptions));
 app.use('/api', globalRateLimit);
 app.use('/api', rejectDirectFileUploads);
@@ -51,6 +55,10 @@ app.use(express.json({
 }));
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
+app.get('/ready', async (_req, res) => {
+  const readiness = await checkApplicationReadiness();
+  res.status(readiness.ready ? 200 : 503).json(readiness);
+});
 if (env.OPENAPI_DOCS_ENABLED) {
   app.use('/api-docs', globalRateLimit, openApiDocsRoutes);
 }
@@ -74,6 +82,7 @@ app.use('/api/documents', documentAssetsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/audit-logs', auditLogsRoutes);
+app.use('/api/operations', operationsRoutes);
 app.use('/api', (_req, _res, next) => {
   next(new AppError(404, 'API route not found', 'ROUTE_NOT_FOUND'));
 });

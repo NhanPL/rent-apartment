@@ -1,10 +1,10 @@
+import { useI18n } from '../../../i18n'
 import { Form, Input, InputNumber, Select } from 'antd'
 import { useEffect, useMemo } from 'react'
 import type { FormInstance } from 'antd/es/form'
 import { getEffectiveUtilityRate, getInvoicePrefill } from '../../../services/invoicesService'
 import type { Building, Contract, InvoiceStatus, Room } from '../types'
 import { useInvoiceDerivedValues, type InvoiceFormValues } from './invoiceFormState'
-import { Localized } from '../../../shared/components/Localized'
 
 interface InvoiceFormFieldsProps {
   form: FormInstance<InvoiceFormValues>
@@ -31,6 +31,7 @@ export function InvoiceFormFields({
   sourceLocked = false,
   autoFillFromLatest = false,
 }: InvoiceFormFieldsProps) {
+  const { t } = useI18n()
   const selectedBuildingId = Form.useWatch('building_id', form)
   const selectedRoomId = Form.useWatch('room_id', form)
   const selectedMonth = Form.useWatch('month', form)
@@ -147,10 +148,10 @@ export function InvoiceFormFields({
   }, [activeContracts, autoFillFromLatest, buildings.length, selectedRoomId, selectedMonth, rooms, form])
 
   return (
-    <Localized>
+    <>
     <div className="invoice-form-grid">
       {buildings.length > 0 ? (
-        <Form.Item label="Building" name="building_id" rules={[{ required: true, message: 'Please select building' }]}>
+        <Form.Item label={t("Building")} name="building_id" rules={[{ required: true, message: t("Please select building") }]}>
           <Select
             showSearch
             optionFilterProp="label"
@@ -171,7 +172,7 @@ export function InvoiceFormFields({
         </Form.Item>
       ) : null}
 
-      <Form.Item label="Room" name="room_id" rules={[{ required: true, message: 'Please select room' }]}>
+      <Form.Item label={t("Room")} name="room_id" rules={[{ required: true, message: t("Please select room") }]}>
         <Select
           showSearch
           optionFilterProp="label"
@@ -191,7 +192,7 @@ export function InvoiceFormFields({
           }}
         />
       </Form.Item>
-      <Form.Item label="Contract" name="contract_id" rules={[{ required: true, message: 'Please select contract' }]}>
+      <Form.Item label={t("Contract")} name="contract_id" rules={[{ required: true, message: t("Please select contract") }]}>
         <Select
           disabled={sourceLocked}
           options={contractOptions.map((item) => ({
@@ -201,32 +202,32 @@ export function InvoiceFormFields({
         />
       </Form.Item>
 
-      <Form.Item label="Tenant" className="invoice-form-readonly">
+      <Form.Item label={t("Tenant")} className="invoice-form-readonly">
         <Input value={tenantName ?? '-'} readOnly />
       </Form.Item>
-      <Form.Item label="Billing month" name="month" rules={[{ required: true }]}>
+      <Form.Item label={t("Billing month")} name="month" rules={[{ required: true }]}>
         <Input type="date" disabled={sourceLocked} />
       </Form.Item>
 
-      <Form.Item label="Invoice status" name="status" rules={[{ required: true }]}>
+      <Form.Item label={t("Invoice status")} name="status" rules={[{ required: true }]}>
         <Select options={invoiceStatusOptions} />
       </Form.Item>
-      <Form.Item label="Issued at" name="issued_at">
+      <Form.Item label={t("Issued at")} name="issued_at">
         <Input type="date" />
       </Form.Item>
 
-      <Form.Item label="Due date" name="due_date">
+      <Form.Item label={t("Due date")} name="due_date">
         <Input type="date" />
       </Form.Item>
-      <Form.Item label="Room rent" name="rent_amount" rules={[{ required: true }]}>
+      <Form.Item label={t("Room rent")} name="rent_amount" rules={[{ required: true }]}>
         <InputNumber min={0} style={{ width: '100%' }} />
       </Form.Item>
 
-      <Form.Item label="Previous electric reading" name="electricity_prev" rules={[{ required: true }]}>
+      <Form.Item label={t("Previous electric reading")} name="electricity_prev" rules={[{ required: true }]}>
         <InputNumber min={0} style={{ width: '100%' }} disabled={sourceLocked} />
       </Form.Item>
       <Form.Item
-        label="Current electric reading"
+        label={t("Current electric reading")}
         name="electricity_curr"
         dependencies={['electricity_prev']}
         rules={[
@@ -249,11 +250,11 @@ export function InvoiceFormFields({
         <InputNumber min={0} style={{ width: '100%' }} disabled={sourceLocked} />
       </Form.Item>
 
-      <Form.Item label="Previous water reading" name="water_prev" rules={[{ required: true }]}>
+      <Form.Item label={t("Previous water reading")} name="water_prev" rules={[{ required: true }]}>
         <InputNumber min={0} style={{ width: '100%' }} disabled={sourceLocked} />
       </Form.Item>
       <Form.Item
-        label="Current water reading"
+        label={t("Current water reading")}
         name="water_curr"
         dependencies={['water_prev']}
         rules={[
@@ -276,45 +277,45 @@ export function InvoiceFormFields({
         <InputNumber min={0} style={{ width: '100%' }} disabled={sourceLocked} />
       </Form.Item>
 
-      <Form.Item label="Electric unit price" name="electric_unit_price" rules={[{ required: true }]}>
+      <Form.Item label={t("Electric unit price")} name="electric_unit_price" rules={[{ required: true }]}>
         <InputNumber min={0} style={{ width: '100%' }} />
       </Form.Item>
-      <Form.Item label="Water unit price" name="water_unit_price" rules={[{ required: true }]}>
+      <Form.Item label={t("Water unit price")} name="water_unit_price" rules={[{ required: true }]}>
         <InputNumber min={0} style={{ width: '100%' }} />
       </Form.Item>
 
-      <Form.Item label="Electric usage">
+      <Form.Item label={t("Electric usage")}>
         <Input value={electricUsage} readOnly />
       </Form.Item>
-      <Form.Item label="Electric amount">
+      <Form.Item label={t("Electric amount")}>
         <Input value={currencyFormatter(electricAmount)} readOnly />
       </Form.Item>
 
-      <Form.Item label="Water usage">
+      <Form.Item label={t("Water usage")}>
         <Input value={waterUsage} readOnly />
       </Form.Item>
-      <Form.Item label="Water amount">
+      <Form.Item label={t("Water amount")}>
         <Input value={currencyFormatter(waterAmount)} readOnly />
       </Form.Item>
 
-      <Form.Item label="Other fees" name="other_fees" rules={[{ required: true }]}>
+      <Form.Item label={t("Other fees")} name="other_fees" rules={[{ required: true }]}>
         <InputNumber min={0} style={{ width: '100%' }} />
       </Form.Item>
-      <Form.Item label="Discount" name="discount" rules={[{ required: true }]}>
+      <Form.Item label={t("Discount")} name="discount" rules={[{ required: true }]}>
         <InputNumber min={0} style={{ width: '100%' }} />
       </Form.Item>
 
-      <Form.Item label="Subtotal">
+      <Form.Item label={t("Subtotal")}>
         <Input value={currencyFormatter(subtotal)} readOnly />
       </Form.Item>
-      <Form.Item label="Total amount">
+      <Form.Item label={t("Total amount")}>
         <Input value={currencyFormatter(totalAmount)} readOnly />
       </Form.Item>
 
-      <Form.Item label="Notes" name="note" className="invoice-form-full">
+      <Form.Item label={t("Notes")} name="note" className="invoice-form-full">
         <Input.TextArea rows={3} />
       </Form.Item>
     </div>
-    </Localized>
+    </>
   )
 }
