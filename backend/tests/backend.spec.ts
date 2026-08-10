@@ -78,6 +78,7 @@ import { app } from '../src/app';
 import { AppError } from '../src/shared/errors/app-error';
 import { cleanupExpiredSessions } from '../src/modules/auth/session.service';
 import { hashPassword } from '../src/shared/utils/password';
+import { logger } from '../src/shared/services/logger.service';
 import { fakeDb, ids } from './support/mock-db';
 
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
@@ -398,7 +399,7 @@ describe('backend API smoke tests', () => {
   });
 
   it('temporarily locks repeated failures for an account identifier', async () => {
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const warning = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
       await request(app)
@@ -422,8 +423,8 @@ describe('backend API smoke tests', () => {
     }));
     expect(JSON.stringify(fakeDb.auditLogs)).not.toContain('manager@example.com');
     expect(warning).toHaveBeenCalledWith(
-      'Suspected login brute force blocked',
-      expect.any(Object)
+      expect.any(Object),
+      'Suspected login brute force blocked'
     );
 
     const identifierThrottle = fakeDb.loginThrottles.find(
@@ -468,7 +469,7 @@ describe('backend API smoke tests', () => {
   });
 
   it('temporarily blocks an IP attacking multiple account identifiers', async () => {
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const warning = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
 
     for (let attempt = 0; attempt < 20; attempt += 1) {
       await request(app)

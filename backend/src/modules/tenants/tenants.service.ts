@@ -10,6 +10,7 @@ import {
 import { assertRoomCanHostActiveContract, CURRENT_CONTRACT_STATUS, getContractRoomForManager } from '../contracts/contracts.rules';
 import { createTenantRecord, createTenantUserAccount, findTenantByIdentityNumber, TenantInsertPayload } from './tenants.repository';
 import type { ContractStatus } from '../../shared/types/database';
+import { logger } from '../../shared/services/logger.service';
 
 export type CreateTenantInput = Omit<TenantInsertPayload, 'manager_user_id'>;
 
@@ -313,12 +314,11 @@ export const createTenant = async (raw: CreateTenantCommand, managerId: string):
       source: 'TENANT_CREATED'
     });
   } catch (error) {
-    console.error('Failed to send tenant activation email', {
+    logger.error({
       tenantId,
       userId,
-      email: loginEmail,
-      error: error instanceof Error ? error.message : 'Unknown email error'
-    });
+      error
+    }, 'Failed to send tenant activation email');
   }
 
   return { tenantId, userId, emailSent };

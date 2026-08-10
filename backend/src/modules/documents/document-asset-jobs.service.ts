@@ -16,6 +16,7 @@ import {
 } from '../uploads/uploads.service';
 import type { DocumentKind } from './document-assets.service';
 import { processDueTenantAnonymization } from '../tenants/tenant-privacy.service';
+import { logger } from '../../shared/services/logger.service';
 
 type AssetJobAction = 'DELETE' | 'MIGRATE_AUTHENTICATED';
 type AssetJobStatus = 'PENDING' | 'PROCESSING' | 'RETRY' | 'COMPLETED' | 'FAILED';
@@ -471,9 +472,7 @@ const runMaintenance = async (): Promise<void> => {
     await processExpiredDocumentRetention();
     await processCloudinaryAssetJobs();
   } catch (error) {
-    // Keep sensitive storage details out of logs.
-    // eslint-disable-next-line no-console
-    console.error('Document asset maintenance failed', { code: getErrorCode(error) });
+    logger.error({ code: getErrorCode(error) }, 'Document asset maintenance failed');
   } finally {
     running = false;
   }
@@ -483,8 +482,7 @@ const runReconciliation = async (): Promise<void> => {
   try {
     await reconcileDocumentAssets();
   } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error('Document asset reconciliation failed', { code: getErrorCode(error) });
+    logger.error({ code: getErrorCode(error) }, 'Document asset reconciliation failed');
   }
 };
 

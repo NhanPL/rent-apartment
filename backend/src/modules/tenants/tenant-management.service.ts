@@ -19,6 +19,7 @@ import {
   processCloudinaryAssetJobs
 } from '../documents/document-asset-jobs.service';
 import { writeAuditLog } from '../../shared/services/audit-log.service';
+import { logger } from '../../shared/services/logger.service';
 import {
   mapTenantIdentityDocuments,
   updateTenantIdentityDocuments,
@@ -656,11 +657,11 @@ export const updateManagedTenant = async (
     });
   } catch (error) {
     if (error instanceof AppError || isUniqueConstraintError(error)) throw error;
-    console.error('Failed to update tenant', {
+    logger.error({
       tenantId,
       managerId,
-      error: error instanceof Error ? error.message : 'Unknown database error'
-    });
+      error
+    }, 'Failed to update tenant');
     throw new AppError(
       500,
       'Unable to update tenant information. Please try again.',

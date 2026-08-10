@@ -139,6 +139,9 @@ export const resolveOpenApiDocsSettings = (
 
 const envSchema = z.object({
   APP_ENV: z.enum(['development', 'test', 'staging', 'production']).default(defaultAppEnv),
+  APP_VERSION: z.string().trim().min(1).max(100).default('development'),
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
+    .optional(),
   PORT: z.coerce.number().int().positive().default(4000),
   DATABASE_URL: z.string().min(1),
   DB_SSL: z.enum(['true', 'false']).optional(),
@@ -255,6 +258,8 @@ const openApiDocs = resolveOpenApiDocsSettings(
 
 export const env = {
   ...parsed.data,
+  LOG_LEVEL: parsed.data.LOG_LEVEL
+    ?? (parsed.data.APP_ENV === 'test' ? 'silent' : parsed.data.APP_ENV === 'development' ? 'debug' : 'info'),
   DB_SSL: databaseTls.dbSsl,
   DB_SSL_REJECT_UNAUTHORIZED: databaseTls.rejectUnauthorized,
   DB_SSL_CA: parsed.data.DB_SSL_CA.replace(/\\n/g, '\n').trim(),

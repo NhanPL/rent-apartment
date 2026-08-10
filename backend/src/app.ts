@@ -28,6 +28,7 @@ import { globalRateLimit } from './config/rate-limit';
 import { securityHeaders } from './config/security';
 import { rejectDirectFileUploads } from './shared/middleware/request-hardening';
 import { auditRequestContext } from './shared/middleware/audit-context';
+import { requestLogger } from './shared/middleware/request-logger';
 import { AppError } from './shared/errors/app-error';
 import openApiDocsRoutes from './openapi/docs.routes';
 
@@ -41,6 +42,7 @@ if (env.TRUST_PROXY_HOPS > 0) {
 
 app.use(securityHeaders);
 app.use(auditRequestContext);
+app.use(requestLogger);
 app.use(cors(corsOptions));
 app.use('/api', globalRateLimit);
 app.use('/api', rejectDirectFileUploads);

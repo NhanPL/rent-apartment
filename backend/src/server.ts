@@ -4,32 +4,28 @@ import { assertDatabaseConnection } from './db/connection';
 import { startSessionCleanupScheduler } from './modules/auth/session.service';
 import { startDocumentAssetScheduler } from './modules/documents/document-asset-jobs.service';
 import { toSafeErrorLog } from './shared/utils/safe-log';
+import { logger } from './shared/services/logger.service';
 
 process.on('unhandledRejection', (reason) => {
-  // eslint-disable-next-line no-console
-  console.error('Unhandled rejection', toSafeErrorLog(reason));
+  logger.error({ error: toSafeErrorLog(reason) }, 'Unhandled rejection');
 });
 
 process.on('uncaughtException', (error) => {
-  // eslint-disable-next-line no-console
-  console.error('Uncaught exception', toSafeErrorLog(error));
+  logger.error({ error: toSafeErrorLog(error) }, 'Uncaught exception');
 });
 
 async function bootstrap() {
   try {
     await assertDatabaseConnection();
-    // eslint-disable-next-line no-console
-    console.log('Database connected successfully.');
+    logger.info({}, 'Database connected successfully');
     startSessionCleanupScheduler();
     startDocumentAssetScheduler();
 
     app.listen(env.PORT, () => {
-      // eslint-disable-next-line no-console
-      console.log(`Backend listening on port ${env.PORT}`);
+      logger.info({ port: env.PORT }, 'Backend listening');
     });
   } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error((error as Error).message);
+    logger.error({ error }, 'Backend bootstrap failed');
     process.exit(1);
   }
 }

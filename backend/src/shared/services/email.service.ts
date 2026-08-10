@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import { env } from '../../config/env';
+import { logger } from './logger.service';
 
 interface SendEmailPayload {
   to: string;
@@ -60,10 +61,7 @@ const escapeHtml = (value: string): string => value
 export const sendEmail = async (payload: SendEmailPayload): Promise<boolean> => {
   const mailer = getTransporter();
   if (!mailer) {
-    console.warn('SMTP is not configured; skipping email send.', {
-      to: payload.to,
-      subject: payload.subject
-    });
+    logger.warn({ emailType: payload.subject }, 'SMTP is not configured; skipping email send');
     return false;
   }
 

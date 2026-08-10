@@ -2,6 +2,8 @@ import { NextFunction, Request, Response } from 'express';
 import { AppError } from '../errors/app-error';
 import { env, type AppEnvironment } from '../../config/env';
 import { buildErrorResponse } from '../errors/error-contract';
+import { logger } from '../services/logger.service';
+import { getAuditRequestContext } from './audit-context';
 
 interface DatabaseError {
   code?: string;
@@ -298,6 +300,11 @@ export const createErrorHandler = (appEnvironment: AppEnvironment) => (
     ));
     return;
   }
+
+  logger.error({
+    requestId: getAuditRequestContext()?.requestId ?? 'unknown',
+    error: err
+  }, 'Unhandled request error');
 
   res.status(500).json(buildErrorResponse(
     res,
