@@ -50,6 +50,54 @@ npm run db:migrate -- --dry-run
 npm run db:seed -- --dry-run
 ```
 
+## Migration Classification
+
+Every migration must be classified in its pull request and deploy ticket:
+
+- **Backward-compatible**: additive nullable columns, new tables, concurrent
+  indexes, or code that continues to work with both old and new schemas. These
+  may ship with the application after rehearsal.
+- **Breaking**: column removal/rename, type narrowing, new non-null guarantees,
+  or behavior that old application instances cannot use. Use
+  **expand-migrate-contract** across separate releases: add the new shape,
+  deploy dual-read/dual-write code, backfill in bounded batches, switch reads,
+  and remove the old shape only after rollback is no longer required.
+
+Do not combine expand and contract phases in one migration. Large backfills
+must run separately in restartable batches, outside peak traffic. Indexes on
+large live tables should use `CREATE INDEX CONCURRENTLY` in a dedicated
+non-transactional operational step; document that exception because the normal
+runner intentionally wraps migrations in transactions.
+
+The runner applies a configurable PostgreSQL lock timeout and statement timeout
+to each migration. Defaults are `5s` and `15m`; override
+`MIGRATION_LOCK_TIMEOUT_MS` or `MIGRATION_STATEMENT_TIMEOUT_MS` only in the
+deploy environment after reviewing the expected query plan and lock impact.
+
+## Deployment Checklist
+
+Before a staging or production migration:
+
+1. Record the migration classification, owner, expected duration and forward-fix plan.
+2. Take a database backup and verify that the artifact is readable and encrypted.
+3. Restore the latest backup into an isolated rehearsal database whose size and data distribution are close to production.
+4. Run `npm run db:migrate -- --dry-run`, then time the real migration on that rehearsal database.
+5. Inspect long-running queries, table locks, disk headroom and affected query plans.
+6. Schedule breaking or lock-heavy work outside peak traffic and notify the rollback owner.
+7. Set `APP_VERSION` to the immutable release identifier, preferably the Git SHA or release tag.
+
+After deployment, run:
+
+```sh
+npm run db:migrate:verify
+```
+
+The command is read-only and fails when a local migration is missing from the
+database or an applied checksum differs. Confirm the application `/ready`
+endpoint, key write/read flows and error rate before closing the deploy. The
+`schema_migrations.application_version` column links each newly applied schema
+version to the release that installed it.
+
 ## Generated Schema Snapshot
 
 No manually maintained `database.sql` is committed or used to create a new
@@ -73,10 +121,19 @@ Rollback is intentionally manual for now. Before applying migrations to any non-
 pg_dump "$DATABASE_URL" --format=custom --file=backup.dump
 ```
 
-If a migration needs to be undone, prefer restoring the latest verified backup:
+For a failed migration that has not committed, fix the cause and rerun it. For a
+committed backward-compatible change, prefer a new forward migration and a
+forward-fix application release. Avoid ad-hoc down migrations because data loss
+often cannot be reversed safely.
+
+If a breaking migration corrupts data or prevents the previous release from
+starting, stop writes and restore the latest verified backup:
 
 ```sh
 pg_restore --clean --if-exists --dbname="$DATABASE_URL" backup.dump
 ```
 
-For small local mistakes, write a new forward migration that reverses the bad change. Avoid deleting rows from `schema_migrations` unless you are rebuilding a disposable local database.
+Record the restore point, lost-write window, validation results and incident
+owner. For small local mistakes, write a new forward migration that reverses the
+bad change. Avoid deleting rows from `schema_migrations` unless you are
+rebuilding a disposable local database.
