@@ -1018,8 +1018,6 @@ const coverage = [
   entry('Waiting for transfer', 'Chờ chuyển khoản', 'WAITING_TRANSFER'),
   entry('Bank transfer', 'Chuyển khoản ngân hàng', 'BANK_TRANSFER'),
   entry('Cash', 'Tiền mặt', 'CASH'),
-  entry('Momo', 'Momo', 'MOMO'),
-  entry('VNPay', 'VNPay', 'VNPAY'),
   entry('Identity card front', 'Mặt trước CCCD', 'IDENTITY_FRONT'),
   entry('Identity card back', 'Mặt sau CCCD', 'IDENTITY_BACK'),
   entry('Signed scan', 'Bản scan đã ký', 'SIGNED_SCAN'),
