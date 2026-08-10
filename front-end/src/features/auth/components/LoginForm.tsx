@@ -5,7 +5,6 @@ import type { LoginFormValues } from '../types/auth'
 import { getFormErrorMessage, getUserErrorMessage } from '../../../services/errorMessage'
 import { useI18n } from '../../../i18n'
 import { LanguageSwitcher } from '../../../shared/components/LanguageSwitcher'
-import { Localized } from '../../../shared/components/Localized'
 import { PASSWORD_MAX_LENGTH } from '../passwordPolicy'
 import './LoginForm.css'
 
@@ -47,17 +46,17 @@ export function LoginForm() {
   }
 
   return (
-    <Localized>
+    <>
     <Card className="login-card" bordered={false}>
       <div className="login-topbar">
-        <Text className="login-eyebrow">Rent Apartment Management</Text>
+        <Text className="login-eyebrow">{t("Rent Apartment Management")}</Text>
         <div className="login-language-switcher">
           <LanguageSwitcher />
         </div>
       </div>
       <div className="login-header">
-        <Title level={2}>Welcome back</Title>
-        <Text type="secondary">Sign in to manage buildings, tenants, and invoices.</Text>
+        <Title level={2}>{t("Welcome back")}</Title>
+        <Text type="secondary">{t("Sign in to manage buildings, tenants, and invoices.")}</Text>
       </div>
 
       {error ? <Alert type="error" message={error} showIcon className="login-error" /> : null}
@@ -71,41 +70,41 @@ export function LoginForm() {
         size="large"
       >
         <Form.Item
-          label="Username or email"
+          label={t("Username or email")}
           name="identifier"
-          rules={[{ required: true, message: 'Please enter your username or email.' }]}
+          rules={[{ required: true, message: t("Please enter your username or email.") }]}
         >
-          <Input autoComplete="username" placeholder="manager@rent.vn or username" allowClear />
+          <Input autoComplete="username" placeholder={t("manager@rent.vn or username")} allowClear />
         </Form.Item>
 
         <Form.Item
-          label="Password"
+          label={t("Password")}
           name="password"
           rules={[
-            { required: true, message: 'Please enter your password.' },
+            { required: true, message: t("Please enter your password.") },
             {
               max: PASSWORD_MAX_LENGTH,
               message: `The password cannot exceed ${PASSWORD_MAX_LENGTH} characters.`,
             },
           ]}
         >
-          <Input.Password autoComplete="current-password" placeholder="Enter your password" />
+          <Input.Password autoComplete="current-password" placeholder={t("Enter your password")} />
         </Form.Item>
 
         <Form.Item name="rememberMe" valuePropName="checked">
-          <Checkbox>Remember me</Checkbox>
+          <Checkbox>{t("Remember me")}</Checkbox>
         </Form.Item>
 
         <Button type="primary" htmlType="submit" loading={loading} block>
-          Sign in
+          {t("Sign in")}
         </Button>
         <div className="login-forgot-password">
           <Button type="link" onClick={goToForgotPassword}>
-            Forgot password?
+            {t("Forgot password?")}
           </Button>
         </div>
       </Form>
     </Card>
-    </Localized>
+    </>
   )
 }

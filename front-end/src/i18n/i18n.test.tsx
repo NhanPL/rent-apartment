@@ -1,19 +1,17 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { Localized } from '../shared/components/Localized'
 import { I18nProvider } from './I18nContext'
 import { LANGUAGE_STORAGE_KEY, setActiveLanguage, translate } from './i18n'
+import { loadLanguageResources } from './i18nextInstance'
 import { useI18n } from './useI18n'
 
 function LanguageHarness() {
-  const { setLanguage } = useI18n()
+  const { setLanguage, t } = useI18n()
 
   return (
     <>
       <button onClick={() => setLanguage('vi')}>switch</button>
-      <Localized>
-        <button title="Save">Dashboard</button>
-      </Localized>
+      <button title={t('Save')}>{t('Dashboard')}</button>
     </>
   )
 }
@@ -24,7 +22,8 @@ describe('application i18n', () => {
     setActiveLanguage('en')
   })
 
-  it('translates English, legacy Vietnamese, enums, and dynamic labels', () => {
+  it('translates English, legacy Vietnamese, enums, and dynamic labels', async () => {
+    await Promise.all([loadLanguageResources('en'), loadLanguageResources('vi')])
     expect(translate('Dashboard', 'vi')).toBe('Tổng quan')
     expect(translate('Chỉ số điện tháng này', 'en')).toBe('Current electricity reading')
     expect(translate('WAITING_HANDOVER', 'vi')).toBe('Chờ bàn giao')

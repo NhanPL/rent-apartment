@@ -1,3 +1,4 @@
+import { useI18n } from '../../i18n'
 import {
   DownloadOutlined,
   ReloadOutlined,
@@ -23,7 +24,6 @@ import dayjs, { type Dayjs } from 'dayjs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { exportReportsCsv, getReportDetails, getReportsData, listReportBuildings } from '../../services/reportsService'
 import { getUserErrorMessage } from '../../services/errorMessage'
-import { Localized } from '../../shared/components/Localized'
 import { vndCurrency } from '../../i18n'
 import type {
   DebtReportRow,
@@ -64,6 +64,7 @@ const defaultRange = (): [Dayjs, Dayjs] => [
 ]
 
 export function ReportsPage() {
+  const { t } = useI18n()
   const [range, setRange] = useState<[Dayjs, Dayjs]>(() => defaultRange())
   const [buildingId, setBuildingId] = useState<string | undefined>()
   const [status, setStatus] = useState<ReportInvoiceStatus | undefined>()
@@ -162,54 +163,54 @@ export function ReportsPage() {
   }, [activeSection, filters])
 
   const monthlyRevenueColumns: ColumnsType<RevenueMonthRow> = [
-    { title: 'Month', dataIndex: 'month', width: 120, render: (value: string) => formatMonth(value) },
-    { title: 'Invoices', dataIndex: 'invoiceCount', width: 110, align: 'right' },
-    { title: 'Billed', dataIndex: 'billed', width: 160, align: 'right', render: formatCurrency },
-    { title: 'Payments', dataIndex: 'grossPayments', width: 160, align: 'right', render: formatCurrency },
-    { title: 'Reversals', dataIndex: 'reversals', width: 160, align: 'right', render: formatCurrency },
-    { title: 'Net payments', dataIndex: 'collected', width: 160, align: 'right', render: formatCurrency },
-    { title: 'Unpaid', dataIndex: 'unpaid', width: 160, align: 'right', render: formatCurrency },
+    { title: t("Month"), dataIndex: 'month', width: 120, render: (value: string) => formatMonth(value) },
+    { title: t("Invoices"), dataIndex: 'invoiceCount', width: 110, align: 'right' },
+    { title: t("Billed"), dataIndex: 'billed', width: 160, align: 'right', render: formatCurrency },
+    { title: t("Payments"), dataIndex: 'grossPayments', width: 160, align: 'right', render: formatCurrency },
+    { title: t("Reversals"), dataIndex: 'reversals', width: 160, align: 'right', render: formatCurrency },
+    { title: t("Net payments"), dataIndex: 'collected', width: 160, align: 'right', render: formatCurrency },
+    { title: t("Unpaid"), dataIndex: 'unpaid', width: 160, align: 'right', render: formatCurrency },
   ]
 
   const buildingRevenueColumns: ColumnsType<RevenueBuildingRow> = [
-    { title: 'Building', dataIndex: 'buildingName', width: 220 },
-    { title: 'Invoices', dataIndex: 'invoiceCount', width: 110, align: 'right' },
-    { title: 'Billed', dataIndex: 'billed', width: 160, align: 'right', render: formatCurrency },
-    { title: 'Payments', dataIndex: 'grossPayments', width: 160, align: 'right', render: formatCurrency },
-    { title: 'Reversals', dataIndex: 'reversals', width: 160, align: 'right', render: formatCurrency },
-    { title: 'Net payments', dataIndex: 'collected', width: 160, align: 'right', render: formatCurrency },
-    { title: 'Unpaid', dataIndex: 'unpaid', width: 160, align: 'right', render: formatCurrency },
+    { title: t("Building"), dataIndex: 'buildingName', width: 220 },
+    { title: t("Invoices"), dataIndex: 'invoiceCount', width: 110, align: 'right' },
+    { title: t("Billed"), dataIndex: 'billed', width: 160, align: 'right', render: formatCurrency },
+    { title: t("Payments"), dataIndex: 'grossPayments', width: 160, align: 'right', render: formatCurrency },
+    { title: t("Reversals"), dataIndex: 'reversals', width: 160, align: 'right', render: formatCurrency },
+    { title: t("Net payments"), dataIndex: 'collected', width: 160, align: 'right', render: formatCurrency },
+    { title: t("Unpaid"), dataIndex: 'unpaid', width: 160, align: 'right', render: formatCurrency },
   ]
 
   const debtColumns: ColumnsType<DebtReportRow> = [
-    { title: 'Building', dataIndex: 'buildingName', width: 190 },
-    { title: 'Room', dataIndex: 'roomCode', width: 100 },
-    { title: 'Tenant', dataIndex: 'tenantName', width: 180 },
-    { title: 'Month', dataIndex: 'month', width: 110, render: (value: string) => formatMonth(value) },
+    { title: t("Building"), dataIndex: 'buildingName', width: 190 },
+    { title: t("Room"), dataIndex: 'roomCode', width: 100 },
+    { title: t("Tenant"), dataIndex: 'tenantName', width: 180 },
+    { title: t("Month"), dataIndex: 'month', width: 110, render: (value: string) => formatMonth(value) },
     {
-      title: 'Status',
+      title: t("Status"),
       dataIndex: 'status',
       width: 150,
       render: (value: ReportInvoiceStatus, row) => (
-        <Space size={4}>{statusTag(value)}{row.isOverdue ? <Tag color="red">Overdue</Tag> : null}</Space>
+        <Space size={4}>{statusTag(value)}{row.isOverdue ? <Tag color="red">{t("Overdue")}</Tag> : null}</Space>
       ),
     },
-    { title: 'Due date', dataIndex: 'dueDate', width: 120, render: formatDate },
-    { title: 'Total', dataIndex: 'total', width: 150, align: 'right', render: formatCurrency },
-    { title: 'Paid', dataIndex: 'paidAmount', width: 150, align: 'right', render: formatCurrency },
-    { title: 'Outstanding', dataIndex: 'outstandingAmount', width: 160, align: 'right', render: formatCurrency },
+    { title: t("Due date"), dataIndex: 'dueDate', width: 120, render: formatDate },
+    { title: t("Total"), dataIndex: 'total', width: 150, align: 'right', render: formatCurrency },
+    { title: t("Paid"), dataIndex: 'paidAmount', width: 150, align: 'right', render: formatCurrency },
+    { title: t("Outstanding"), dataIndex: 'outstandingAmount', width: 160, align: 'right', render: formatCurrency },
   ]
 
   const occupancyColumns: ColumnsType<OccupancyReportRow> = [
-    { title: 'Building', dataIndex: 'buildingName', width: 220 },
-    { title: 'Rooms', dataIndex: 'totalRooms', width: 100, align: 'right' },
-    { title: 'Occupied', dataIndex: 'occupiedRooms', width: 110, align: 'right' },
-    { title: 'Vacant', dataIndex: 'vacantRooms', width: 100, align: 'right' },
-    { title: 'Maintenance', dataIndex: 'maintenanceRooms', width: 130, align: 'right' },
-    { title: 'Inactive', dataIndex: 'inactiveRooms', width: 110, align: 'right' },
-    { title: 'Tenants', dataIndex: 'activeTenants', width: 100, align: 'right' },
+    { title: t("Building"), dataIndex: 'buildingName', width: 220 },
+    { title: t("Rooms"), dataIndex: 'totalRooms', width: 100, align: 'right' },
+    { title: t("Occupied"), dataIndex: 'occupiedRooms', width: 110, align: 'right' },
+    { title: t("Vacant"), dataIndex: 'vacantRooms', width: 100, align: 'right' },
+    { title: t("Maintenance"), dataIndex: 'maintenanceRooms', width: 130, align: 'right' },
+    { title: t("Inactive"), dataIndex: 'inactiveRooms', width: 110, align: 'right' },
+    { title: t("Tenants"), dataIndex: 'activeTenants', width: 100, align: 'right' },
     {
-      title: 'Occupancy',
+      title: t("Occupancy"),
       dataIndex: 'occupancyRate',
       width: 180,
       render: (value: number) => <Progress percent={value} size="small" strokeColor="#1677ff" />,
@@ -219,20 +220,20 @@ export function ReportsPage() {
   const tabItems = [
     {
       key: 'revenue',
-      label: 'Revenue',
+      label: t("Revenue"),
       children: (
         <Space direction="vertical" size={16} className="reports-tab-content">
-          <Card title="Revenue by month">
+          <Card title={t("Revenue by month")}>
             <Table<RevenueMonthRow>
               rowKey="month"
               columns={monthlyRevenueColumns}
               dataSource={data?.revenueByMonth ?? []}
               pagination={false}
               scroll={{ x: 690 }}
-              locale={{ emptyText: <Empty description="No revenue data" /> }}
+              locale={{ emptyText: <Empty description={t("No revenue data")} /> }}
             />
           </Card>
-          <Card title="Revenue by building">
+          <Card title={t("Revenue by building")}>
             <Table<RevenueBuildingRow>
               rowKey="buildingId"
               columns={buildingRevenueColumns}
@@ -250,7 +251,7 @@ export function ReportsPage() {
                 },
               }}
               scroll={{ x: 850 }}
-              locale={{ emptyText: <Empty description="No building revenue" /> }}
+              locale={{ emptyText: <Empty description={t("No building revenue")} /> }}
             />
           </Card>
         </Space>
@@ -260,7 +261,7 @@ export function ReportsPage() {
       key: 'debt',
       label: data?.debtSummary.overdueInvoices ? `Debt (${data.debtSummary.overdueInvoices})` : 'Debt',
       children: (
-        <Card title="Unpaid and overdue invoices">
+        <Card title={t("Unpaid and overdue invoices")}>
           <Table<DebtReportRow>
             rowKey="invoiceId"
             columns={debtColumns}
@@ -278,16 +279,16 @@ export function ReportsPage() {
               },
             }}
             scroll={{ x: 1370 }}
-            locale={{ emptyText: <Empty description="No unpaid invoices" /> }}
+            locale={{ emptyText: <Empty description={t("No unpaid invoices")} /> }}
           />
         </Card>
       ),
     },
     {
       key: 'occupancy',
-      label: 'Occupancy',
+      label: t("Occupancy"),
       children: (
-        <Card title="Occupancy by building">
+        <Card title={t("Occupancy by building")}>
           <Table<OccupancyReportRow>
             rowKey="buildingId"
             columns={occupancyColumns}
@@ -305,7 +306,7 @@ export function ReportsPage() {
               },
             }}
             scroll={{ x: 1050 }}
-            locale={{ emptyText: <Empty description="No occupancy data" /> }}
+            locale={{ emptyText: <Empty description={t("No occupancy data")} /> }}
           />
         </Card>
       ),
@@ -313,23 +314,23 @@ export function ReportsPage() {
   ]
 
   return (
-    <Localized>
+    <>
     <Space direction="vertical" size={16} className="reports-page">
       <div className="reports-header">
         <div>
           <Typography.Title level={3} style={{ margin: 0 }}>
-            Reports
+            {t("Reports")}
           </Typography.Title>
           <Typography.Text type="secondary">
-            Track revenue, unpaid balances, and room occupancy across the portfolio.
+            {t("Track revenue, unpaid balances, and room occupancy across the portfolio.")}
           </Typography.Text>
         </div>
         <Space wrap className="reports-header-actions">
           <Button icon={<ReloadOutlined />} onClick={() => void loadReports()}>
-            Refresh
+            {t("Refresh")}
           </Button>
           <Button type="primary" icon={<DownloadOutlined />} loading={exporting} onClick={() => void downloadCsv()}>
-            Export CSV
+            {t("Export CSV")}
           </Button>
         </Space>
       </div>
@@ -351,14 +352,14 @@ export function ReportsPage() {
             allowClear
             showSearch
             optionFilterProp="label"
-            placeholder="All buildings"
+            placeholder={t("All buildings")}
             value={buildingId}
             onChange={(value) => { setBuildingId(value); setDetailPage(1) }}
             options={buildings.map((building) => ({ label: building.name, value: building.id }))}
           />
           <Select
             allowClear
-            placeholder="Invoice status"
+            placeholder={t("Invoice status")}
             value={status}
             onChange={(value) => { setStatus(value); setDetailPage(1) }}
             options={invoiceStatusOptions.map((item) => ({ label: item.label, value: item.value }))}
@@ -367,10 +368,10 @@ export function ReportsPage() {
       </Card>
 
       <div className="reports-summary-grid">
-        <Card><Statistic title="Billed" value={data?.summary.billed ?? 0} formatter={(value) => formatCurrency(Number(value))} /></Card>
-        <Card><Statistic title="Net payments" value={data?.summary.collected ?? 0} formatter={(value) => formatCurrency(Number(value))} /></Card>
-        <Card><Statistic title="Unpaid" value={data?.summary.unpaidAmount ?? 0} formatter={(value) => formatCurrency(Number(value))} /></Card>
-        <Card><Statistic title="Occupancy" value={data?.summary.occupancyRate ?? 0} suffix="%" /></Card>
+        <Card><Statistic title={t("Billed")} value={data?.summary.billed ?? 0} formatter={(value) => formatCurrency(Number(value))} /></Card>
+        <Card><Statistic title={t("Net payments")} value={data?.summary.collected ?? 0} formatter={(value) => formatCurrency(Number(value))} /></Card>
+        <Card><Statistic title={t("Unpaid")} value={data?.summary.unpaidAmount ?? 0} formatter={(value) => formatCurrency(Number(value))} /></Card>
+        <Card><Statistic title={t("Occupancy")} value={data?.summary.occupancyRate ?? 0} suffix="%" /></Card>
       </div>
 
       {loading ? (
@@ -378,7 +379,7 @@ export function ReportsPage() {
       ) : error ? (
         <Card>
           <Empty description={error}>
-            <Button type="primary" onClick={() => void loadReports()}>Retry</Button>
+            <Button type="primary" onClick={() => void loadReports()}>{t("Retry")}</Button>
           </Empty>
         </Card>
       ) : (
@@ -389,6 +390,6 @@ export function ReportsPage() {
         />
       )}
     </Space>
-    </Localized>
+    </>
   )
 }

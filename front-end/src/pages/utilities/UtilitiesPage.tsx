@@ -1,3 +1,4 @@
+import { useI18n } from '../../i18n'
 import {
   DeleteOutlined,
   EditOutlined,
@@ -46,7 +47,6 @@ import {
   updateUtilityRate,
 } from '../../services/utilitiesService'
 import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
-import { Localized } from '../../shared/components/Localized'
 import { vndCurrency } from '../../i18n'
 import type {
   BuildingOption,
@@ -109,6 +109,7 @@ const toRatePayload = (values: UtilityRateFormValues): UtilityRatePayload => {
 }
 
 export function UtilitiesPage() {
+  const { t } = useI18n()
   const screens = Grid.useBreakpoint()
   const [rateForm] = Form.useForm<UtilityRateFormValues>()
   const [rejectForm] = Form.useForm<RejectFormValues>()
@@ -212,7 +213,7 @@ export function UtilitiesPage() {
 
   useEffect(() => {
     void loadRates()
-  }, [loadRates])
+  }, [loadRates, t])
 
   const readingRooms = useMemo(() => {
     if (!readingBuildingFilter) return rooms
@@ -348,9 +349,9 @@ export function UtilitiesPage() {
 
   const confirmDeleteRate = useCallback((rate: UtilityRate) => {
     Modal.confirm({
-      title: 'Delete utility rate?',
+      title: t("Delete utility rate?"),
       content: `${rate.building_name} effective ${formatDate(rate.effective_from)}`,
-      okText: 'Delete',
+      okText: t("Delete"),
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
@@ -363,69 +364,69 @@ export function UtilitiesPage() {
         }
       },
     })
-  }, [loadRates])
+  }, [loadRates, t])
 
   const readingColumns: ColumnsType<UtilityReadingListItem> = useMemo(
     () => [
       {
-        title: 'Month',
+        title: t("Month"),
         dataIndex: 'month',
         key: 'month',
         width: 110,
         render: (value: string) => formatMonth(value),
       },
       {
-        title: 'Building / Room',
+        title: t("Building / Room"),
         key: 'room',
         width: 220,
         render: (_, item) => (
           <Space direction="vertical" size={0}>
             <Typography.Text>{item.building_name}</Typography.Text>
-            <Typography.Text type="secondary">Room {item.room_code}</Typography.Text>
+            <Typography.Text type="secondary">{t("Room")} {item.room_code}</Typography.Text>
           </Space>
         ),
       },
       {
-        title: 'Tenant',
+        title: t("Tenant"),
         dataIndex: 'tenant_name',
         key: 'tenant_name',
         width: 180,
         render: (value: string | null) => value ?? '-',
       },
       {
-        title: 'Status',
+        title: t("Status"),
         dataIndex: 'status',
         key: 'status',
         width: 130,
         render: (value: UtilityReadingStatus) => statusTag(value),
       },
       {
-        title: 'Electric',
+        title: t("Electric"),
         key: 'electric',
         width: 170,
         render: (_, item) => `${item.electricity_prev ?? 0} -> ${item.electricity_curr ?? '-'}`,
       },
       {
-        title: 'Water',
+        title: t("Water"),
         key: 'water',
         width: 170,
         render: (_, item) => `${item.water_prev ?? 0} -> ${item.water_curr ?? '-'}`,
       },
       {
-        title: 'Evidence',
+        title: t("Evidence"),
         dataIndex: 'evidence_count',
         key: 'evidence_count',
         width: 100,
       },
       {
-        title: 'Submitted',
+        title: t("Submitted"),
         dataIndex: 'submitted_at',
         key: 'submitted_at',
         width: 160,
         render: (value: string | null) => (value ? dayjs(value).format('DD/MM/YYYY HH:mm') : '-'),
       },
       {
-        title: 'Actions',
+        title: t("Actions"),
         key: 'actions',
         fixed: 'right',
         width: 320,
@@ -438,53 +439,53 @@ export function UtilitiesPage() {
               loading={actionLoading === `approve-${item.id}`}
               onClick={() => void handleApprove(item.id)}
             >
-              Approve
+              {t("Approve")}
             </Button>
             <Button danger type="link" disabled={item.status !== 'SUBMITTED'} onClick={() => openReject(item)}>
-              Reject
+              {t("Reject")}
             </Button>
             <Button type="link" disabled={item.status !== 'APPROVED'} onClick={() => openReject(item)}>
-              Request correction
+              {t("Request correction")}
             </Button>
             {item.status === 'APPROVED' ? (
               <Button type="link" icon={<FileAddOutlined />} onClick={() => openCreateInvoice(item)}>
-                Create invoice
+                {t("Create invoice")}
               </Button>
             ) : null}
           </Space>
         ),
       },
     ],
-    [actionLoading, handleApprove, openCreateInvoice, openReadingDetail, openReject],
+    [actionLoading, handleApprove, openCreateInvoice, openReadingDetail, openReject, t],
   )
 
   const rateColumns: ColumnsType<UtilityRate> = useMemo(
     () => [
-      { title: 'Building', dataIndex: 'building_name', key: 'building_name', width: 220 },
+      { title: t("Building"), dataIndex: 'building_name', key: 'building_name', width: 220 },
       {
-        title: 'Effective from',
+        title: t("Effective from"),
         dataIndex: 'effective_from',
         key: 'effective_from',
         width: 150,
         render: (value: string) => formatDate(value),
       },
       {
-        title: 'Electricity unit price',
+        title: t("Electricity unit price"),
         dataIndex: 'electricity_unit_price',
         key: 'electricity_unit_price',
         width: 190,
         render: (value: number) => currency.format(value),
       },
       {
-        title: 'Water unit price',
+        title: t("Water unit price"),
         dataIndex: 'water_unit_price',
         key: 'water_unit_price',
         width: 170,
         render: (value: number) => currency.format(value),
       },
-      { title: 'Note', dataIndex: 'note', key: 'note', render: (value: string | null) => value ?? '-' },
+      { title: t("Note"), dataIndex: 'note', key: 'note', render: (value: string | null) => value ?? '-' },
       {
-        title: 'Actions',
+        title: t("Actions"),
         key: 'actions',
         fixed: 'right',
         width: 130,
@@ -496,24 +497,24 @@ export function UtilitiesPage() {
         ),
       },
     ],
-    [confirmDeleteRate, openEditRate],
+    [confirmDeleteRate, openEditRate, t],
   )
 
   return (
-    <Localized>
+    <>
     <div className="utilities-page">
       <Card>
         <div className="utilities-toolbar">
           <div>
             <Typography.Title level={4} style={{ margin: 0 }}>
-              Utilities
+              {t("Utilities")}
             </Typography.Title>
             <Typography.Text type="secondary">
-              Review monthly readings and maintain electricity/water rates by building.
+              {t("Review monthly readings and maintain electricity/water rates by building.")}
             </Typography.Text>
           </div>
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreateRate}>
-            New Rate
+            {t("New Rate")}
           </Button>
         </div>
       </Card>
@@ -530,12 +531,12 @@ export function UtilitiesPage() {
                     <Input
                       allowClear
                       value={readingSearchInput}
-                      placeholder="Search building, room, tenant"
+                      placeholder={t("Search building, room, tenant")}
                       onChange={(event) => setReadingSearchInput(event.target.value)}
                     />
                     <Select
                       value={readingBuildingFilter}
-                      placeholder="Building"
+                      placeholder={t("Building")}
                       allowClear
                       options={buildings.map((building) => ({ label: building.name, value: building.id }))}
                       onChange={(value) => {
@@ -546,7 +547,7 @@ export function UtilitiesPage() {
                     />
                     <Select
                       value={readingRoomFilter}
-                      placeholder="Room"
+                      placeholder={t("Room")}
                       allowClear
                       options={readingRooms.map((room) => ({ label: room.code, value: room.id }))}
                       onChange={(value) => { setReadingRoomFilter(value); setReadingsPage(1) }}
@@ -558,13 +559,13 @@ export function UtilitiesPage() {
                     />
                     <Select
                       value={readingStatusFilter}
-                      placeholder="Status"
+                      placeholder={t("Status")}
                       allowClear
                       options={readingStatusOptions.map((item) => ({ label: item.label, value: item.value }))}
                       onChange={(value) => { setReadingStatusFilter(value); setReadingsPage(1) }}
                     />
                     <Button icon={<ReloadOutlined />} onClick={() => void loadReadings()}>
-                      Refresh
+                      {t("Refresh")}
                     </Button>
                   </div>
 
@@ -573,7 +574,7 @@ export function UtilitiesPage() {
                   ) : readingsError ? (
                     <Empty description={readingsError}>
                       <Button type="primary" onClick={() => void loadReadings()}>
-                        Retry
+                        {t("Retry")}
                       </Button>
                     </Empty>
                   ) : (
@@ -602,20 +603,20 @@ export function UtilitiesPage() {
           },
           {
             key: 'rates',
-            label: 'Rates',
+            label: t("Rates"),
             children: (
               <Card>
                 <Space direction="vertical" size={16} style={{ width: '100%' }}>
                   <div className="utility-rate-filters">
                     <Select
                       value={rateBuildingFilter}
-                      placeholder="Building"
+                      placeholder={t("Building")}
                       allowClear
                       options={buildings.map((building) => ({ label: building.name, value: building.id }))}
                       onChange={(value) => setRateBuildingFilter(value)}
                     />
                     <Button icon={<ReloadOutlined />} onClick={() => void loadRates()}>
-                      Refresh
+                      {t("Refresh")}
                     </Button>
                   </div>
 
@@ -624,7 +625,7 @@ export function UtilitiesPage() {
                   ) : ratesError ? (
                     <Empty description={ratesError}>
                       <Button type="primary" onClick={() => void loadRates()}>
-                        Retry
+                        {t("Retry")}
                       </Button>
                     </Empty>
                   ) : (
@@ -644,7 +645,7 @@ export function UtilitiesPage() {
 
       <Drawer
         open={detailOpen}
-        title="Utility Reading Detail"
+        title={t("Utility Reading Detail")}
         placement="right"
         width={screens.lg ? 720 : screens.md ? 600 : '100%'}
         onClose={() => setDetailOpen(false)}
@@ -655,7 +656,7 @@ export function UtilitiesPage() {
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
             <div className="utilities-detail-header">
               <Space direction="vertical" size={2}>
-                <Typography.Text strong>{detailItem.building_name} / Room {detailItem.room_code}</Typography.Text>
+                <Typography.Text strong>{detailItem.building_name} {t("/ Room")} {detailItem.room_code}</Typography.Text>
                 <Typography.Text type="secondary">{formatMonth(detailItem.month)}</Typography.Text>
               </Space>
               <Space wrap>
@@ -666,43 +667,43 @@ export function UtilitiesPage() {
                   loading={actionLoading === `approve-${detailItem.id}`}
                   onClick={() => void handleApprove(detailItem.id)}
                 >
-                  Approve
+                  {t("Approve")}
                 </Button>
                 <Button danger disabled={detailItem.status !== 'SUBMITTED'} onClick={() => openReject(detailItem)}>
-                  Reject
+                  {t("Reject")}
                 </Button>
                 <Button disabled={detailItem.status !== 'APPROVED'} onClick={() => openReject(detailItem)}>
-                  Request correction
+                  {t("Request correction")}
                 </Button>
                 {detailItem.status === 'APPROVED' ? (
                   <Button type="primary" icon={<FileAddOutlined />} onClick={() => openCreateInvoice(detailItem)}>
-                    Create invoice
+                    {t("Create invoice")}
                   </Button>
                 ) : null}
               </Space>
             </div>
 
             <Descriptions bordered size="small" column={screens.lg ? 2 : 1}>
-              <Descriptions.Item label="Tenant">{detailItem.tenant_name ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="Submitted">{detailItem.submitted_at ? dayjs(detailItem.submitted_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
-              <Descriptions.Item label="Electricity prev">{detailItem.electricity_prev ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="Electricity curr">{detailItem.electricity_curr ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="Water prev">{detailItem.water_prev ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="Water curr">{detailItem.water_curr ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="Electric meter reset">{detailItem.electricity_meter_reset ? 'Yes' : 'No'}</Descriptions.Item>
-              <Descriptions.Item label="Water meter reset">{detailItem.water_meter_reset ? 'Yes' : 'No'}</Descriptions.Item>
+              <Descriptions.Item label={t("Tenant")}>{detailItem.tenant_name ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Submitted")}>{detailItem.submitted_at ? dayjs(detailItem.submitted_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Electricity prev")}>{detailItem.electricity_prev ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Electricity curr")}>{detailItem.electricity_curr ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Water prev")}>{detailItem.water_prev ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Water curr")}>{detailItem.water_curr ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Electric meter reset")}>{detailItem.electricity_meter_reset ? 'Yes' : 'No'}</Descriptions.Item>
+              <Descriptions.Item label={t("Water meter reset")}>{detailItem.water_meter_reset ? 'Yes' : 'No'}</Descriptions.Item>
               {(detailItem.electricity_meter_reset || detailItem.water_meter_reset) ? (
-                <Descriptions.Item label="Meter reset reason" span={screens.lg ? 2 : 1}>{detailItem.meter_reset_note ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label={t("Meter reset reason")} span={screens.lg ? 2 : 1}>{detailItem.meter_reset_note ?? '-'}</Descriptions.Item>
               ) : null}
-              <Descriptions.Item label="Approved at">{detailItem.approved_at ? dayjs(detailItem.approved_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
-              <Descriptions.Item label="Rejected at">{detailItem.rejected_at ? dayjs(detailItem.rejected_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
-              <Descriptions.Item label="Tenant note" span={screens.lg ? 2 : 1}>{detailItem.note ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="Reject reason" span={screens.lg ? 2 : 1}>{detailItem.rejection_reason ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Approved at")}>{detailItem.approved_at ? dayjs(detailItem.approved_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Rejected at")}>{detailItem.rejected_at ? dayjs(detailItem.rejected_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Tenant note")} span={screens.lg ? 2 : 1}>{detailItem.note ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Reject reason")} span={screens.lg ? 2 : 1}>{detailItem.rejection_reason ?? '-'}</Descriptions.Item>
             </Descriptions>
 
-            <Card size="small" title="Evidence">
+            <Card size="small" title={t("Evidence")}>
               {detailItem.evidence.length === 0 ? (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No evidence uploaded" />
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("No evidence uploaded")} />
               ) : (
                 <List
                   dataSource={detailItem.evidence}
@@ -734,28 +735,28 @@ export function UtilitiesPage() {
         ) : (
           <Form form={rateForm} layout="vertical">
             <div className="utility-rate-form-grid">
-              <Form.Item name="building_id" label="Building" rules={[{ required: true, message: 'Please select a building' }]}>
+              <Form.Item name="building_id" label={t("Building")} rules={[{ required: true, message: t("Please select a building") }]}>
                 <Select options={buildings.map((building) => ({ label: building.name, value: building.id }))} />
               </Form.Item>
-              <Form.Item name="effective_from" label="Effective from" rules={[{ required: true, message: 'Please select effective date' }]}>
+              <Form.Item name="effective_from" label={t("Effective from")} rules={[{ required: true, message: t("Please select effective date") }]}>
                 <Input type="date" />
               </Form.Item>
-              <Form.Item name="electricity_unit_price" label="Electricity unit price" rules={[{ required: true, message: 'Please enter electricity rate' }]}>
+              <Form.Item name="electricity_unit_price" label={t("Electricity unit price")} rules={[{ required: true, message: t("Please enter electricity rate") }]}>
                 <InputNumber min={0} precision={0} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item name="water_unit_price" label="Water unit price" rules={[{ required: true, message: 'Please enter water rate' }]}>
+              <Form.Item name="water_unit_price" label={t("Water unit price")} rules={[{ required: true, message: t("Please enter water rate") }]}>
                 <InputNumber min={0} precision={0} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item name="note" label="Note" className="utility-rate-form-full">
+              <Form.Item name="note" label={t("Note")} className="utility-rate-form-full">
                 <Input.TextArea rows={3} />
               </Form.Item>
             </div>
 
             <div className="utility-drawer-actions">
               <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
-                <Button onClick={() => setRateDrawerOpen(false)}>Cancel</Button>
+                <Button onClick={() => setRateDrawerOpen(false)}>{t("Cancel")}</Button>
                 <Button type="primary" loading={rateSaving} onClick={() => void submitRate()}>
-                  Save
+                  {t("Save")}
                 </Button>
               </Space>
             </div>
@@ -776,16 +777,16 @@ export function UtilitiesPage() {
         <Alert
           showIcon
           type="warning"
-          message="Tenant can resubmit the reading after rejection."
+          message={t("Tenant can resubmit the reading after rejection.")}
           style={{ marginBottom: 12 }}
         />
         <Form form={rejectForm} layout="vertical">
-          <Form.Item name="reason" label="Reject reason" rules={[{ required: true, whitespace: true, message: 'Please enter reject reason' }]}>
+          <Form.Item name="reason" label={t("Reject reason")} rules={[{ required: true, whitespace: true, message: t("Please enter reject reason") }]}>
             <Input.TextArea rows={4} />
           </Form.Item>
         </Form>
       </Modal>
     </div>
-    </Localized>
+    </>
   )
 }

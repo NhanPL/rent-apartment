@@ -11,16 +11,16 @@ interface Props {
 
 export function RoomContractSummary({ context, compact, formatCurrency }: Props) {
   return (
-    <Card title="Thong tin phong">
+    <Card title="Room information">
       <Descriptions bordered column={1} size={compact ? 'small' : 'default'}>
-        <Descriptions.Item label="Toa nha">{context.building.name}</Descriptions.Item>
-        <Descriptions.Item label="Ma phong">{context.room.code}</Descriptions.Item>
-        <Descriptions.Item label="Trang thai"><Tag color={context.room.status === 'ACTIVE' ? 'green' : 'default'}>{context.room.status}</Tag></Descriptions.Item>
-        <Descriptions.Item label="Gia thue hop dong">{formatCurrency(context.contract.rent_price)}</Descriptions.Item>
-        <Descriptions.Item label="Suc chua">{context.room.max_occupants} nguoi</Descriptions.Item>
-        <Descriptions.Item label="Tang">{context.room.floor ?? '-'}</Descriptions.Item>
-        <Descriptions.Item label="Dien tich">{context.room.area_m2 ? `${context.room.area_m2} m2` : '-'}</Descriptions.Item>
-        <Descriptions.Item label="Ghi chu">{context.room.note ?? '-'}</Descriptions.Item>
+        <Descriptions.Item label="Building">{context.building.name}</Descriptions.Item>
+        <Descriptions.Item label="Room code">{context.room.code}</Descriptions.Item>
+        <Descriptions.Item label="Status"><Tag color={context.room.status === 'ACTIVE' ? 'green' : 'default'}>{context.room.status}</Tag></Descriptions.Item>
+        <Descriptions.Item label="Contract rent">{formatCurrency(context.contract.rent_price)}</Descriptions.Item>
+        <Descriptions.Item label="Capacity">{context.room.max_occupants} people</Descriptions.Item>
+        <Descriptions.Item label="Floor">{context.room.floor ?? '-'}</Descriptions.Item>
+        <Descriptions.Item label="Area">{context.room.area_m2 ? `${context.room.area_m2} m2` : '-'}</Descriptions.Item>
+        <Descriptions.Item label="Note">{context.room.note ?? '-'}</Descriptions.Item>
       </Descriptions>
     </Card>
   )

@@ -1,10 +1,10 @@
+import { useI18n } from '../../i18n'
 import { EyeOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons'
 import { Alert, Button, DatePicker, Descriptions, Drawer, Empty, Form, Grid, Input, Select, Space, Table, Tag, Tooltip, Typography } from 'antd'
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table'
 import type { Dayjs } from 'dayjs'
 import dayjs from 'dayjs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Localized } from '../../shared/components/Localized'
 import { getUserErrorMessage } from '../../services/errorMessage'
 import { listAuditLogs, type AuditActorRole, type AuditLogFilters, type AuditLogItem } from '../../services/auditLogsService'
 import './AuditLogsPage.css'
@@ -36,6 +36,7 @@ const formatJson = (value: Record<string, unknown> | null): string => (
 )
 
 export function AuditLogsPage() {
+  const { t } = useI18n()
   const screens = Grid.useBreakpoint()
   const [form] = Form.useForm<FilterFormValues>()
   const [items, setItems] = useState<AuditLogItem[]>([])
@@ -79,14 +80,14 @@ export function AuditLogsPage() {
 
   const columns = useMemo<ColumnsType<AuditLogItem>>(() => [
     {
-      title: 'Timestamp',
+      title: t("Timestamp"),
       dataIndex: 'created_at',
       width: 175,
       render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm:ss'),
     },
-    { title: 'Action', dataIndex: 'action', width: 245, render: (value: string) => <Typography.Text code>{value}</Typography.Text> },
+    { title: t("Action"), dataIndex: 'action', width: 245, render: (value: string) => <Typography.Text code>{value}</Typography.Text> },
     {
-      title: 'Actor',
+      title: t("Actor"),
       width: 190,
       render: (_: unknown, row) => (
         <Space direction="vertical" size={0}>
@@ -96,7 +97,7 @@ export function AuditLogsPage() {
       ),
     },
     {
-      title: 'Entity',
+      title: t("Entity"),
       width: 210,
       render: (_: unknown, row) => (
         <Space direction="vertical" size={0}>
@@ -105,20 +106,20 @@ export function AuditLogsPage() {
         </Space>
       ),
     },
-    { title: 'Request ID', dataIndex: 'request_id', width: 210, ellipsis: true, render: (value: string | null) => value ? <Typography.Text copyable>{value}</Typography.Text> : '-' },
+    { title: t("Request ID"), dataIndex: 'request_id', width: 210, ellipsis: true, render: (value: string | null) => value ? <Typography.Text copyable>{value}</Typography.Text> : '-' },
     {
-      title: 'Details',
+      title: t("Details"),
       key: 'details',
       fixed: 'right',
       width: 72,
       align: 'center',
       render: (_: unknown, row) => (
-        <Tooltip title="View audit detail">
-          <Button type="text" icon={<EyeOutlined />} aria-label="View audit detail" onClick={() => setSelected(row)} />
+        <Tooltip title={t("View audit detail")}>
+          <Button type="text" icon={<EyeOutlined />} aria-label={t("View audit detail")} onClick={() => setSelected(row)} />
         </Tooltip>
       ),
     },
-  ], [])
+  ], [t])
 
   const changePage = (pagination: TablePaginationConfig) => {
     setFilters((current) => ({
@@ -129,31 +130,31 @@ export function AuditLogsPage() {
   }
 
   return (
-    <Localized>
+    <>
       <Space direction="vertical" size={16} className="audit-page">
         <div className="audit-header">
           <div>
-            <Typography.Title level={3}>Audit Log</Typography.Title>
-            <Typography.Text type="secondary">Trace important changes and security-sensitive activity.</Typography.Text>
+            <Typography.Title level={3}>{t("Audit Log")}</Typography.Title>
+            <Typography.Text type="secondary">{t("Trace important changes and security-sensitive activity.")}</Typography.Text>
           </div>
-          <Button icon={<ReloadOutlined />} onClick={() => void load()} loading={loading}>Refresh</Button>
+          <Button icon={<ReloadOutlined />} onClick={() => void load()} loading={loading}>{t("Refresh")}</Button>
         </div>
 
         {error ? <Alert type="error" showIcon message={error} /> : null}
 
         <Form form={form} layout="vertical" onFinish={applyFilters} className="audit-filters">
-          <Form.Item name="period" label="Period"><RangePicker showTime allowClear /></Form.Item>
-          <Form.Item name="action" label="Action"><Select allowClear showSearch options={actionOptions} placeholder="All actions" /></Form.Item>
-          <Form.Item name="entityType" label="Entity type"><Select allowClear options={entityOptions} placeholder="All entity types" /></Form.Item>
-          <Form.Item name="actorRole" label="Actor role"><Select allowClear options={actorRoleOptions.map((value) => ({ value, label: value }))} placeholder="All actor roles" /></Form.Item>
-          <Form.Item name="requestId" label="Request ID"><Input allowClear placeholder="Request ID" /></Form.Item>
-          <Form.Item name="search" label="Search"><Input allowClear prefix={<SearchOutlined />} placeholder="Action, entity, actor" /></Form.Item>
+          <Form.Item name="period" label={t("Period")}><RangePicker showTime allowClear /></Form.Item>
+          <Form.Item name="action" label={t("Action")}><Select allowClear showSearch options={actionOptions} placeholder={t("All actions")} /></Form.Item>
+          <Form.Item name="entityType" label={t("Entity type")}><Select allowClear options={entityOptions} placeholder={t("All entity types")} /></Form.Item>
+          <Form.Item name="actorRole" label={t("Actor role")}><Select allowClear options={actorRoleOptions.map((value) => ({ value, label: value }))} placeholder={t("All actor roles")} /></Form.Item>
+          <Form.Item name="requestId" label={t("Request ID")}><Input allowClear placeholder={t("Request ID")} /></Form.Item>
+          <Form.Item name="search" label={t("Search")}><Input allowClear prefix={<SearchOutlined />} placeholder={t("Action, entity, actor")} /></Form.Item>
           <div className="audit-filter-actions">
             <Button htmlType="button" onClick={() => {
               form.resetFields()
               setFilters({ page: 1, pageSize: filters.pageSize })
-            }}>Reset</Button>
-            <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>Apply filters</Button>
+            }}>{t("Reset")}</Button>
+            <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>{t("Apply filters")}</Button>
           </div>
         </Form>
 
@@ -163,7 +164,7 @@ export function AuditLogsPage() {
           dataSource={items}
           columns={columns}
           scroll={{ x: 1100 }}
-          locale={{ emptyText: <Empty description="No audit events found" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+          locale={{ emptyText: <Empty description={t("No audit events found")} image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
           pagination={{ current: filters.page, pageSize: filters.pageSize, total, showSizeChanger: true, pageSizeOptions: [25, 50, 100], showTotal: (value) => `${value} events` }}
           onChange={changePage}
         />
@@ -171,28 +172,28 @@ export function AuditLogsPage() {
         <Drawer
           open={Boolean(selected)}
           onClose={() => setSelected(null)}
-          title="Audit detail"
+          title={t("Audit detail")}
           width={screens.md ? 720 : '100%'}
         >
           {selected ? (
             <Space direction="vertical" size={20} style={{ width: '100%' }}>
               <Descriptions bordered size="small" column={screens.md ? 2 : 1}>
-                <Descriptions.Item label="Timestamp">{dayjs(selected.created_at).format('DD/MM/YYYY HH:mm:ss')}</Descriptions.Item>
-                <Descriptions.Item label="Action"><Typography.Text code>{selected.action}</Typography.Text></Descriptions.Item>
-                <Descriptions.Item label="Actor">{selected.actor_name ?? selected.actor_user_id ?? 'System'}</Descriptions.Item>
-                <Descriptions.Item label="Actor role">{selected.actor_role}</Descriptions.Item>
-                <Descriptions.Item label="Entity type">{selected.entity_type}</Descriptions.Item>
-                <Descriptions.Item label="Entity ID">{selected.entity_id ?? '-'}</Descriptions.Item>
-                <Descriptions.Item label="Request ID" span={2}>{selected.request_id ?? '-'}</Descriptions.Item>
-                <Descriptions.Item label="User agent" span={2}>{selected.user_agent ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label={t("Timestamp")}>{dayjs(selected.created_at).format('DD/MM/YYYY HH:mm:ss')}</Descriptions.Item>
+                <Descriptions.Item label={t("Action")}><Typography.Text code>{selected.action}</Typography.Text></Descriptions.Item>
+                <Descriptions.Item label={t("Actor")}>{selected.actor_name ?? selected.actor_user_id ?? 'System'}</Descriptions.Item>
+                <Descriptions.Item label={t("Actor role")}>{selected.actor_role}</Descriptions.Item>
+                <Descriptions.Item label={t("Entity type")}>{selected.entity_type}</Descriptions.Item>
+                <Descriptions.Item label={t("Entity ID")}>{selected.entity_id ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label={t("Request ID")} span={2}>{selected.request_id ?? '-'}</Descriptions.Item>
+                <Descriptions.Item label={t("User agent")} span={2}>{selected.user_agent ?? '-'}</Descriptions.Item>
               </Descriptions>
-              <section><Typography.Title level={5}>Metadata</Typography.Title><pre className="audit-json">{formatJson(selected.metadata)}</pre></section>
-              <section><Typography.Title level={5}>Before snapshot</Typography.Title><pre className="audit-json">{formatJson(selected.before_snapshot)}</pre></section>
-              <section><Typography.Title level={5}>After snapshot</Typography.Title><pre className="audit-json">{formatJson(selected.after_snapshot)}</pre></section>
+              <section><Typography.Title level={5}>{t("Metadata")}</Typography.Title><pre className="audit-json">{formatJson(selected.metadata)}</pre></section>
+              <section><Typography.Title level={5}>{t("Before snapshot")}</Typography.Title><pre className="audit-json">{formatJson(selected.before_snapshot)}</pre></section>
+              <section><Typography.Title level={5}>{t("After snapshot")}</Typography.Title><pre className="audit-json">{formatJson(selected.after_snapshot)}</pre></section>
             </Space>
           ) : null}
         </Drawer>
       </Space>
-    </Localized>
+    </>
   )
 }

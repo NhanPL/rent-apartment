@@ -36,37 +36,37 @@ export function CurrentInvoice(props: Props) {
   const remaining = invoice ? Math.max(invoice.total - invoice.paid_amount, 0) : 0
 
   return (
-    <Card title="Hoa don thang hien tai" extra={invoice ? <Tag color={props.invoiceStatusColor[invoice.status]}>{invoice.status}</Tag> : null}>
-      {!invoice ? <Alert showIcon type="info" message="Thang nay chua co hoa don." /> : (
+    <Card title="Current month invoice" extra={invoice ? <Tag color={props.invoiceStatusColor[invoice.status]}>{invoice.status}</Tag> : null}>
+      {!invoice ? <Alert showIcon type="info" message="There is no invoice for this month." /> : (
         <Space direction="vertical" size={14} style={{ width: '100%' }}>
-          <Typography.Text type="secondary">Ky hoa don: {dayjs(invoice.month).format('MM/YYYY')}</Typography.Text>
+          <Typography.Text type="secondary">Invoice period: {dayjs(invoice.month).format('MM/YYYY')}</Typography.Text>
           <Row gutter={[12, 12]}>
-            <Col xs={12}><Statistic title="Tien phong" value={invoice.rent_amount} formatter={(value) => props.formatCurrency(Number(value))} /></Col>
-            <Col xs={12}><Statistic title="Tien dien" value={invoice.electric_amount} formatter={(value) => props.formatCurrency(Number(value))} /></Col>
-            <Col xs={12}><Statistic title="Tien nuoc" value={invoice.water_amount} formatter={(value) => props.formatCurrency(Number(value))} /></Col>
-            <Col xs={12}><Statistic title="Phi khac" value={invoice.other_amount} formatter={(value) => props.formatCurrency(Number(value))} /></Col>
+            <Col xs={12}><Statistic title="Room rent" value={invoice.rent_amount} formatter={(value) => props.formatCurrency(Number(value))} /></Col>
+            <Col xs={12}><Statistic title="Electricity amount" value={invoice.electric_amount} formatter={(value) => props.formatCurrency(Number(value))} /></Col>
+            <Col xs={12}><Statistic title="Water amount" value={invoice.water_amount} formatter={(value) => props.formatCurrency(Number(value))} /></Col>
+            <Col xs={12}><Statistic title="Other fees" value={invoice.other_amount} formatter={(value) => props.formatCurrency(Number(value))} /></Col>
           </Row>
-          <Card size="small" style={{ background: '#f6ffed' }}><Statistic title="Tong thanh toan" value={invoice.total} valueStyle={{ color: '#389e0d' }} formatter={(value) => props.formatCurrency(Number(value))} /></Card>
+          <Card size="small" style={{ background: '#f6ffed' }}><Statistic title="Total payment" value={invoice.total} valueStyle={{ color: '#389e0d' }} formatter={(value) => props.formatCurrency(Number(value))} /></Card>
           <Space wrap>
-            <Typography.Text type="secondary">Han thanh toan: {invoice.due_date ? dayjs(invoice.due_date).format('DD/MM/YYYY') : '-'}</Typography.Text>
+            <Typography.Text type="secondary">Due date: {invoice.due_date ? dayjs(invoice.due_date).format('DD/MM/YYYY') : '-'}</Typography.Text>
             {invoice.payment_status ? <Tag color={props.paymentStatusColor[invoice.payment_status]}>Payment: {invoice.payment_status}</Tag> : null}
             {invoice.payment_request_status ? <Tag color={props.requestStatusColor[invoice.payment_request_status]}>Request: {invoice.payment_request_status}</Tag> : null}
           </Space>
-          <Typography.Text type="secondary">Ngay thanh toan: {invoice.paid_at ? dayjs(invoice.paid_at).format('DD/MM/YYYY') : '-'}</Typography.Text>
-          <Typography.Text type="secondary">Da thanh toan: {props.formatCurrency(invoice.paid_amount)}</Typography.Text>
+          <Typography.Text type="secondary">Paid date: {invoice.paid_at ? dayjs(invoice.paid_at).format('DD/MM/YYYY') : '-'}</Typography.Text>
+          <Typography.Text type="secondary">Paid amount: {props.formatCurrency(invoice.paid_amount)}</Typography.Text>
           <Typography.Text type="secondary">Remaining: {props.formatCurrency(remaining)}</Typography.Text>
           {props.paymentRequestError ? <Alert showIcon type="error" message={props.paymentRequestError} /> : !request ? (
-            <Alert showIcon type="info" message="Chua co yeu cau chuyen khoan cho hoa don nay." />
+            <Alert showIcon type="info" message="No payment request has been sent for this invoice." />
           ) : (
-            <Card size="small" title="Thanh toan chuyen khoan">
+            <Card size="small" title="Bank transfer payment">
               <Space direction="vertical" size={12} style={{ width: '100%' }}>
                 <Descriptions bordered size="small" column={1}>
-                  <Descriptions.Item label="So tien can chuyen">{props.formatCurrency(request.remaining_amount ?? request.amount)}</Descriptions.Item>
-                  <Descriptions.Item label="Ngan hang">{request.bank_code ?? '-'}</Descriptions.Item>
-                  <Descriptions.Item label="So tai khoan">{request.bank_account_no ?? '-'}</Descriptions.Item>
-                  <Descriptions.Item label="Chu tai khoan">{request.bank_account_name ?? '-'}</Descriptions.Item>
-                  <Descriptions.Item label="Noi dung chuyen khoan">{request.transfer_note ?? '-'}</Descriptions.Item>
-                  <Descriptions.Item label="Han yeu cau">{request.expires_at ? dayjs(request.expires_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
+                  <Descriptions.Item label="Amount to transfer">{props.formatCurrency(request.remaining_amount ?? request.amount)}</Descriptions.Item>
+                  <Descriptions.Item label="Bank">{request.bank_code ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="Account number">{request.bank_account_no ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="Account name">{request.bank_account_name ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="Transfer note">{request.transfer_note ?? '-'}</Descriptions.Item>
+                  <Descriptions.Item label="Request due">{request.expires_at ? dayjs(request.expires_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
                 </Descriptions>
                 {request.qr_image_url ? <VietQrImage key={request.qr_image_url} url={request.qr_image_url} alt={`VietQR payment for invoice ${dayjs(invoice.month).format('MM/YYYY')}`} /> : request.qr_content ? <Input.TextArea value={request.qr_content} autoSize readOnly /> : null}
                 {(['WAITING_TRANSFER', 'REJECTED'].includes(request.status) && invoice.status !== 'PAID') ? (
@@ -81,7 +81,7 @@ export function CurrentInvoice(props: Props) {
                     onFinish={props.onProofSubmit}
                     onFinishFailed={props.onFormFailure}
                   />
-                ) : <Alert showIcon type={request.status === 'TRANSFER_SUBMITTED' ? 'warning' : 'success'} message={request.status === 'TRANSFER_SUBMITTED' ? 'Bien lai dang cho quan ly duyet.' : 'Yeu cau thanh toan dang khong nhan bien lai moi.'} />}
+                ) : <Alert showIcon type={request.status === 'TRANSFER_SUBMITTED' ? 'warning' : 'success'} message={request.status === 'TRANSFER_SUBMITTED' ? 'The payment proof is awaiting manager review.' : 'This payment request is not accepting a new proof.'} />}
               </Space>
             </Card>
           )}

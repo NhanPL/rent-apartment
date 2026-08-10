@@ -1,3 +1,4 @@
+import { useI18n } from '../../../i18n'
 import {
   BankOutlined,
   DollarOutlined,
@@ -8,7 +9,6 @@ import {
 import { Card, Col, Grid, Row, Skeleton, Space, Statistic, Typography } from 'antd'
 import type { CSSProperties, ReactNode } from 'react'
 import type { DashboardSummary } from '../types'
-import { Localized } from '../../../shared/components/Localized'
 
 interface DashboardSummaryCardsProps {
   loading: boolean
@@ -45,6 +45,7 @@ const cardBodyStyle: CSSProperties = {
 }
 
 export function DashboardSummaryCards({ loading, summary, currencyFormatter }: DashboardSummaryCardsProps) {
+  const { t } = useI18n()
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.sm
   const iconSize = isMobile ? ICON_SIZE_MOBILE : ICON_SIZE_DESKTOP
@@ -66,7 +67,7 @@ export function DashboardSummaryCards({ loading, summary, currencyFormatter }: D
   const items: SummaryCardItem[] = [
     {
       key: 'total-buildings',
-      label: 'Total Buildings',
+      label: t("Total Buildings"),
       value: summary.totalBuildings,
       icon: <BankOutlined style={{ fontSize: iconSize }} />,
       iconBg: '#E6F4FF',
@@ -74,7 +75,7 @@ export function DashboardSummaryCards({ loading, summary, currencyFormatter }: D
     },
     {
       key: 'total-rooms',
-      label: 'Total Rooms',
+      label: t("Total Rooms"),
       value: summary.totalRooms,
       icon: <HomeOutlined style={{ fontSize: iconSize }} />,
       iconBg: '#F6FFED',
@@ -82,7 +83,7 @@ export function DashboardSummaryCards({ loading, summary, currencyFormatter }: D
     },
     {
       key: 'occupied-rooms',
-      label: 'Occupied Rooms',
+      label: t("Occupied Rooms"),
       value: summary.occupiedRooms,
       icon: <HomeOutlined style={{ fontSize: iconSize }} />,
       iconBg: '#FFF7E6',
@@ -90,7 +91,7 @@ export function DashboardSummaryCards({ loading, summary, currencyFormatter }: D
     },
     {
       key: 'vacant-rooms',
-      label: 'Vacant Rooms',
+      label: t("Vacant Rooms"),
       value: summary.vacantRooms,
       icon: <HomeOutlined style={{ fontSize: iconSize }} />,
       iconBg: '#F9F0FF',
@@ -98,7 +99,7 @@ export function DashboardSummaryCards({ loading, summary, currencyFormatter }: D
     },
     {
       key: 'total-tenants',
-      label: 'Total Tenants',
+      label: t("Total Tenants"),
       value: summary.totalTenants,
       icon: <TeamOutlined style={{ fontSize: iconSize }} />,
       iconBg: '#FFF1F0',
@@ -106,7 +107,7 @@ export function DashboardSummaryCards({ loading, summary, currencyFormatter }: D
     },
     {
       key: 'overdue-bills',
-      label: 'Overdue Bills',
+      label: t("Overdue Bills"),
       value: summary.overdueInvoices,
       icon: <WarningOutlined style={{ fontSize: iconSize }} />,
       iconBg: '#FFFBE6',
@@ -115,7 +116,7 @@ export function DashboardSummaryCards({ loading, summary, currencyFormatter }: D
     },
     {
       key: 'unpaid-bills',
-      label: 'Unpaid Bills',
+      label: t("Unpaid Bills"),
       value: summary.unpaidInvoices,
       icon: <WarningOutlined style={{ fontSize: iconSize }} />,
       iconBg: '#FFF7E6',
@@ -124,7 +125,7 @@ export function DashboardSummaryCards({ loading, summary, currencyFormatter }: D
     },
     {
       key: 'monthly-revenue',
-      label: 'Monthly Revenue',
+      label: t("Monthly Revenue"),
       value: currencyFormatter(summary.monthlyRevenue),
       icon: <DollarOutlined style={{ fontSize: iconSize }} />,
       iconBg: '#E6FFFB',
@@ -133,7 +134,7 @@ export function DashboardSummaryCards({ loading, summary, currencyFormatter }: D
     },
     {
       key: 'occupancy-rate',
-      label: 'Occupancy Rate',
+      label: t("Occupancy Rate"),
       value: `${summary.occupancyRate}%`,
       icon: <TeamOutlined style={{ fontSize: iconSize }} />,
       iconBg: '#F0F5FF',
@@ -143,7 +144,7 @@ export function DashboardSummaryCards({ loading, summary, currencyFormatter }: D
   ]
 
   return (
-    <Localized>
+    <>
     <Row gutter={[16, 16]}>
       {items.map((item) => (
         <Col key={item.key} xs={24} sm={12} xl={6}>
@@ -170,6 +171,6 @@ export function DashboardSummaryCards({ loading, summary, currencyFormatter }: D
         </Col>
       ))}
     </Row>
-    </Localized>
+    </>
   )
 }

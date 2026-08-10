@@ -8,7 +8,6 @@ import type { SidebarRouteItem } from '../routes/routeConfig'
 import { getFormErrorMessage, getUserErrorMessage } from '../services/errorMessage'
 import { useI18n } from '../i18n'
 import { LanguageSwitcher } from '../shared/components/LanguageSwitcher'
-import { Localized } from '../shared/components/Localized'
 import './AppLayout.css'
 
 const { Header, Sider, Content, Footer } = Layout
@@ -91,7 +90,7 @@ export function AppLayout({
   }
 
   return (
-    <Localized>
+    <>
     <Layout className="app-layout">
       {isDesktop ? (
         <Sider theme="light" collapsible collapsed={collapsed} trigger={null} width={240} collapsedWidth={80} className="app-sider">
@@ -99,7 +98,7 @@ export function AppLayout({
           {navMenu}
         </Sider>
       ) : (
-        <Drawer title="Rent Apartment" placement="left" open={mobileOpen} onClose={() => setMobileOpen(false)} width={280} styles={{ body: { padding: 0 } }}>
+        <Drawer title={t("Rent Apartment")} placement="left" open={mobileOpen} onClose={() => setMobileOpen(false)} width={280} styles={{ body: { padding: 0 } }}>
           {navMenu}
         </Drawer>
       )}
@@ -117,7 +116,7 @@ export function AppLayout({
                 {pageTitle}
               </Typography.Title>
               <Typography.Text type="secondary" className="header-subtitle" ellipsis>
-                Rent Apartment Management
+                {t("Rent Apartment Management")}
               </Typography.Text>
             </div>
           </div>
@@ -128,7 +127,7 @@ export function AppLayout({
               items: [
                 {
                   key: 'change-password',
-                  label: 'Change password',
+                  label: t("Change password"),
                   icon: <LockOutlined />,
                   onClick: () => {
                     setChangePasswordError(null)
@@ -137,7 +136,7 @@ export function AppLayout({
                 },
                 {
                   key: 'revoke-all-sessions',
-                  label: 'Sign out all devices',
+                  label: t("Sign out all devices"),
                   icon: <DisconnectOutlined />,
                   onClick: () => {
                     Modal.confirm({
@@ -163,7 +162,7 @@ export function AppLayout({
                 },
                 {
                   key: 'logout',
-                  label: 'Logout',
+                  label: t("Logout"),
                   icon: <LogoutOutlined />,
                   onClick: () => {
                     void onLogout()
@@ -178,12 +177,12 @@ export function AppLayout({
           </Dropdown>
         </Header>
         <Content className="app-content">{content}</Content>
-        <Footer className="app-footer">© {new Date().getFullYear()} Rent Apartment Management</Footer>
+        <Footer className="app-footer">{t("©")} {new Date().getFullYear()} {t("Rent Apartment Management")}</Footer>
       </Layout>
       <Modal
-        title="Change password"
+        title={t("Change password")}
         open={changePasswordOpen}
-        okText="Change password"
+        okText={t("Change password")}
         confirmLoading={changingPassword}
         onOk={() => changePasswordForm.submit()}
         onCancel={() => {
@@ -201,7 +200,7 @@ export function AppLayout({
           <Alert
             showIcon
             type="error"
-            message="Password change failed"
+            message={t("Password change failed")}
             description={changePasswordError}
             style={{ marginBottom: 16 }}
           />
@@ -215,9 +214,9 @@ export function AppLayout({
         >
           <Form.Item
             name="currentPassword"
-            label="Current password"
+            label={t("Current password")}
             rules={[
-              { required: true, message: 'Please enter your current password.' },
+              { required: true, message: t("Please enter your current password.") },
               {
                 max: PASSWORD_MAX_LENGTH,
                 message: `The password cannot exceed ${PASSWORD_MAX_LENGTH} characters.`,
@@ -228,10 +227,10 @@ export function AppLayout({
           </Form.Item>
           <Form.Item
             name="newPassword"
-            label="New password"
+            label={t("New password")}
             dependencies={['currentPassword']}
             rules={[
-              { required: true, message: 'Please enter a new password.' },
+              { required: true, message: t("Please enter a new password.") },
               ...passwordLengthRules,
               ({ getFieldValue }) => ({
                 validator(_, value: string) {
@@ -245,10 +244,10 @@ export function AppLayout({
           </Form.Item>
           <Form.Item
             name="confirmPassword"
-            label="Confirm new password"
+            label={t("Confirm new password")}
             dependencies={['newPassword']}
             rules={[
-              { required: true, message: 'Please confirm your new password.' },
+              { required: true, message: t("Please confirm your new password.") },
               ({ getFieldValue }) => ({
                 validator(_, value: string) {
                   if (!value || value === getFieldValue('newPassword')) return Promise.resolve()
@@ -262,6 +261,6 @@ export function AppLayout({
         </Form>
       </Modal>
     </Layout>
-    </Localized>
+    </>
   )
 }

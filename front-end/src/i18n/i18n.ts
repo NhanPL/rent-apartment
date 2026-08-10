@@ -1,5 +1,5 @@
-import type { AppLanguage, TranslationEntry } from './translations'
-import { translationCatalog } from './translations'
+import type { AppLanguage } from './translations'
+import { i18nInstance } from './i18nextInstance'
 
 export const LANGUAGE_STORAGE_KEY = 'rent_apartment_language'
 export const DEFAULT_LANGUAGE: AppLanguage = 'en'
@@ -7,20 +7,6 @@ export const DEFAULT_LANGUAGE: AppLanguage = 'en'
 let activeLanguage: AppLanguage = DEFAULT_LANGUAGE
 
 const normalizeLookup = (value: string) => value.trim().replace(/\s+/g, ' ')
-
-function createLookup(catalog: TranslationEntry[]) {
-  const lookup = new Map<string, TranslationEntry>()
-
-  for (const entry of catalog) {
-    for (const source of [entry.en, entry.vi, ...(entry.aliases ?? [])]) {
-      lookup.set(normalizeLookup(source), entry)
-    }
-  }
-
-  return lookup
-}
-
-const translationLookup = createLookup(translationCatalog)
 
 interface PatternTranslation {
   patterns: RegExp[]
@@ -81,6 +67,7 @@ export function detectInitialLanguage(): AppLanguage {
 
 export function setActiveLanguage(language: AppLanguage) {
   activeLanguage = language
+  void i18nInstance.changeLanguage(language)
 }
 
 export function getActiveLanguage() {
@@ -92,9 +79,9 @@ export function translate(value: string, language = activeLanguage): string {
 
   const leadingWhitespace = value.match(/^\s*/)?.[0] ?? ''
   const trailingWhitespace = value.match(/\s*$/)?.[0] ?? ''
-  const entry = translationLookup.get(normalizeLookup(value))
-  if (!entry) {
-    const normalizedValue = normalizeLookup(value)
+  const normalizedValue = normalizeLookup(value)
+  const translated = i18nInstance.getFixedT(language, 'common')(normalizedValue, { defaultValue: normalizedValue })
+  if (translated === normalizedValue) {
     for (const patternTranslation of patternTranslations) {
       for (const pattern of patternTranslation.patterns) {
         if (pattern.test(normalizedValue)) {
@@ -110,7 +97,7 @@ export function translate(value: string, language = activeLanguage): string {
     return value
   }
 
-  return `${leadingWhitespace}${entry[language]}${trailingWhitespace}`
+  return `${leadingWhitespace}${translated}${trailingWhitespace}`
 }
 
 export function translateTemplate(
@@ -118,12 +105,13 @@ export function translateTemplate(
   parameters: Record<string, string | number> = {},
   language = activeLanguage,
 ) {
-  const translated = translate(value, language)
-  return translated.replace(/\{\{(\w+)\}\}/g, (match, key: string) =>
-    Object.prototype.hasOwnProperty.call(parameters, key) ? String(parameters[key]) : match,
-  )
+  const translated = i18nInstance.getFixedT(language, 'common')(normalizeLookup(value), {
+    defaultValue: translate(value, language),
+    ...parameters,
+  })
+  return `${value.match(/^\s*/)?.[0] ?? ''}${translated}${value.match(/\s*$/)?.[0] ?? ''}`
 }
 
 export function hasTranslation(value: string) {
-  return translationLookup.has(normalizeLookup(value))
+  return i18nInstance.exists(normalizeLookup(value), { lng: activeLanguage, ns: 'common' })
 }

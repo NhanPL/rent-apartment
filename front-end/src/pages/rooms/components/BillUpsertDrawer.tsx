@@ -1,3 +1,4 @@
+import { useI18n } from '../../../i18n'
 import { Button, Drawer, Form, Grid, Space, message } from 'antd'
 import { useEffect, useMemo } from 'react'
 import { InvoiceFormFields } from '../../invoices/components/invoiceFormShared'
@@ -9,7 +10,6 @@ import {
 import '../../invoices/components/invoiceFormShared.css'
 import type { Contract, InvoiceStatus, Room } from '../../invoices/types'
 import type { MonthlyBill, MonthlyBillUpsertPayload } from '../../buildings/components/roomTypes'
-import { Localized } from '../../../shared/components/Localized'
 import { vndCurrency } from '../../../i18n'
 import { getFormErrorMessage } from '../../../services/errorMessage'
 
@@ -44,6 +44,7 @@ export function BillUpsertDrawer({
   onClose,
   onSubmit,
 }: BillUpsertDrawerProps) {
+  const { t } = useI18n()
   const [form] = Form.useForm<InvoiceFormValues>()
   const screens = Grid.useBreakpoint()
 
@@ -121,7 +122,7 @@ export function BillUpsertDrawer({
   }
 
   return (
-    <Localized>
+    <>
     <Drawer
       open={open}
       title={mode === 'create' ? 'Add Bill' : 'Edit Bill'}
@@ -142,13 +143,13 @@ export function BillUpsertDrawer({
           roomLocked
         />
         <Space className="invoice-drawer-actions">
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{t("Cancel")}</Button>
           <Button type="primary" loading={loading} onClick={() => void handleSubmit()}>
             {mode === 'create' ? 'Create bill' : 'Save changes'}
           </Button>
         </Space>
       </Form>
     </Drawer>
-    </Localized>
+    </>
   )
 }

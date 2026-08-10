@@ -4,7 +4,6 @@ import dayjs, { type Dayjs } from 'dayjs'
 import { useCallback, useEffect, useState } from 'react'
 import { dashboardFormatters, getDashboardData, listDashboardBuildings } from '../../services/dashboardService'
 import { getUserErrorMessage } from '../../services/errorMessage'
-import { Localized } from '../../shared/components/Localized'
 import { useI18n } from '../../i18n'
 import { DashboardCharts } from './components/DashboardCharts'
 import { DashboardRecentActivity } from './components/DashboardRecentActivity'
@@ -17,7 +16,7 @@ interface DashboardPageProps {
 }
 
 export function DashboardPage({ onNavigate }: DashboardPageProps) {
-  const { language } = useI18n()
+  const { t } = useI18n()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<DashboardData | null>(null)
@@ -40,7 +39,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
     } finally {
       setLoading(false)
     }
-  }, [buildingId, language, month])
+  }, [buildingId, month])
 
   useEffect(() => {
     void loadDashboard()
@@ -63,15 +62,15 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
   }, [])
 
   return (
-    <Localized>
+    <>
     <Space direction="vertical" size={16} className="dashboard-page">
       <div className="dashboard-page-header">
         <div>
           <Typography.Title level={3} style={{ margin: 0 }}>
-            Portfolio Overview
+            {t("Portfolio Overview")}
           </Typography.Title>
           <Typography.Text type="secondary">
-            Metrics are derived from building, room, contract, tenant, invoice, and payment entities.
+            {t("Metrics are derived from building, room, contract, tenant, invoice, and payment entities.")}
           </Typography.Text>
         </div>
         <Space wrap className="dashboard-page-actions">
@@ -85,14 +84,14 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
             allowClear
             showSearch
             optionFilterProp="label"
-            placeholder="All buildings"
+            placeholder={t("All buildings")}
             value={buildingId}
             onChange={(value) => setBuildingId(value)}
             options={buildings.map((building) => ({ value: building.id, label: building.name }))}
             className="dashboard-building-filter"
           />
           <Button icon={<ReloadOutlined />} onClick={() => void loadDashboard()}>
-            Refresh
+            {t("Refresh")}
           </Button>
         </Space>
       </div>
@@ -121,6 +120,6 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
         onNavigate={onNavigate}
       />
     </Space>
-    </Localized>
+    </>
   )
 }

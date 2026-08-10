@@ -1,3 +1,4 @@
+import { useI18n } from '../../i18n'
 import {
   EditOutlined,
   EyeOutlined,
@@ -48,7 +49,6 @@ import type {
   ContractUpdatePayload,
 } from './types'
 import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
-import { Localized } from '../../shared/components/Localized'
 import { vndCurrency } from '../../i18n'
 import { ContractFilters } from './components/ContractFilters'
 import { ContractTable } from './components/ContractTable'
@@ -171,6 +171,7 @@ const toContractUpdatePayload = (values: ContractFormValues): ContractUpdatePayl
 }
 
 export function ContractsPage() {
+  const { t } = useI18n()
   const screens = Grid.useBreakpoint()
   const [contractForm] = Form.useForm<ContractFormValues>()
   const [addTenantForm] = Form.useForm<AddTenantFormValues>()
@@ -538,76 +539,76 @@ export function ContractsPage() {
   const columns: ColumnsType<ContractListItem> = useMemo(
     () => [
       {
-        title: 'Code',
+        title: t("Code"),
         dataIndex: 'contract_code',
         key: 'contract_code',
         width: 170,
         render: (value: string | null, item) => value ?? item.id.slice(0, 8),
       },
       {
-        title: 'Status',
+        title: t("Status"),
         dataIndex: 'status',
         key: 'status',
         width: 120,
         render: (value: ContractStatus) => statusTag(value),
       },
       {
-        title: 'Business stage',
+        title: t("Business stage"),
         dataIndex: 'business_stage',
         key: 'business_stage',
         width: 160,
         render: (value: ContractBusinessStage | undefined) => businessStageTag(value),
       },
       {
-        title: 'Building / Room',
+        title: t("Building / Room"),
         key: 'room',
         width: 220,
         render: (_, item) => (
           <Space direction="vertical" size={0}>
             <Typography.Text>{item.building_name}</Typography.Text>
-            <Typography.Text type="secondary">Room {item.room_code}</Typography.Text>
+            <Typography.Text type="secondary">{t("Room")} {item.room_code}</Typography.Text>
           </Space>
         ),
       },
       {
-        title: 'Tenants',
+        title: t("Tenants"),
         key: 'tenants',
         width: 260,
-        render: (_, item) => item.tenant_names || item.tenant_name || <Typography.Text type="secondary">No tenants</Typography.Text>,
+        render: (_, item) => item.tenant_names || item.tenant_name || <Typography.Text type="secondary">{t("No tenants")}</Typography.Text>,
       },
       {
-        title: 'Occupants',
+        title: t("Occupants"),
         dataIndex: 'active_tenants_count',
         key: 'active_tenants_count',
         width: 110,
       },
       {
-        title: 'Dates',
+        title: t("Dates"),
         key: 'dates',
         width: 210,
         render: (_, item) => (
           <Space direction="vertical" size={0}>
             <Typography.Text>{formatDate(item.start_date)}</Typography.Text>
-            <Typography.Text type="secondary">End: {formatDate(item.end_date)}</Typography.Text>
+            <Typography.Text type="secondary">{t("End:")} {formatDate(item.end_date)}</Typography.Text>
           </Space>
         ),
       },
       {
-        title: 'Rent',
+        title: t("Rent"),
         dataIndex: 'rent_price',
         key: 'rent_price',
         width: 160,
         render: (value: number) => currency.format(value),
       },
       {
-        title: 'Deposit',
+        title: t("Deposit"),
         dataIndex: 'deposit_amount',
         key: 'deposit_amount',
         width: 160,
         render: (value: number) => currency.format(value),
       },
       {
-        title: 'Actions',
+        title: t("Actions"),
         key: 'actions',
         fixed: 'right',
         width: 180,
@@ -621,20 +622,20 @@ export function ContractsPage() {
                 loading={actionLoading === `activate-${item.id}`}
                 onClick={() => void handleActivate(item.id)}
               >
-                Activate
+                {t("Activate")}
               </Button>
             ) : null}
           </Space>
         ),
       },
     ],
-    [actionLoading, handleActivate, openDetail, openEdit],
+    [actionLoading, handleActivate, openDetail, openEdit, t],
   )
 
   const tenantColumns: ColumnsType<ContractTenant> = useMemo(
     () => [
       {
-        title: 'Tenant',
+        title: t("Tenant"),
         key: 'tenant',
         render: (_, tenant) => (
           <Space direction="vertical" size={0}>
@@ -644,28 +645,28 @@ export function ContractsPage() {
         ),
       },
       {
-        title: 'Role',
+        title: t("Role"),
         dataIndex: 'is_primary',
         key: 'is_primary',
         width: 120,
-        render: (value: boolean) => (value ? <Tag color="green">Primary</Tag> : <Tag>Co-tenant</Tag>),
+        render: (value: boolean) => (value ? <Tag color="green">{t("Primary")}</Tag> : <Tag>{t("Co-tenant")}</Tag>),
       },
       {
-        title: 'Joined',
+        title: t("Joined"),
         dataIndex: 'joined_at',
         key: 'joined_at',
         width: 130,
         render: (value: string) => formatDate(value),
       },
       {
-        title: 'Left',
+        title: t("Left"),
         dataIndex: 'left_at',
         key: 'left_at',
         width: 130,
         render: (value: string | null) => formatDate(value),
       },
       {
-        title: 'Actions',
+        title: t("Actions"),
         key: 'actions',
         width: 210,
         render: (_, tenant) => {
@@ -678,7 +679,7 @@ export function ContractsPage() {
                 loading={actionLoading === `primary-${tenant.tenant_id}`}
                 onClick={() => void handleMakePrimary(tenant)}
               >
-                Make primary
+                {t("Make primary")}
               </Button>
               <Button
                 size="small"
@@ -687,32 +688,32 @@ export function ContractsPage() {
                 loading={actionLoading === `remove-${tenant.tenant_id}`}
                 onClick={() => void handleRemoveTenant(tenant)}
               >
-                Remove
+                {t("Remove")}
               </Button>
             </Space>
           )
         },
       },
     ],
-    [actionLoading, detailCanChange, handleMakePrimary, handleRemoveTenant],
+    [actionLoading, detailCanChange, handleMakePrimary, handleRemoveTenant, t],
   )
 
   return (
-    <Localized>
+    <>
     <div className="contracts-page">
       <Card>
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <div className="contracts-toolbar">
             <div>
               <Typography.Title level={4} style={{ margin: 0 }}>
-                Contracts
+                {t("Contracts")}
               </Typography.Title>
               <Typography.Text type="secondary">
-                Manage rental contracts, occupants, lifecycle status, and room capacity.
+                {t("Manage rental contracts, occupants, lifecycle status, and room capacity.")}
               </Typography.Text>
             </div>
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-              New Contract
+              {t("New Contract")}
             </Button>
           </div>
 
@@ -769,7 +770,7 @@ export function ContractsPage() {
 
       <Drawer
         open={detailOpen}
-        title="Contract Detail"
+        title={t("Contract Detail")}
         placement="right"
         width={screens.xl ? 860 : screens.md ? 720 : '100%'}
         onClose={closeDetail}
@@ -782,7 +783,7 @@ export function ContractsPage() {
               <Space direction="vertical" size={2}>
                 <Typography.Text strong>{detailItem.contract_code ?? detailItem.id}</Typography.Text>
                 <Typography.Text type="secondary">
-                  {detailItem.building_name} / Room {detailItem.room_code}
+                  {detailItem.building_name} {t("/ Room")} {detailItem.room_code}
                 </Typography.Text>
               </Space>
               <ContractStatusActions
@@ -799,23 +800,23 @@ export function ContractsPage() {
             </div>
 
             <Descriptions bordered size="small" column={screens.lg ? 2 : 1}>
-              <Descriptions.Item label="Business stage">{businessStageTag(detailItem.business_stage)}</Descriptions.Item>
-              <Descriptions.Item label="Technical status">{statusTag(detailItem.status)}</Descriptions.Item>
-              <Descriptions.Item label="Rent">{currency.format(detailItem.rent_price)}</Descriptions.Item>
-              <Descriptions.Item label="Deposit">{currency.format(detailItem.deposit_amount)}</Descriptions.Item>
-              <Descriptions.Item label="Billing day">{detailItem.billing_day}</Descriptions.Item>
-              <Descriptions.Item label="Occupants">
-                {detailItem.active_tenants_count} / {detailItem.max_occupants}
+              <Descriptions.Item label={t("Business stage")}>{businessStageTag(detailItem.business_stage)}</Descriptions.Item>
+              <Descriptions.Item label={t("Technical status")}>{statusTag(detailItem.status)}</Descriptions.Item>
+              <Descriptions.Item label={t("Rent")}>{currency.format(detailItem.rent_price)}</Descriptions.Item>
+              <Descriptions.Item label={t("Deposit")}>{currency.format(detailItem.deposit_amount)}</Descriptions.Item>
+              <Descriptions.Item label={t("Billing day")}>{detailItem.billing_day}</Descriptions.Item>
+              <Descriptions.Item label={t("Occupants")}>
+                {detailItem.active_tenants_count} {t("/")} {detailItem.max_occupants}
               </Descriptions.Item>
-              <Descriptions.Item label="Start date">{formatDate(detailItem.start_date)}</Descriptions.Item>
-              <Descriptions.Item label="End date">{formatDate(detailItem.end_date)}</Descriptions.Item>
-              <Descriptions.Item label="Move-in">{formatDate(detailItem.move_in_date)}</Descriptions.Item>
-              <Descriptions.Item label="Move-out">{formatDate(detailItem.move_out_date)}</Descriptions.Item>
-              <Descriptions.Item label="Note" span={screens.lg ? 2 : 1}>{detailItem.note ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Start date")}>{formatDate(detailItem.start_date)}</Descriptions.Item>
+              <Descriptions.Item label={t("End date")}>{formatDate(detailItem.end_date)}</Descriptions.Item>
+              <Descriptions.Item label={t("Move-in")}>{formatDate(detailItem.move_in_date)}</Descriptions.Item>
+              <Descriptions.Item label={t("Move-out")}>{formatDate(detailItem.move_out_date)}</Descriptions.Item>
+              <Descriptions.Item label={t("Note")} span={screens.lg ? 2 : 1}>{detailItem.note ?? '-'}</Descriptions.Item>
             </Descriptions>
 
             <div>
-              <Typography.Title level={5}>Status history</Typography.Title>
+              <Typography.Title level={5}>{t("Status history")}</Typography.Title>
               <Timeline items={statusHistoryItems} />
             </div>
 
@@ -828,33 +829,33 @@ export function ContractsPage() {
 
             <div className="contract-tenants-section">
               <div className="contract-section-title">
-                <Typography.Title level={5}>Tenants</Typography.Title>
+                <Typography.Title level={5}>{t("Tenants")}</Typography.Title>
                 <Typography.Text type="secondary">
-                  One active tenant must be marked primary before activation.
+                  {t("One active tenant must be marked primary before activation.")}
                 </Typography.Text>
               </div>
 
               {detailCanChange ? (
                 <Form form={addTenantForm} layout="vertical" className="contract-tenant-form">
-                  <Form.Item name="tenant_id" label="Tenant" rules={[{ required: true, message: 'Please select a tenant' }]}>
+                  <Form.Item name="tenant_id" label={t("Tenant")} rules={[{ required: true, message: t("Please select a tenant") }]}>
                     <Select
                       showSearch
                       optionFilterProp="label"
                       options={availableTenantsForDetail.map((tenant) => ({ label: tenant.full_name, value: tenant.id }))}
                     />
                   </Form.Item>
-                  <Form.Item name="joined_at" label="Joined at">
+                  <Form.Item name="joined_at" label={t("Joined at")}>
                     <Input type="date" />
                   </Form.Item>
                   <Form.Item name="is_primary" valuePropName="checked" className="contract-primary-checkbox">
-                    <Checkbox>Primary</Checkbox>
+                    <Checkbox>{t("Primary")}</Checkbox>
                   </Form.Item>
                   <Button
                     type="primary"
                     loading={actionLoading === `add-tenant-${detailItem.id}`}
                     onClick={() => void submitAddTenant()}
                   >
-                    Add tenant
+                    {t("Add tenant")}
                   </Button>
                 </Form>
               ) : null}
@@ -883,15 +884,15 @@ export function ContractsPage() {
         destroyOnClose
       >
         <Form form={closeForm} layout="vertical">
-          <Form.Item name="close_date" label="Close date" rules={[{ required: true, message: 'Please select close date' }]}>
+          <Form.Item name="close_date" label={t("Close date")} rules={[{ required: true, message: t("Please select close date") }]}>
             <Input type="date" />
           </Form.Item>
-          <Form.Item name="note" label="Note">
+          <Form.Item name="note" label={t("Note")}>
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
       </Modal>
     </div>
-    </Localized>
+    </>
   )
 }

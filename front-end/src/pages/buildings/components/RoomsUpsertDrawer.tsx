@@ -1,8 +1,8 @@
+import { useI18n } from '../../../i18n'
 import { ExclamationCircleOutlined } from '@ant-design/icons'
 import { Button, Drawer, Form, Grid, Input, InputNumber, Modal, Select, Space, message } from 'antd'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Room, RoomStatus, RoomUpsertPayload } from './roomTypes'
-import { Localized } from '../../../shared/components/Localized'
 import { getFormErrorMessage, isFormValidationError } from '../../../services/errorMessage'
 
 interface RoomsUpsertDrawerProps {
@@ -31,6 +31,7 @@ const defaultValues: Omit<RoomUpsertPayload, 'building_id'> = {
 }
 
 export function RoomsUpsertDrawer({ open, mode, room, building_id, loading, existingCodes, onClose, onSubmit }: RoomsUpsertDrawerProps) {
+  const { t } = useI18n()
   const [form] = Form.useForm<Omit<RoomUpsertPayload, 'building_id'>>()
   const [canSave, setCanSave] = useState(false)
   const [discardModalOpen, setDiscardModalOpen] = useState(false)
@@ -94,7 +95,7 @@ export function RoomsUpsertDrawer({ open, mode, room, building_id, loading, exis
   }
 
   return (
-    <Localized>
+    <>
     <>
       <Drawer
         open={open}
@@ -120,10 +121,10 @@ export function RoomsUpsertDrawer({ open, mode, room, building_id, loading, exis
           }}
         >
           <Form.Item
-            label="Code"
+            label={t("Code")}
             name="code"
             rules={[
-              { required: true, message: 'Code is required' },
+              { required: true, message: t("Code is required") },
               {
                 validator: async (_rule: unknown, value: string) => {
                   if (!value) return
@@ -134,42 +135,42 @@ export function RoomsUpsertDrawer({ open, mode, room, building_id, loading, exis
               },
             ]}
           >
-            <Input placeholder="A-103" />
+            <Input placeholder={t("A-103")} />
           </Form.Item>
-          <Form.Item label="Status" name="status" rules={[{ required: true }]}>
+          <Form.Item label={t("Status")} name="status" rules={[{ required: true }]}>
             <Select<RoomStatus>
               options={[
-                { label: 'Active', value: 'ACTIVE' },
-                { label: 'Maintenance', value: 'MAINTENANCE' },
-                { label: 'Inactive', value: 'INACTIVE' },
+                { label: t("Active"), value: 'ACTIVE' },
+                { label: t("Maintenance"), value: 'MAINTENANCE' },
+                { label: t("Inactive"), value: 'INACTIVE' },
               ]}
             />
           </Form.Item>
-          <Form.Item label="Price" name="base_rent" rules={[{ required: true, message: 'Price is required' }]}>
+          <Form.Item label={t("Price")} name="base_rent" rules={[{ required: true, message: t("Price is required") }]}>
             <InputNumber min={0} precision={2} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item label="Floor" name="floor">
+          <Form.Item label={t("Floor")} name="floor">
             <InputNumber style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item label="Area (m²)" name="area_m2">
+          <Form.Item label={t("Area (m²)")} name="area_m2">
             <InputNumber min={0} precision={2} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item label="Deposit" name="deposit_default">
+          <Form.Item label={t("Deposit")} name="deposit_default">
             <InputNumber min={0} precision={2} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item label="Max Occupants" name="max_occupants" rules={[{ required: true }]}>
+          <Form.Item label={t("Max Occupants")} name="max_occupants" rules={[{ required: true }]}>
             <InputNumber min={1} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item label="Note" name="note">
+          <Form.Item label={t("Note")} name="note">
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
 
         <div style={{ position: 'sticky', bottom: 0, padding: '12px 0', background: '#fff', borderTop: '1px solid #f0f0f0' }}>
           <Space>
-            <Button onClick={requestClose}>Cancel</Button>
+            <Button onClick={requestClose}>{t("Cancel")}</Button>
             <Button type="primary" loading={loading} disabled={!canSave} onClick={handleSave}>
-              Save
+              {t("Save")}
             </Button>
           </Space>
         </div>
@@ -177,25 +178,25 @@ export function RoomsUpsertDrawer({ open, mode, room, building_id, loading, exis
 
       <Modal
         open={discardModalOpen}
-        title="Discard unsaved room changes?"
+        title={t("Discard unsaved room changes?")}
         onCancel={() => setDiscardModalOpen(false)}
         onOk={async () => {
           setConfirmingClose(true)
           closeDrawer()
         }}
-        okText="Discard"
+        okText={t("Discard")}
         okButtonProps={{ danger: true }}
-        cancelText="Keep editing"
+        cancelText={t("Keep editing")}
         maskClosable
         zIndex={CONFIRM_MODAL_Z_INDEX}
         getContainer={() => document.body}
       >
         <Space>
           <ExclamationCircleOutlined />
-          You have unsaved room changes.
+          {t("You have unsaved room changes.")}
         </Space>
       </Modal>
     </>
-    </Localized>
+    </>
   )
 }

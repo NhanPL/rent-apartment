@@ -15,7 +15,6 @@ import { useAuth } from '../features/auth/useAuth'
 import { changePassword, revokeAllSessions } from '../features/auth/authApi'
 import type { AppRole } from '../features/auth/types/auth'
 import { useI18n } from '../i18n'
-import { Localized } from '../shared/components/Localized'
 import { ForbiddenPage } from '../pages/errors/ForbiddenPage'
 import { NotFoundPage } from '../pages/errors/NotFoundPage'
 
@@ -41,7 +40,8 @@ const AuditLogsPage = lazy(() => import('../pages/audit-logs/AuditLogsPage').the
 const managerPaths = new Set(routeItems.filter((item) => item.path !== '/my-room').map((item) => item.path))
 
 function RouteFallback() {
-  return <Localized><div role="status" aria-live="polite">Loading page...</div></Localized>
+  const { t } = useI18n()
+  return <><div role="status" aria-live="polite">{t("Loading page...")}</div></>
 }
 
 function homePathByRole(role: AppRole) {

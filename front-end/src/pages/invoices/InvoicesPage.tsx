@@ -1,3 +1,4 @@
+import { useI18n } from '../../i18n'
 import {
   BankOutlined,
   DeleteOutlined,
@@ -46,7 +47,6 @@ import {
   voidInvoice,
 } from '../../services/invoicesService'
 import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
-import { Localized } from '../../shared/components/Localized'
 import { vndCurrency } from '../../i18n'
 import { getUtilityReading } from '../../services/utilitiesService'
 import {
@@ -137,52 +137,54 @@ interface IssueInvoiceFormValues {
 }
 
 function VietQrBankFields() {
+  const { t } = useI18n()
   return (
-    <Localized>
+    <>
     <>
       <Form.Item
         name="bank_code"
-        label="Bank code or BIN"
+        label={t("Bank code or BIN")}
         rules={[
-          { required: true, whitespace: true, message: 'Please enter the receiving bank code.' },
-          { pattern: /^[A-Za-z0-9]{2,20}$/, message: 'Use a VietQR bank code or bank BIN.' },
+          { required: true, whitespace: true, message: t("Please enter the receiving bank code.") },
+          { pattern: /^[A-Za-z0-9]{2,20}$/, message: t("Use a VietQR bank code or bank BIN.") },
         ]}
       >
-        <Input placeholder="970436 or VCB" maxLength={20} />
+        <Input placeholder={t("970436 or VCB")} maxLength={20} />
       </Form.Item>
       <Form.Item
         name="bank_account_no"
-        label="Bank account number"
+        label={t("Bank account number")}
         rules={[
-          { required: true, whitespace: true, message: 'Please enter the bank account number.' },
-          { pattern: /^\d{6,19}$/, message: 'The account number must contain 6 to 19 digits.' },
+          { required: true, whitespace: true, message: t("Please enter the bank account number.") },
+          { pattern: /^\d{6,19}$/, message: t("The account number must contain 6 to 19 digits.") },
         ]}
       >
         <Input inputMode="numeric" maxLength={19} />
       </Form.Item>
       <Form.Item
         name="bank_account_name"
-        label="Bank account name"
-        rules={[{ required: true, whitespace: true, message: 'Please enter the bank account name.' }]}
+        label={t("Bank account name")}
+        rules={[{ required: true, whitespace: true, message: t("Please enter the bank account name.") }]}
       >
         <Input maxLength={100} />
       </Form.Item>
       <Form.Item
         name="transfer_note"
-        label="Transfer note"
+        label={t("Transfer note")}
         rules={[
-          { required: true, whitespace: true, message: 'Please enter the transfer note.' },
-          { max: 25, message: 'The transfer note must not exceed 25 characters.' },
+          { required: true, whitespace: true, message: t("Please enter the transfer note.") },
+          { max: 25, message: t("The transfer note must not exceed 25 characters.") },
         ]}
       >
         <Input maxLength={25} showCount />
       </Form.Item>
     </>
-    </Localized>
+    </>
   )
 }
 
 export function InvoicesPage() {
+  const { t } = useI18n()
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
   const [form] = Form.useForm<InvoiceFormValues>()
@@ -739,54 +741,54 @@ export function InvoicesPage() {
   }, [detailPaymentRequest, refreshDetailPaymentRequest])
 
   const columns: ColumnsType<InvoiceListItem> = [
-    { title: 'Month', dataIndex: 'month', width: 110, render: (value: string) => dayjs(value).format('MM/YYYY') },
-    { title: 'Building', dataIndex: 'building_name', width: 170 },
-    { title: 'Room', dataIndex: 'room_code', width: 100 },
-    { title: 'Tenant', dataIndex: 'tenant_name', width: 170 },
-    { title: 'Room rent', dataIndex: 'rent_amount', width: 130, align: 'right', render: (value: number) => currency.format(value) },
-    { title: 'Electric amount', dataIndex: 'electric_amount', width: 140, align: 'right', render: (value: number) => currency.format(value) },
-    { title: 'Water amount', dataIndex: 'water_amount', width: 130, align: 'right', render: (value: number) => currency.format(value) },
-    { title: 'Other fees', dataIndex: 'other_fees', width: 120, align: 'right', render: (value: number) => currency.format(value) },
-    { title: 'Total', dataIndex: 'total', width: 130, align: 'right', render: (value: number) => <strong>{currency.format(value)}</strong> },
+    { title: t("Month"), dataIndex: 'month', width: 110, render: (value: string) => dayjs(value).format('MM/YYYY') },
+    { title: t("Building"), dataIndex: 'building_name', width: 170 },
+    { title: t("Room"), dataIndex: 'room_code', width: 100 },
+    { title: t("Tenant"), dataIndex: 'tenant_name', width: 170 },
+    { title: t("Room rent"), dataIndex: 'rent_amount', width: 130, align: 'right', render: (value: number) => currency.format(value) },
+    { title: t("Electric amount"), dataIndex: 'electric_amount', width: 140, align: 'right', render: (value: number) => currency.format(value) },
+    { title: t("Water amount"), dataIndex: 'water_amount', width: 130, align: 'right', render: (value: number) => currency.format(value) },
+    { title: t("Other fees"), dataIndex: 'other_fees', width: 120, align: 'right', render: (value: number) => currency.format(value) },
+    { title: t("Total"), dataIndex: 'total', width: 130, align: 'right', render: (value: number) => <strong>{currency.format(value)}</strong> },
     {
-      title: 'Invoice status',
+      title: t("Invoice status"),
       dataIndex: 'status',
       width: 130,
       render: (value: InvoiceStatus) => <Tag color={invoiceStatusOptions.find((item) => item.value === value)?.color}>{value}</Tag>,
     },
     {
-      title: 'Payment status',
+      title: t("Payment status"),
       dataIndex: 'payment_status',
       width: 130,
       render: (value: PaymentStatus | null) => {
         if (!value) {
-          return <Tag>NO_PAYMENT</Tag>
+          return <Tag>{t("NO_PAYMENT")}</Tag>
         }
         return <Tag color={paymentStatusOptions.find((item) => item.value === value)?.color}>{value}</Tag>
       },
     },
-    { title: 'Due date', dataIndex: 'due_date', width: 120, render: (value: string | null) => (value ? dayjs(value).format('DD/MM/YYYY') : '-') },
-    { title: 'Paid date', dataIndex: 'paid_at', width: 120, render: (value: string | null) => (value ? dayjs(value).format('DD/MM/YYYY') : '-') },
+    { title: t("Due date"), dataIndex: 'due_date', width: 120, render: (value: string | null) => (value ? dayjs(value).format('DD/MM/YYYY') : '-') },
+    { title: t("Paid date"), dataIndex: 'paid_at', width: 120, render: (value: string | null) => (value ? dayjs(value).format('DD/MM/YYYY') : '-') },
     {
-      title: 'Actions',
+      title: t("Actions"),
       key: 'actions',
       fixed: 'right',
       width: 170,
       render: (_, row) => (
         <Space size={4}>
-          <Button size="small" icon={<EyeOutlined />} aria-label="View invoice" onClick={() => void openDetail(row.id)} />
+          <Button size="small" icon={<EyeOutlined />} aria-label={t("View invoice")} onClick={() => void openDetail(row.id)} />
           {row.status === 'DRAFT' ? (
             <>
-              <Tooltip title="Edit draft">
-                <Button size="small" icon={<EditOutlined />} aria-label="Edit draft invoice" onClick={() => void openEdit(row.id)} />
+              <Tooltip title={t("Edit draft")}>
+                <Button size="small" icon={<EditOutlined />} aria-label={t("Edit draft invoice")} onClick={() => void openEdit(row.id)} />
               </Tooltip>
-              <Tooltip title="Delete draft permanently">
-                <Button size="small" danger icon={<DeleteOutlined />} aria-label="Delete draft invoice" onClick={() => setDeletingInvoiceId(row.id)} />
+              <Tooltip title={t("Delete draft permanently")}>
+                <Button size="small" danger icon={<DeleteOutlined />} aria-label={t("Delete draft invoice")} onClick={() => setDeletingInvoiceId(row.id)} />
               </Tooltip>
             </>
           ) : ['ISSUED', 'PARTIALLY_PAID', 'PAID'].includes(row.status) ? (
-            <Tooltip title="Void invoice and retain financial history">
-              <Button size="small" danger icon={<StopOutlined />} aria-label="Void invoice" onClick={() => openVoidModal(row.id)} />
+            <Tooltip title={t("Void invoice and retain financial history")}>
+              <Button size="small" danger icon={<StopOutlined />} aria-label={t("Void invoice")} onClick={() => openVoidModal(row.id)} />
             </Tooltip>
           ) : null}
         </Space>
@@ -795,16 +797,16 @@ export function InvoicesPage() {
   ]
 
   return (
-    <Localized>
+    <>
     <Space direction="vertical" size={16} className="invoices-page">
       <div className="invoices-toolbar">
         <div>
-          <Typography.Title level={3} style={{ margin: 0 }}>Invoices</Typography.Title>
-          <Typography.Text type="secondary">Manage monthly invoices from contracts, utility readings, and payment status.</Typography.Text>
+          <Typography.Title level={3} style={{ margin: 0 }}>{t("Invoices")}</Typography.Title>
+          <Typography.Text type="secondary">{t("Manage monthly invoices from contracts, utility readings, and payment status.")}</Typography.Text>
         </div>
         <Space wrap>
-          <Button icon={<ThunderboltOutlined />} onClick={openGenerate}>Generate Monthly</Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>Create Manual Invoice</Button>
+          <Button icon={<ThunderboltOutlined />} onClick={openGenerate}>{t("Generate Monthly")}</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t("Create Manual Invoice")}</Button>
         </Space>
       </div>
 
@@ -834,13 +836,13 @@ export function InvoicesPage() {
       </Card>
 
       <div className="invoices-summary-grid">
-        <Card><Statistic title="Total invoices" value={summary.totalInvoices} /></Card>
-        <Card><Statistic title="Paid invoices" value={summary.paidInvoices} /></Card>
-        <Card><Statistic title="Unpaid invoices" value={summary.unpaidInvoices} /></Card>
-        <Card><Statistic title="Revenue (paid)" value={summary.totalRevenue} formatter={(value) => currency.format(Number(value))} /></Card>
+        <Card><Statistic title={t("Total invoices")} value={summary.totalInvoices} /></Card>
+        <Card><Statistic title={t("Paid invoices")} value={summary.paidInvoices} /></Card>
+        <Card><Statistic title={t("Unpaid invoices")} value={summary.unpaidInvoices} /></Card>
+        <Card><Statistic title={t("Revenue (paid)")} value={summary.totalRevenue} formatter={(value) => currency.format(Number(value))} /></Card>
       </div>
 
-      <Card title="Monthly invoices">
+      <Card title={t("Monthly invoices")}>
         <InvoiceList
           loading={loading}
           error={error}
@@ -874,7 +876,7 @@ export function InvoicesPage() {
         onSave={() => void onSave()}
       />
 
-      <Drawer title="Invoice detail" placement="right" open={detailOpen} width={isMobile ? '100%' : 720} onClose={closeDetail}>
+      <Drawer title={t("Invoice detail")} placement="right" open={detailOpen} width={isMobile ? '100%' : 720} onClose={closeDetail}>
         {detailLoading || !detailItem ? (
           <Skeleton active paragraph={{ rows: 8 }} />
         ) : (
@@ -892,27 +894,27 @@ export function InvoicesPage() {
               onCreateReplacement={() => void createReplacement()}
             />
             <Descriptions column={isMobile ? 1 : 2} size="small" bordered>
-              <Descriptions.Item label="Tenant">{detailItem.tenant_name}</Descriptions.Item>
-              <Descriptions.Item label="Invoice status"><Tag color={invoiceStatusOptions.find((item) => item.value === detailItem.status)?.color}>{detailItem.status}</Tag></Descriptions.Item>
-              <Descriptions.Item label="Payment status">{detailItem.payment_status ?? 'NO_PAYMENT'}</Descriptions.Item>
-              <Descriptions.Item label="Due date">{detailItem.due_date ? dayjs(detailItem.due_date).format('DD/MM/YYYY') : '-'}</Descriptions.Item>
-              <Descriptions.Item label="Subtotal">{currency.format(detailItem.subtotal)}</Descriptions.Item>
-              <Descriptions.Item label="Discount">{currency.format(detailItem.discount)}</Descriptions.Item>
-              <Descriptions.Item label="Paid">{currency.format(detailItem.paid_amount)}</Descriptions.Item>
-              <Descriptions.Item label="Total">{currency.format(detailItem.total)}</Descriptions.Item>
-              <Descriptions.Item label="Note" span={isMobile ? 1 : 2}>{detailItem.note ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Tenant")}>{detailItem.tenant_name}</Descriptions.Item>
+              <Descriptions.Item label={t("Invoice status")}><Tag color={invoiceStatusOptions.find((item) => item.value === detailItem.status)?.color}>{detailItem.status}</Tag></Descriptions.Item>
+              <Descriptions.Item label={t("Payment status")}>{detailItem.payment_status ?? 'NO_PAYMENT'}</Descriptions.Item>
+              <Descriptions.Item label={t("Due date")}>{detailItem.due_date ? dayjs(detailItem.due_date).format('DD/MM/YYYY') : '-'}</Descriptions.Item>
+              <Descriptions.Item label={t("Subtotal")}>{currency.format(detailItem.subtotal)}</Descriptions.Item>
+              <Descriptions.Item label={t("Discount")}>{currency.format(detailItem.discount)}</Descriptions.Item>
+              <Descriptions.Item label={t("Paid")}>{currency.format(detailItem.paid_amount)}</Descriptions.Item>
+              <Descriptions.Item label={t("Total")}>{currency.format(detailItem.total)}</Descriptions.Item>
+              <Descriptions.Item label={t("Note")} span={isMobile ? 1 : 2}>{detailItem.note ?? '-'}</Descriptions.Item>
               {detailItem.status === 'VOID' ? (
                 <>
-                  <Descriptions.Item label="Void reason" span={isMobile ? 1 : 2}>{detailItem.void_reason}</Descriptions.Item>
-                  <Descriptions.Item label="Voided at">{detailItem.voided_at ? dayjs(detailItem.voided_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
-                  <Descriptions.Item label="Replacement">
-                    {detailItem.replacement_invoice_id ? <Button type="link" onClick={() => void openDetail(detailItem.replacement_invoice_id!)}>Open replacement</Button> : 'Not created'}
+                  <Descriptions.Item label={t("Void reason")} span={isMobile ? 1 : 2}>{detailItem.void_reason}</Descriptions.Item>
+                  <Descriptions.Item label={t("Voided at")}>{detailItem.voided_at ? dayjs(detailItem.voided_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
+                  <Descriptions.Item label={t("Replacement")}>
+                    {detailItem.replacement_invoice_id ? <Button type="link" onClick={() => void openDetail(detailItem.replacement_invoice_id!)}>{t("Open replacement")}</Button> : 'Not created'}
                   </Descriptions.Item>
                 </>
               ) : null}
               {detailItem.replaces_invoice_id ? (
-                <Descriptions.Item label="Replaces invoice" span={isMobile ? 1 : 2}>
-                  <Button type="link" onClick={() => void openDetail(detailItem.replaces_invoice_id!)}>Open original void invoice</Button>
+                <Descriptions.Item label={t("Replaces invoice")} span={isMobile ? 1 : 2}>
+                  <Button type="link" onClick={() => void openDetail(detailItem.replaces_invoice_id!)}>{t("Open original void invoice")}</Button>
                 </Descriptions.Item>
               ) : null}
             </Descriptions>
@@ -922,84 +924,84 @@ export function InvoicesPage() {
               pagination={false}
               dataSource={detailItem.items}
               columns={[
-                { title: 'Item', dataIndex: 'name' },
-                { title: 'Qty', dataIndex: 'quantity', align: 'right' },
-                { title: 'Unit price', dataIndex: 'unit_price', align: 'right', render: (value: number) => currency.format(value) },
-                { title: 'Amount', dataIndex: 'amount', align: 'right', render: (value: number) => currency.format(value) },
-                { title: 'Source', render: (_, item) => String(item.meta?.source ?? '-') },
+                { title: t("Item"), dataIndex: 'name' },
+                { title: t("Qty"), dataIndex: 'quantity', align: 'right' },
+                { title: t("Unit price"), dataIndex: 'unit_price', align: 'right', render: (value: number) => currency.format(value) },
+                { title: t("Amount"), dataIndex: 'amount', align: 'right', render: (value: number) => currency.format(value) },
+                { title: t("Source"), render: (_, item) => String(item.meta?.source ?? '-') },
               ]}
             />
             {detailItem.adjustments.length > 0 ? (
-              <Card size="small" title="Adjustments">
+              <Card size="small" title={t("Adjustments")}>
                 <Table
                   rowKey="id"
                   size="small"
                   pagination={false}
                   dataSource={detailItem.adjustments}
                   columns={[
-                    { title: 'Type', dataIndex: 'adjustment_type' },
-                    { title: 'Amount', dataIndex: 'amount', align: 'right', render: (value: number) => currency.format(value) },
-                    { title: 'Reason', dataIndex: 'reason' },
+                    { title: t("Type"), dataIndex: 'adjustment_type' },
+                    { title: t("Amount"), dataIndex: 'amount', align: 'right', render: (value: number) => currency.format(value) },
+                    { title: t("Reason"), dataIndex: 'reason' },
                   ]}
                 />
               </Card>
             ) : null}
             <Card
               size="small"
-              title="Bank transfer payment"
+              title={t("Bank transfer payment")}
               extra={
                 paymentRequestIsClosed && ['ISSUED', 'PARTIALLY_PAID'].includes(detailItem.status) ? (
                   <Button size="small" type="primary" icon={<BankOutlined />} onClick={openPaymentRequestModal}>
-                    Create payment request
+                    {t("Create payment request")}
                   </Button>
                 ) : null
               }
             >
               {!detailPaymentRequest ? (
-                <Alert showIcon type="info" message="No payment request has been sent for this invoice." />
+                <Alert showIcon type="info" message={t("No payment request has been sent for this invoice.")} />
               ) : (
                 <Space direction="vertical" size={12} style={{ width: '100%' }}>
                   <Descriptions column={isMobile ? 1 : 2} size="small" bordered>
-                    <Descriptions.Item label="Request status">
+                    <Descriptions.Item label={t("Request status")}>
                       <Tag color={paymentRequestStatusColor[detailPaymentRequest.status]}>{detailPaymentRequest.status}</Tag>
                     </Descriptions.Item>
-                    <Descriptions.Item label="Request amount">{currency.format(detailPaymentRequest.amount)}</Descriptions.Item>
-                    <Descriptions.Item label="Paid amount">{currency.format(detailPaymentRequest.paid_amount ?? 0)}</Descriptions.Item>
-                    <Descriptions.Item label="Remaining">{currency.format(detailPaymentRequest.remaining_amount ?? paymentRemainingAmount)}</Descriptions.Item>
-                    <Descriptions.Item label="Bank">{detailPaymentRequest.bank_code ?? '-'}</Descriptions.Item>
-                    <Descriptions.Item label="Account no.">{detailPaymentRequest.bank_account_no ?? '-'}</Descriptions.Item>
-                    <Descriptions.Item label="Account name">{detailPaymentRequest.bank_account_name ?? '-'}</Descriptions.Item>
-                    <Descriptions.Item label="Transfer note">{detailPaymentRequest.transfer_note ?? '-'}</Descriptions.Item>
-                    <Descriptions.Item label="Expires at">{detailPaymentRequest.expires_at ? dayjs(detailPaymentRequest.expires_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
-                    <Descriptions.Item label="Sent at">{detailPaymentRequest.sent_at ? dayjs(detailPaymentRequest.sent_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
+                    <Descriptions.Item label={t("Request amount")}>{currency.format(detailPaymentRequest.amount)}</Descriptions.Item>
+                    <Descriptions.Item label={t("Paid amount")}>{currency.format(detailPaymentRequest.paid_amount ?? 0)}</Descriptions.Item>
+                    <Descriptions.Item label={t("Remaining")}>{currency.format(detailPaymentRequest.remaining_amount ?? paymentRemainingAmount)}</Descriptions.Item>
+                    <Descriptions.Item label={t("Bank")}>{detailPaymentRequest.bank_code ?? '-'}</Descriptions.Item>
+                    <Descriptions.Item label={t("Account no.")}>{detailPaymentRequest.bank_account_no ?? '-'}</Descriptions.Item>
+                    <Descriptions.Item label={t("Account name")}>{detailPaymentRequest.bank_account_name ?? '-'}</Descriptions.Item>
+                    <Descriptions.Item label={t("Transfer note")}>{detailPaymentRequest.transfer_note ?? '-'}</Descriptions.Item>
+                    <Descriptions.Item label={t("Expires at")}>{detailPaymentRequest.expires_at ? dayjs(detailPaymentRequest.expires_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
+                    <Descriptions.Item label={t("Sent at")}>{detailPaymentRequest.sent_at ? dayjs(detailPaymentRequest.sent_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
                   </Descriptions>
                   <VietQrDisplay src={detailPaymentRequest.qr_image_url} />
                   {!['VERIFIED', 'CANCELLED', 'EXPIRED'].includes(detailPaymentRequest.status) ? (
                     <Space>
-                      <Button danger loading={paymentActionLoading === 'cancel'} onClick={() => void runPaymentRequestAction('cancel')}>Cancel request</Button>
-                      <Button loading={paymentActionLoading === 'expire'} onClick={() => void runPaymentRequestAction('expire')}>Expire request</Button>
+                      <Button danger loading={paymentActionLoading === 'cancel'} onClick={() => void runPaymentRequestAction('cancel')}>{t("Cancel request")}</Button>
+                      <Button loading={paymentActionLoading === 'expire'} onClick={() => void runPaymentRequestAction('expire')}>{t("Expire request")}</Button>
                     </Space>
                   ) : null}
                   <Divider style={{ margin: '4px 0' }} />
-                  <Typography.Text strong>Payment history</Typography.Text>
+                  <Typography.Text strong>{t("Payment history")}</Typography.Text>
                   <Table<PaymentProof>
                     rowKey="id"
                     size="small"
                     pagination={false}
                     dataSource={detailPaymentRequest.proofs ?? []}
-                    locale={{ emptyText: <Empty description="No proof submitted" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+                    locale={{ emptyText: <Empty description={t("No proof submitted")} image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
                     columns={[
-                      { title: 'Submitted', dataIndex: 'submitted_at', render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm') },
-                      { title: 'Amount', dataIndex: 'transfer_amount', align: 'right', render: (value: number) => currency.format(value) },
-                      { title: 'Status', dataIndex: 'status', render: (value: string) => <Tag>{value}</Tag> },
+                      { title: t("Submitted"), dataIndex: 'submitted_at', render: (value: string) => dayjs(value).format('DD/MM/YYYY HH:mm') },
+                      { title: t("Amount"), dataIndex: 'transfer_amount', align: 'right', render: (value: number) => currency.format(value) },
+                      { title: t("Status"), dataIndex: 'status', render: (value: string) => <Tag>{value}</Tag> },
                       {
-                        title: 'Proof',
+                        title: t("Proof"),
                         dataIndex: 'file_url',
                         render: (value: string, row) => (
                           <a href={value} target="_blank" rel="noreferrer">{row.file_name || 'Open file'}</a>
                         ),
                       },
-                      { title: 'Reason', dataIndex: 'rejection_reason', render: (value: string | null) => value ?? '-' },
+                      { title: t("Reason"), dataIndex: 'rejection_reason', render: (value: string | null) => value ?? '-' },
                     ]}
                   />
                 </Space>
@@ -1011,8 +1013,8 @@ export function InvoicesPage() {
 
       <Modal
         open={Boolean(confirmingPaymentProof)}
-        title="Confirm invoice payment?"
-        okText="Confirm payment"
+        title={t("Confirm invoice payment?")}
+        okText={t("Confirm payment")}
         confirmLoading={paymentConfirmationLoading}
         cancelButtonProps={{ disabled: paymentConfirmationLoading }}
         closable={!paymentConfirmationLoading}
@@ -1021,18 +1023,18 @@ export function InvoicesPage() {
         onCancel={() => setConfirmingPaymentProof(null)}
       >
         <Typography.Paragraph>
-          Confirm receipt of {currency.format(confirmingPaymentProof?.transfer_amount ?? 0)} for the{' '}
-          {detailItem ? dayjs(detailItem.month).format('MM/YYYY') : ''} invoice.
+          {t("Confirm receipt of")} {currency.format(confirmingPaymentProof?.transfer_amount ?? 0)} {t("for the")}{' '}
+          {detailItem ? dayjs(detailItem.month).format('MM/YYYY') : ''} {t("invoice.")}
         </Typography.Paragraph>
         <Typography.Text type="secondary">
-          This will approve the tenant's payment proof and complete the invoice when the full balance has been received.
+          {t("This will approve the tenant's payment proof and complete the invoice when the full balance has been received.")}
         </Typography.Text>
       </Modal>
 
       <Modal
         open={Boolean(deletingInvoiceId)}
-        title="Delete this invoice?"
-        okText="Delete"
+        title={t("Delete this invoice?")}
+        okText={t("Delete")}
         okButtonProps={{ danger: true }}
         cancelButtonProps={{ disabled: deleteLoading }}
         confirmLoading={deleteLoading}
@@ -1044,15 +1046,15 @@ export function InvoicesPage() {
         <Alert
           showIcon
           type="warning"
-          message="Only a draft with no payment history can be deleted."
-          description="This permanently removes the draft and its line items. Its utility reading becomes reusable only when no other invoice references it. Issued invoices must be voided instead."
+          message={t("Only a draft with no payment history can be deleted.")}
+          description={t("This permanently removes the draft and its line items. Its utility reading becomes reusable only when no other invoice references it. Issued invoices must be voided instead.")}
         />
       </Modal>
 
       <Modal
         open={Boolean(voidingInvoiceId)}
-        title="Void this invoice?"
-        okText="Void invoice"
+        title={t("Void this invoice?")}
+        okText={t("Void invoice")}
         okButtonProps={{ danger: true }}
         confirmLoading={voidLoading}
         cancelButtonProps={{ disabled: voidLoading }}
@@ -1069,16 +1071,16 @@ export function InvoicesPage() {
           <Alert
             showIcon
             type="warning"
-            message="Voiding is permanent and preserves the financial audit trail."
-            description="Payments, payment requests, and proofs will not be deleted. Any open request will be closed, and the utility reading will remain invoiced until you explicitly create a replacement invoice."
+            message={t("Voiding is permanent and preserves the financial audit trail.")}
+            description={t("Payments, payment requests, and proofs will not be deleted. Any open request will be closed, and the utility reading will remain invoiced until you explicitly create a replacement invoice.")}
           />
           <Form form={voidForm} layout="vertical">
             <Form.Item
               name="reason"
-              label="Void reason"
+              label={t("Void reason")}
               rules={[
-                { required: true, whitespace: true, message: 'Please explain why this invoice is being voided.' },
-                { min: 3, max: 500, message: 'The reason must contain 3 to 500 characters.' },
+                { required: true, whitespace: true, message: t("Please explain why this invoice is being voided.") },
+                { min: 3, max: 500, message: t("The reason must contain 3 to 500 characters.") },
               ]}
             >
               <Input.TextArea rows={4} maxLength={500} showCount />
@@ -1089,8 +1091,8 @@ export function InvoicesPage() {
 
       <Modal
         open={issueOpen}
-        title="Issue invoice and create VietQR"
-        okText="Issue invoice"
+        title={t("Issue invoice and create VietQR")}
+        okText={t("Issue invoice")}
         confirmLoading={issueLoading}
         closable={!issueLoading}
         maskClosable={!issueLoading}
@@ -1099,7 +1101,7 @@ export function InvoicesPage() {
         destroyOnHidden
       >
         <Form form={issueForm} layout="vertical">
-          <Form.Item label="Transfer amount">
+          <Form.Item label={t("Transfer amount")}>
             <Input value={currency.format(paymentRemainingAmount)} disabled />
           </Form.Item>
           <VietQrBankFields />
@@ -1108,36 +1110,36 @@ export function InvoicesPage() {
 
       <Modal
         open={adjustmentOpen}
-        title="Add draft adjustment"
-        okText="Add adjustment"
+        title={t("Add draft adjustment")}
+        okText={t("Add adjustment")}
         confirmLoading={adjustmentLoading}
         onOk={() => void submitAdjustment()}
         onCancel={() => setAdjustmentOpen(false)}
         destroyOnClose
       >
         <Form form={adjustmentForm} layout="vertical">
-          <Form.Item name="amount" label="Amount" extra="Use a negative amount for a discount." rules={[{ required: true, type: 'number', message: 'Please enter a non-zero amount.' }]}>
+          <Form.Item name="amount" label={t("Amount")} extra="Use a negative amount for a discount." rules={[{ required: true, type: 'number', message: t("Please enter a non-zero amount.") }]}>
             <InputNumber style={{ width: '100%' }} precision={0} />
           </Form.Item>
-          <Form.Item name="reason" label="Reason" rules={[{ required: true, whitespace: true, message: 'Please enter a reason.' }]}><Input.TextArea rows={3} /></Form.Item>
+          <Form.Item name="reason" label={t("Reason")} rules={[{ required: true, whitespace: true, message: t("Please enter a reason.") }]}><Input.TextArea rows={3} /></Form.Item>
         </Form>
       </Modal>
 
       <Modal
         open={paymentRequestOpen}
-        title="Create payment request"
-        okText="Create request"
+        title={t("Create payment request")}
+        okText={t("Create request")}
         confirmLoading={paymentRequestLoading}
         onOk={() => void onCreatePaymentRequest()}
         onCancel={() => setPaymentRequestOpen(false)}
         destroyOnClose
       >
         <Form form={paymentRequestForm} layout="vertical">
-          <Form.Item name="amount" label="Amount" rules={[{ required: true, type: 'number', min: 1, message: 'Please enter amount' }]}>
+          <Form.Item name="amount" label={t("Amount")} rules={[{ required: true, type: 'number', min: 1, message: t("Please enter amount") }]}>
             <InputNumber min={1} max={paymentRemainingAmount || undefined} precision={0} style={{ width: '100%' }} formatter={(value) => `${value ?? ''}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')} parser={(value) => Number(value?.replace(/\D/g, '') || 0)} />
           </Form.Item>
           <VietQrBankFields />
-          <Form.Item name="expires_at" label="Expires at">
+          <Form.Item name="expires_at" label={t("Expires at")}>
             <Input type="datetime-local" />
           </Form.Item>
         </Form>
@@ -1145,28 +1147,28 @@ export function InvoicesPage() {
 
       <Modal
         open={generateOpen}
-        title="Generate monthly invoices"
-        okText="Generate"
+        title={t("Generate monthly invoices")}
+        okText={t("Generate")}
         confirmLoading={generateLoading}
         onOk={() => void onGenerate()}
         onCancel={() => setGenerateOpen(false)}
         destroyOnClose
       >
         <Form form={generateForm} layout="vertical" initialValues={{ scope: 'all', month: dayjs().format('YYYY-MM') }}>
-          <Form.Item name="scope" label="Scope" rules={[{ required: true }]}>
+          <Form.Item name="scope" label={t("Scope")} rules={[{ required: true }]}>
             <Select
               options={[
-                { label: 'All active contracts', value: 'all' },
-                { label: 'Building', value: 'building' },
-                { label: 'Room', value: 'room' },
+                { label: t("All active contracts"), value: 'all' },
+                { label: t("Building"), value: 'building' },
+                { label: t("Room"), value: 'room' },
               ]}
             />
           </Form.Item>
-          <Form.Item name="month" label="Month" rules={[{ required: true, message: 'Please select month' }]}>
+          <Form.Item name="month" label={t("Month")} rules={[{ required: true, message: t("Please select month") }]}>
             <Input type="month" />
           </Form.Item>
           {selectedGenerateScope === 'building' || selectedGenerateScope === 'room' ? (
-            <Form.Item name="building_id" label="Building" rules={[{ required: true, message: 'Please select building' }]}>
+            <Form.Item name="building_id" label={t("Building")} rules={[{ required: true, message: t("Please select building") }]}>
               <Select
                 options={buildings.map((item) => ({ label: item.name, value: item.id }))}
                 onChange={() => generateForm.setFieldValue('room_id', undefined)}
@@ -1174,14 +1176,14 @@ export function InvoicesPage() {
             </Form.Item>
           ) : null}
           {selectedGenerateScope === 'room' ? (
-            <Form.Item name="room_id" label="Room" rules={[{ required: true, message: 'Please select room' }]}>
+            <Form.Item name="room_id" label={t("Room")} rules={[{ required: true, message: t("Please select room") }]}>
               <Select options={generateRoomOptions.map((item) => ({ label: item.code, value: item.id }))} />
             </Form.Item>
           ) : null}
           <Alert
             showIcon
             type="info"
-            message="Generation requires an approved utility reading and an effective utility rate for each contract/month."
+            message={t("Generation requires an approved utility reading and an effective utility rate for each contract/month.")}
           />
           {generateResult ? (
             <Alert
@@ -1194,6 +1196,6 @@ export function InvoicesPage() {
         </Form>
       </Modal>
     </Space>
-    </Localized>
+    </>
   )
 }

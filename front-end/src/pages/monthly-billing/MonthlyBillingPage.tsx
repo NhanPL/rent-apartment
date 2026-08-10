@@ -1,3 +1,4 @@
+import { useI18n } from '../../i18n'
 import { CheckCircleOutlined, FileAddOutlined, ReloadOutlined, SendOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { Button, Empty, Select, Space, Table, Tag, Typography, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
@@ -6,7 +7,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { listBuildings } from '../../services/invoicesService'
 import { generateMonthlyInvoice, listMonthlyBilling, type MonthlyBillingAction, type MonthlyBillingItem } from '../../services/monthlyBillingService'
 import { getUserErrorMessage } from '../../services/errorMessage'
-import { Localized } from '../../shared/components/Localized'
 import { vndCurrency } from '../../i18n'
 import './MonthlyBillingPage.css'
 
@@ -21,6 +21,7 @@ const navigate = (path: string) => {
 }
 
 export function MonthlyBillingPage() {
+  const { t } = useI18n()
   const [month, setMonth] = useState(dayjs().format('YYYY-MM'))
   const [buildingId, setBuildingId] = useState<string>()
   const [buildings, setBuildings] = useState<Array<{ id: string; name: string }>>([])
@@ -57,20 +58,20 @@ export function MonthlyBillingPage() {
   }, [load, month])
 
   const columns = useMemo<ColumnsType<MonthlyBillingItem>>(() => [
-    { title: 'Room', render: (_, row) => <Space direction="vertical" size={0}><Typography.Text strong>{row.room_code}</Typography.Text><Typography.Text type="secondary">{row.building_name}</Typography.Text></Space> },
-    { title: 'Primary tenant', dataIndex: 'primary_tenant', render: (value) => value ?? '-' },
-    { title: 'Reading', dataIndex: 'reading_status', render: (value) => <Tag>{value ?? 'NOT_ENTERED'}</Tag> },
-    { title: 'Invoice', dataIndex: 'invoice_status', render: (value) => <Tag color={value === 'DRAFT' ? 'gold' : value === 'PAID' ? 'green' : 'blue'}>{value ?? 'NOT_CREATED'}</Tag> },
-    { title: 'Payment request', dataIndex: 'payment_request_status', responsive: ['lg'], render: (value) => value ?? '-' },
-    { title: 'Paid', dataIndex: 'paid_amount', align: 'right', render: (value) => currency.format(value) },
-    { title: 'Outstanding', dataIndex: 'outstanding_amount', align: 'right', render: (value) => currency.format(value) },
-    { title: 'Next action', dataIndex: 'next_action', render: (value: MonthlyBillingAction) => <Tag color={value === 'PAID' ? 'green' : 'processing'}>{actionLabels[value]}</Tag> },
-    { title: '', fixed: 'right', width: 180, render: (_, row) => row.next_action === 'REVIEW_DRAFT' ? <Button type="primary" icon={<SendOutlined />} onClick={() => navigate(`/invoices?invoiceId=${encodeURIComponent(row.invoice_id ?? '')}`)}>Review & issue</Button> : <Button type={row.next_action === 'GENERATE_INVOICE' ? 'primary' : 'default'} icon={row.next_action === 'GENERATE_INVOICE' ? <FileAddOutlined /> : row.next_action === 'PAID' ? <CheckCircleOutlined /> : <ThunderboltOutlined />} loading={actionId === row.room_id} onClick={() => void runAction(row)}>{actionLabels[row.next_action]}</Button> },
-  ], [actionId, runAction])
+    { title: t("Room"), render: (_, row) => <Space direction="vertical" size={0}><Typography.Text strong>{row.room_code}</Typography.Text><Typography.Text type="secondary">{row.building_name}</Typography.Text></Space> },
+    { title: t("Primary tenant"), dataIndex: 'primary_tenant', render: (value) => value ?? '-' },
+    { title: t("Reading"), dataIndex: 'reading_status', render: (value) => <Tag>{value ?? 'NOT_ENTERED'}</Tag> },
+    { title: t("Invoice"), dataIndex: 'invoice_status', render: (value) => <Tag color={value === 'DRAFT' ? 'gold' : value === 'PAID' ? 'green' : 'blue'}>{value ?? 'NOT_CREATED'}</Tag> },
+    { title: t("Payment request"), dataIndex: 'payment_request_status', responsive: ['lg'], render: (value) => value ?? '-' },
+    { title: t("Paid"), dataIndex: 'paid_amount', align: 'right', render: (value) => currency.format(value) },
+    { title: t("Outstanding"), dataIndex: 'outstanding_amount', align: 'right', render: (value) => currency.format(value) },
+    { title: t("Next action"), dataIndex: 'next_action', render: (value: MonthlyBillingAction) => <Tag color={value === 'PAID' ? 'green' : 'processing'}>{actionLabels[value]}</Tag> },
+    { title: '', fixed: 'right', width: 180, render: (_, row) => row.next_action === 'REVIEW_DRAFT' ? <Button type="primary" icon={<SendOutlined />} onClick={() => navigate(`/invoices?invoiceId=${encodeURIComponent(row.invoice_id ?? '')}`)}>{t("Review & issue")}</Button> : <Button type={row.next_action === 'GENERATE_INVOICE' ? 'primary' : 'default'} icon={row.next_action === 'GENERATE_INVOICE' ? <FileAddOutlined /> : row.next_action === 'PAID' ? <CheckCircleOutlined /> : <ThunderboltOutlined />} loading={actionId === row.room_id} onClick={() => void runAction(row)}>{actionLabels[row.next_action]}</Button> },
+  ], [actionId, runAction, t])
 
-  return <Localized><Space direction="vertical" size={16} className="monthly-billing-page">
-    <div className="monthly-billing-toolbar"><div><Typography.Title level={3}>Monthly billing</Typography.Title><Typography.Text type="secondary">Close the billing cycle from readings through payment reconciliation.</Typography.Text></div><Button icon={<ReloadOutlined />} loading={loading} onClick={() => void load()}>Reload</Button></div>
-    <div className="monthly-billing-filters"><Select allowClear placeholder="All buildings" value={buildingId} onChange={setBuildingId} options={buildings.map((item) => ({ label: item.name, value: item.id }))} /><input aria-label="Billing month" type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></div>
-    <Table rowKey="contract_id" loading={loading} columns={columns} dataSource={items} scroll={{ x: 1200 }} pagination={{ pageSize: 20 }} locale={{ emptyText: <Empty description="No active contracts found for this period" /> }} />
-  </Space></Localized>
+  return <><Space direction="vertical" size={16} className="monthly-billing-page">
+    <div className="monthly-billing-toolbar"><div><Typography.Title level={3}>{t("Monthly billing")}</Typography.Title><Typography.Text type="secondary">{t("Close the billing cycle from readings through payment reconciliation.")}</Typography.Text></div><Button icon={<ReloadOutlined />} loading={loading} onClick={() => void load()}>{t("Reload")}</Button></div>
+    <div className="monthly-billing-filters"><Select allowClear placeholder={t("All buildings")} value={buildingId} onChange={setBuildingId} options={buildings.map((item) => ({ label: item.name, value: item.id }))} /><input aria-label={t("Billing month")} type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></div>
+    <Table rowKey="contract_id" loading={loading} columns={columns} dataSource={items} scroll={{ x: 1200 }} pagination={{ pageSize: 20 }} locale={{ emptyText: <Empty description={t("No active contracts found for this period")} /> }} />
+  </Space></>
 }

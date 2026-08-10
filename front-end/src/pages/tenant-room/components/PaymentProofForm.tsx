@@ -23,17 +23,17 @@ interface Props {
 export function PaymentProofForm(props: Props) {
   return (
     <Form<PaymentProofFormValues> form={props.form} layout="vertical" onFinish={props.onFinish} onFinishFailed={props.onFinishFailed}>
-      <Form.Item name="transfer_amount" label="So tien da chuyen" initialValue={props.amount} rules={[{ required: true, message: 'Vui long nhap so tien da chuyen' }]}>
+      <Form.Item name="transfer_amount" label="Transferred amount" initialValue={props.amount} rules={[{ required: true, message: 'Please enter the transferred amount.' }]}>
         <InputNumber min={1} max={props.maxAmount} precision={0} style={{ width: '100%' }} />
       </Form.Item>
-      <Form.Item label="Anh bien lai" required>
+      <Form.Item label="Receipt image" required>
         <Space wrap>
           <CloudinaryUploadButton accept="image/jpeg,image/png,image/webp" context="PAYMENT_PROOF" onUploaded={props.onFileChange}>Upload image</CloudinaryUploadButton>
           {props.file ? <Typography.Link href={props.file.file_url} target="_blank" rel="noreferrer">{props.file.file_name}</Typography.Link> : <Typography.Text type="secondary">No image uploaded</Typography.Text>}
         </Space>
       </Form.Item>
-      <Form.Item name="payer_note" label="Ghi chu"><Input.TextArea rows={2} /></Form.Item>
-      <Button htmlType="submit" type="primary" loading={props.submitting} disabled={props.submitting} block={props.compact}>Gui bien lai</Button>
+      <Form.Item name="payer_note" label="Note"><Input.TextArea rows={2} /></Form.Item>
+      <Button htmlType="submit" type="primary" loading={props.submitting} disabled={props.submitting} block={props.compact}>Submit payment proof</Button>
     </Form>
   )
 }
