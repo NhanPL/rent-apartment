@@ -12,6 +12,11 @@
 - Managers may set tenant status to `ACTIVE`, `MOVED_OUT`, or `BLACKLIST` through `PATCH /tenants/:id`.
 - `DELETED` is reserved for `DELETE /tenants/:id` soft delete and cannot be set through PATCH.
 - A tenant cannot be marked `MOVED_OUT` while still attached to an active contract.
+- Tenant profile status and login-account status are independent. Deactivating an account revokes all sessions but retains the tenant profile and every contract, invoice, proof, and payment.
+- A `PENDING_ACTIVATION` account can become active only by using a valid invitation and setting its first password. A manager cannot bypass this step.
+- A disabled account with an existing password can be reactivated by its manager without creating a replacement tenant profile.
+- A returning tenant reuses the existing non-deleted profile. Rental Registration may select that tenant when no current or future assignment conflicts, then creates a new contract and preserves the earlier rental history.
+- Tenant erasure is separate from account deactivation. It is blocked while an active contract or unpaid invoice exists, and retained financial history is anonymized according to the privacy-retention policy rather than cascade-deleted.
 
 ## Room occupancy
 

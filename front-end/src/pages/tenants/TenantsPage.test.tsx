@@ -10,6 +10,7 @@ const tenantMocks = vi.hoisted(() => ({
   listTenants: vi.fn(),
   resendTenantActivation: vi.fn(),
   updateTenant: vi.fn(),
+  updateTenantAccountStatus: vi.fn(),
   updateTenantIdentityDocuments: vi.fn(),
 }))
 const uploadMocks = vi.hoisted(() => ({ uploadFileToCloudinary: vi.fn() }))
@@ -71,6 +72,7 @@ describe('TenantsPage profile form', () => {
       privacy_consent_recorded_at: '2026-07-01T00:00:00.000Z',
     })
     tenantMocks.updateTenant.mockResolvedValue(tenant)
+    tenantMocks.updateTenantAccountStatus.mockResolvedValue({ accountStatus: 'DISABLED' })
     tenantMocks.deleteTenant.mockResolvedValue({
       message: 'Tenant data was anonymized successfully.',
       status: 'ANONYMIZED',
@@ -164,6 +166,20 @@ describe('TenantsPage profile form', () => {
     await waitFor(() => {
       expect(tenantMocks.resendTenantActivation).toHaveBeenCalledWith('tenant-1')
     })
+  })
+
+  it('confirms account deactivation without deleting the tenant profile', async () => {
+    const user = userEvent.setup()
+    render(<TenantsPage />)
+
+    await user.click(await screen.findByRole('button', { name: 'Deactivate account for Tenant One' }))
+    expect(screen.getByText(/profile, contracts, invoices, and payments will be retained/i)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Deactivate account' }))
+
+    await waitFor(() => {
+      expect(tenantMocks.updateTenantAccountStatus).toHaveBeenCalledWith('tenant-1', 'DISABLED')
+    })
+    expect(tenantMocks.deleteTenant).not.toHaveBeenCalled()
   })
 
   it('keeps a meaningful update error visible in the tenant drawer', async () => {

@@ -311,6 +311,14 @@ const buildingsAndDashboard = [
   entry('Successful payment entries minus successful reversal entries allocated to the related invoice month.', 'Các bút toán thanh toán thành công trừ các bút toán đảo thành công, được phân bổ theo tháng của hóa đơn liên quan.'),
   entry('Voided invoices are shown separately and excluded from billed and outstanding totals.', 'Hóa đơn vô hiệu được hiển thị riêng và không tính vào tổng đã lập hóa đơn hoặc công nợ.'),
   entry('Export CSV', 'Xuất CSV'),
+  entry('Deactivate account', 'Vô hiệu hóa tài khoản'),
+  entry('Activate account', 'Kích hoạt tài khoản'),
+  entry('Deactivate tenant account?', 'Vô hiệu hóa tài khoản người thuê?'),
+  entry('Activate tenant account?', 'Kích hoạt tài khoản người thuê?'),
+  entry('The tenant will be signed out on every device. Their profile, contracts, invoices, and payments will be retained.', 'Người thuê sẽ bị đăng xuất trên tất cả thiết bị. Hồ sơ, hợp đồng, hóa đơn và thanh toán vẫn được giữ nguyên.'),
+  entry('The tenant can sign in again with their existing password. Their rental history is unchanged.', 'Người thuê có thể đăng nhập lại bằng mật khẩu hiện tại. Lịch sử thuê không thay đổi.'),
+  entry('Tenant account activated.', 'Đã kích hoạt tài khoản người thuê.'),
+  entry('Tenant account deactivated and signed out.', 'Đã vô hiệu hóa tài khoản và đăng xuất người thuê.'),
 ]
 
 const tenantsAndContracts = [

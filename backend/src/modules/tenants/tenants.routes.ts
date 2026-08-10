@@ -15,10 +15,12 @@ import {
   listManagedTenantPayments,
   listManagedTenants,
   resendManagedTenantActivation,
+  tenantAccountStatusSchema,
   tenantCreateSchema,
   tenantListQuerySchema,
   tenantPatchSchema,
   updateManagedTenant,
+  updateManagedTenantAccountStatus,
   updateManagedTenantIdentityDocuments
 } from './tenant-management.service';
 
@@ -71,6 +73,11 @@ router.post('/:id/resend-activation', requireRole('MANAGER'), asyncHandler(async
     emailSent: result.emailSent,
     expiresAt: result.expiresAt
   });
+}));
+
+router.patch('/:id/account-status', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  const body = parseBody(tenantAccountStatusSchema, req.body);
+  res.json(await updateManagedTenantAccountStatus(req.params.id, req.auth!.userId, body.status));
 }));
 
 router.patch('/:id', requireRole('MANAGER'), asyncHandler(async (req, res) => {

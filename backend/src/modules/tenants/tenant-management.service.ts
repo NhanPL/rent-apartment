@@ -3,6 +3,7 @@ import { tenantQuery as query, withTenantTransaction as withTransaction } from '
 import { AppError } from '../../shared/errors/app-error';
 import { CURRENT_CONTRACT_STATUS } from '../contracts/contracts.rules';
 import { resendTenantActivation } from '../auth/account-activation.service';
+import { revokeUserSessions } from '../auth/session.service';
 import {
   createTenant as createTenantService,
   createTenantContract,
@@ -193,6 +194,9 @@ const paymentColumns = (alias: string) => `
 
 const nullableString = z.string().trim().nullable().optional();
 const tenantWritableStatusSchema = z.enum(TENANT_WRITABLE_STATUSES);
+export const tenantAccountStatusSchema = z.object({
+  status: z.enum(['ACTIVE', 'DISABLED'])
+}).strict();
 export const tenantListQuerySchema = z.object({
   page: z.coerce.number().int().positive().default(1),
   pageSize: z.coerce.number().int().positive().max(100).default(10),
@@ -548,6 +552,67 @@ export const createManagedTenant = async (body: TenantCreateRequest, managerId: 
 export const resendManagedTenantActivation = (tenantId: string, managerId: string) => (
   resendTenantActivation(tenantId, managerId)
 );
+
+export const updateManagedTenantAccountStatus = async (
+  tenantId: string,
+  managerId: string,
+  status: 'ACTIVE' | 'DISABLED'
+): Promise<{ accountStatus: 'ACTIVE' | 'DISABLED' }> => withTransaction(async (client) => {
+  const result = await client.query<{
+    user_id: string | null;
+    account_status: AccountStatus | null;
+    is_active: boolean | null;
+    password_configured: boolean;
+  }>(
+    `SELECT tenant.user_id, app_user.account_status, app_user.is_active,
+            (app_user.password_hash IS NOT NULL AND btrim(app_user.password_hash) <> '') AS password_configured
+     FROM tenant
+     LEFT JOIN app_user ON app_user.id=tenant.user_id
+     WHERE tenant.id=$1
+       AND tenant.manager_user_id=$2
+       AND tenant.status <> 'DELETED'
+     FOR UPDATE OF tenant, app_user`,
+    [tenantId, managerId]
+  );
+  const account = result.rows[0];
+  if (!account) throw new AppError(404, 'Tenant not found', 'TENANT_NOT_FOUND');
+  if (!account.user_id || !account.account_status) {
+    throw new AppError(409, 'This tenant does not have a login account.', 'TENANT_ACCOUNT_NOT_FOUND');
+  }
+  if (account.account_status === 'PENDING_ACTIVATION') {
+    throw new AppError(
+      409,
+      'This account is pending activation. Resend the invitation instead.',
+      'TENANT_ACCOUNT_PENDING_ACTIVATION'
+    );
+  }
+  if (status === 'ACTIVE' && !account.password_configured) {
+    throw new AppError(409, 'The tenant must set a password before the account can be activated.', 'TENANT_ACCOUNT_PASSWORD_REQUIRED');
+  }
+  if (account.account_status === status) return { accountStatus: status };
+
+  await client.query(
+    `UPDATE app_user
+     SET account_status=$2,
+         is_active=$3,
+         session_version=session_version + 1
+     WHERE id=$1`,
+    [account.user_id, status, status === 'ACTIVE']
+  );
+  if (status === 'DISABLED') {
+    await revokeUserSessions(client, account.user_id, 'ACCOUNT_DISABLED');
+  }
+  await writeAuditLog(client, {
+    actorUserId: managerId,
+    action: status === 'ACTIVE' ? 'USER_ACTIVATED' : 'USER_DEACTIVATED',
+    entityType: 'APP_USER',
+    entityId: account.user_id,
+    before: { accountStatus: account.account_status, isActive: account.is_active },
+    after: { accountStatus: status, isActive: status === 'ACTIVE' },
+    metadata: { tenantId, reason: 'MANAGER_ACCOUNT_STATUS_CHANGE' }
+  });
+  return { accountStatus: status };
+});
 
 export const updateManagedTenant = async (
   tenantId: string,

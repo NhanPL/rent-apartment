@@ -159,6 +159,10 @@ export const openApiSchemas: Record<string, OpenApiSchema> = {
       { type: 'object', required: ['tenant'], properties: { tenant: { $ref: '#/components/schemas/TenantUpdateFields' }, contract: { anyOf: [{ $ref: '#/components/schemas/TenantContractInput' }, { type: 'null' }] } } }
     ]
   },
+  TenantAccountStatusRequest: {
+    type: 'object', required: ['status'], additionalProperties: false,
+    properties: { status: { type: 'string', enum: ['ACTIVE', 'DISABLED'] } }
+  },
   Tenant: {
     allOf: [{ $ref: '#/components/schemas/TenantInput' }, { type: 'object', properties: {
       id: uuid, user_id: nullableUuid, account_status: { type: ['string', 'null'] }, current_room: { type: ['object', 'null'], additionalProperties: true },

@@ -11,6 +11,7 @@ import type {
   TenantIdentityDocuments,
   TenantListItem,
   TenantListParams,
+  AccountStatus,
 } from '../pages/tenants/types'
 
 interface PaginatedTenantsResponse {
@@ -63,6 +64,13 @@ export function resendTenantActivation(id: string): Promise<{
   expiresAt: string
 }> {
   return apiRequest(API_ROUTES.tenants.resendActivation(id), { method: 'POST' })
+}
+
+export function updateTenantAccountStatus(
+  id: string,
+  status: Extract<AccountStatus, 'ACTIVE' | 'DISABLED'>,
+): Promise<{ accountStatus: Extract<AccountStatus, 'ACTIVE' | 'DISABLED'> }> {
+  return apiRequest(API_ROUTES.tenants.accountStatus(id), { method: 'PATCH', body: { status } })
 }
 
 export function listTenantContracts(id: string) {

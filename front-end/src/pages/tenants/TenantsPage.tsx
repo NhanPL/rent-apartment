@@ -1,5 +1,5 @@
 import { useI18n } from '../../i18n'
-import { DeleteOutlined, DownloadOutlined, EditOutlined, EyeOutlined, MailOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons'
+import { DeleteOutlined, DownloadOutlined, EditOutlined, EyeOutlined, LockOutlined, MailOutlined, PlusOutlined, ReloadOutlined, UnlockOutlined } from '@ant-design/icons'
 import {
   Alert,
   Button,
@@ -34,6 +34,7 @@ import {
   listTenants,
   resendTenantActivation,
   updateTenant,
+  updateTenantAccountStatus,
   updateTenantIdentityDocuments,
 } from '../../services/tenantsService'
 import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
@@ -121,6 +122,8 @@ export function TenantsPage() {
   const [deleteTarget, setDeleteTarget] = useState<TenantListItem | null>(null)
   const [deletingTenantId, setDeletingTenantId] = useState<string | null>(null)
   const [resendingTenantId, setResendingTenantId] = useState<string | null>(null)
+  const [accountStatusTarget, setAccountStatusTarget] = useState<TenantListItem | null>(null)
+  const [accountStatusUpdating, setAccountStatusUpdating] = useState(false)
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null)
   const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null)
   const [exportingTenantId, setExportingTenantId] = useState<string | null>(null)
@@ -388,6 +391,25 @@ export function TenantsPage() {
     }
   }, [resendingTenantId])
 
+  const confirmAccountStatusChange = useCallback(async () => {
+    if (!accountStatusTarget || accountStatusUpdating || accountStatusTarget.account_status === 'PENDING_ACTIVATION') return
+    const nextStatus = accountStatusTarget.account_status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE'
+    setAccountStatusUpdating(true)
+    try {
+      await updateTenantAccountStatus(accountStatusTarget.id, nextStatus)
+      message.success(t(nextStatus === 'ACTIVE' ? 'Tenant account activated.' : 'Tenant account deactivated and signed out.'))
+      setAccountStatusTarget(null)
+      if (selectedTenant?.id === accountStatusTarget.id) {
+        setSelectedTenant(await getTenant(accountStatusTarget.id))
+      }
+      await loadTenants()
+    } catch (accountError) {
+      message.error(getUserErrorMessage(accountError, 'Unable to update the tenant account status.'))
+    } finally {
+      setAccountStatusUpdating(false)
+    }
+  }, [accountStatusTarget, accountStatusUpdating, loadTenants, selectedTenant?.id, t])
+
   const columns: ColumnsType<TenantListItem> = useMemo(() => [
     { title: t("Tenant name"), dataIndex: 'full_name', key: 'full_name', width: 190 },
     {
@@ -452,6 +474,14 @@ export function TenantsPage() {
               loading={resendingTenantId === item.id}
               disabled={Boolean(resendingTenantId)}
               onClick={() => void handleResendActivation(item)}
+            />
+          ) : item.account_status === 'ACTIVE' || item.account_status === 'DISABLED' ? (
+            <Button
+              type="text"
+              icon={item.account_status === 'ACTIVE' ? <LockOutlined /> : <UnlockOutlined />}
+              aria-label={`${item.account_status === 'ACTIVE' ? 'Deactivate' : 'Activate'} account for ${item.full_name}`}
+              title={t(item.account_status === 'ACTIVE' ? 'Deactivate account' : 'Activate account')}
+              onClick={() => setAccountStatusTarget(item)}
             />
           ) : null}
           <Button
@@ -699,6 +729,25 @@ export function TenantsPage() {
           </Space>
         )}
       </Drawer>
+
+      <Modal
+        open={Boolean(accountStatusTarget)}
+        title={t(accountStatusTarget?.account_status === 'ACTIVE' ? 'Deactivate tenant account?' : 'Activate tenant account?')}
+        onCancel={() => setAccountStatusTarget(null)}
+        onOk={() => void confirmAccountStatusChange()}
+        okText={t(accountStatusTarget?.account_status === 'ACTIVE' ? 'Deactivate account' : 'Activate account')}
+        okButtonProps={{
+          danger: accountStatusTarget?.account_status === 'ACTIVE',
+          loading: accountStatusUpdating,
+        }}
+        cancelText={t("Cancel")}
+        maskClosable={!accountStatusUpdating}
+        keyboard={!accountStatusUpdating}
+      >
+        {t(accountStatusTarget?.account_status === 'ACTIVE'
+          ? 'The tenant will be signed out on every device. Their profile, contracts, invoices, and payments will be retained.'
+          : 'The tenant can sign in again with their existing password. Their rental history is unchanged.')}
+      </Modal>
 
       <Modal
         open={Boolean(deleteTarget)}
