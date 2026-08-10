@@ -37,4 +37,8 @@ export async function listMonthlyBilling(buildingId: string | undefined, month: 
   }
 }
 
-export const generateMonthlyInvoice = (roomId: string, month: string) => generateInvoices({ scope: 'room', room_id: roomId, month })
+export const generateMonthlyInvoices = (buildingId: string | undefined, month: string) => generateInvoices({
+  scope: buildingId ? 'building' : 'all',
+  building_id: buildingId,
+  month,
+})

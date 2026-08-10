@@ -3,7 +3,6 @@ import {
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
-  FileAddOutlined,
   PlusOutlined,
   ReloadOutlined,
 } from '@ant-design/icons'
@@ -111,6 +110,14 @@ const toRatePayload = (values: UtilityRateFormValues): UtilityRatePayload => {
 export function UtilitiesPage() {
   const { t } = useI18n()
   const screens = Grid.useBreakpoint()
+  const initialFilters = useMemo(() => {
+    const params = new URLSearchParams(window.location.search)
+    const month = params.get('month') ?? ''
+    return {
+      buildingId: params.get('buildingId') ?? undefined,
+      month: /^\d{4}-\d{2}$/.test(month) ? month : '',
+    }
+  }, [])
   const [rateForm] = Form.useForm<UtilityRateFormValues>()
   const [rejectForm] = Form.useForm<RejectFormValues>()
 
@@ -125,9 +132,9 @@ export function UtilitiesPage() {
   const [readingsPageSize, setReadingsPageSize] = useState(20)
   const [readingSearchInput, setReadingSearchInput] = useState('')
   const [readingSearch, setReadingSearch] = useState('')
-  const [readingBuildingFilter, setReadingBuildingFilter] = useState<string | undefined>()
+  const [readingBuildingFilter, setReadingBuildingFilter] = useState<string | undefined>(initialFilters.buildingId)
   const [readingRoomFilter, setReadingRoomFilter] = useState<string | undefined>()
-  const [readingMonthFilter, setReadingMonthFilter] = useState('')
+  const [readingMonthFilter, setReadingMonthFilter] = useState(initialFilters.month)
   const [readingStatusFilter, setReadingStatusFilter] = useState<UtilityReadingStatus | undefined>()
 
   const [detailOpen, setDetailOpen] = useState(false)
@@ -256,12 +263,6 @@ export function UtilitiesPage() {
       setActionLoading(null)
     }
   }, [refreshReadingDetailAndList])
-
-  const openCreateInvoice = useCallback((reading: UtilityReadingListItem) => {
-    const params = new URLSearchParams({ utilityReadingId: reading.id })
-    window.history.pushState(null, '', `/invoices?${params.toString()}`)
-    window.dispatchEvent(new PopStateEvent('popstate'))
-  }, [])
 
   const openReject = useCallback((reading: UtilityReadingListItem) => {
     rejectForm.resetFields()
@@ -449,16 +450,11 @@ export function UtilitiesPage() {
             <Button type="link" disabled={item.status !== 'APPROVED'} onClick={() => openReject(item)}>
               {t("Request correction")}
             </Button>
-            {item.status === 'APPROVED' ? (
-              <Button type="link" icon={<FileAddOutlined />} onClick={() => openCreateInvoice(item)}>
-                {t("Create invoice")}
-              </Button>
-            ) : null}
           </Space>
         ),
       },
     ],
-    [actionLoading, handleApprove, openCreateInvoice, openReadingDetail, openReject, t],
+    [actionLoading, handleApprove, openReadingDetail, openReject, t],
   )
 
   const rateColumns: ColumnsType<UtilityRate> = useMemo(
@@ -677,11 +673,6 @@ export function UtilitiesPage() {
                 <Button disabled={detailItem.status !== 'APPROVED'} onClick={() => openReject(detailItem)}>
                   {t("Request correction")}
                 </Button>
-                {detailItem.status === 'APPROVED' ? (
-                  <Button type="primary" icon={<FileAddOutlined />} onClick={() => openCreateInvoice(detailItem)}>
-                    {t("Create invoice")}
-                  </Button>
-                ) : null}
               </Space>
             </div>
 

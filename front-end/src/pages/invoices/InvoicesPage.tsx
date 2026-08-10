@@ -6,7 +6,6 @@ import {
   EyeOutlined,
   PlusOutlined,
   StopOutlined,
-  ThunderboltOutlined,
 } from '@ant-design/icons'
 import {
   Alert,
@@ -21,7 +20,6 @@ import {
   Input,
   InputNumber,
   Modal,
-  Select,
   Skeleton,
   Space,
   Statistic,
@@ -41,7 +39,6 @@ import {
   deleteInvoice,
   getInvoice,
   getInvoicePrefill,
-  generateInvoices,
   issueInvoice,
   updateInvoice,
   voidInvoice,
@@ -69,7 +66,6 @@ import { VietQrDisplay } from './components/VietQrDisplay'
 import { useInvoicesData } from './hooks/useInvoicesData'
 import type {
   InvoiceDetail,
-  InvoiceGenerateScope,
   InvoiceListItem,
   InvoiceStatus,
   PaymentStatus,
@@ -188,7 +184,6 @@ export function InvoicesPage() {
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
   const [form] = Form.useForm<InvoiceFormValues>()
-  const [generateForm] = Form.useForm<{ scope: InvoiceGenerateScope; month: string; building_id?: string; room_id?: string }>()
   const [paymentRequestForm] = Form.useForm<PaymentRequestFormValues>()
   const [adjustmentForm] = Form.useForm<AdjustmentFormValues>()
   const [issueForm] = Form.useForm<IssueInvoiceFormValues>()
@@ -218,9 +213,6 @@ export function InvoicesPage() {
   const [detailItem, setDetailItem] = useState<InvoiceDetail | null>(null)
   const [detailPaymentRequest, setDetailPaymentRequest] = useState<PaymentRequest | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
-  const [generateOpen, setGenerateOpen] = useState(false)
-  const [generateLoading, setGenerateLoading] = useState(false)
-  const [generateResult, setGenerateResult] = useState<{ generated: number; skipped: number; total: number } | null>(null)
   const [voidingInvoiceId, setVoidingInvoiceId] = useState<string | null>(null)
   const [voidLoading, setVoidLoading] = useState(false)
   const [replacementLoading, setReplacementLoading] = useState(false)
@@ -527,36 +519,6 @@ export function InvoicesPage() {
     }
   }, [closeDetail, deletingInvoiceId, detailItem?.id, loadData])
 
-  const openGenerate = useCallback(() => {
-    setGenerateResult(null)
-    generateForm.resetFields()
-    generateForm.setFieldsValue({ scope: 'all', month: dayjs().format('YYYY-MM') })
-    setGenerateOpen(true)
-  }, [generateForm])
-
-  const selectedGenerateScope = Form.useWatch('scope', generateForm)
-  const selectedGenerateBuilding = Form.useWatch('building_id', generateForm)
-  const generateRoomOptions = useMemo(() => {
-    if (!selectedGenerateBuilding) return rooms
-    return rooms.filter((room) => room.building_id === selectedGenerateBuilding)
-  }, [rooms, selectedGenerateBuilding])
-
-  const onGenerate = useCallback(async () => {
-    setGenerateLoading(true)
-    try {
-      const values = await generateForm.validateFields()
-      const result = await generateInvoices(values)
-      setGenerateResult({ generated: result.generated.length, skipped: result.skipped.length, total: result.total })
-      message.success(`Generated ${result.generated.length} invoice(s).`)
-      await loadData()
-    } catch (error) {
-      applyApiFieldErrors(generateForm, error)
-      message.error(getFormErrorMessage(error, 'Unable to generate invoices.'))
-    } finally {
-      setGenerateLoading(false)
-    }
-  }, [generateForm, loadData])
-
   const openVoidModal = useCallback((invoiceId: string) => {
     voidForm.resetFields()
     setVoidingInvoiceId(invoiceId)
@@ -811,7 +773,6 @@ export function InvoicesPage() {
           <Typography.Text type="secondary">{t("Manage monthly invoices from contracts, utility readings, and payment status.")}</Typography.Text>
         </div>
         <Space wrap>
-          <Button icon={<ThunderboltOutlined />} onClick={openGenerate}>{t("Generate Monthly")}</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>{t("Create Manual Invoice")}</Button>
         </Space>
       </div>
@@ -1151,56 +1112,6 @@ export function InvoicesPage() {
         </Form>
       </Modal>
 
-      <Modal
-        open={generateOpen}
-        title={t("Generate monthly invoices")}
-        okText={t("Generate")}
-        confirmLoading={generateLoading}
-        onOk={() => void onGenerate()}
-        onCancel={() => setGenerateOpen(false)}
-        destroyOnClose
-      >
-        <Form form={generateForm} layout="vertical" initialValues={{ scope: 'all', month: dayjs().format('YYYY-MM') }}>
-          <Form.Item name="scope" label={t("Scope")} rules={[{ required: true }]}>
-            <Select
-              options={[
-                { label: t("All active contracts"), value: 'all' },
-                { label: t("Building"), value: 'building' },
-                { label: t("Room"), value: 'room' },
-              ]}
-            />
-          </Form.Item>
-          <Form.Item name="month" label={t("Month")} rules={[{ required: true, message: t("Please select month") }]}>
-            <Input type="month" />
-          </Form.Item>
-          {selectedGenerateScope === 'building' || selectedGenerateScope === 'room' ? (
-            <Form.Item name="building_id" label={t("Building")} rules={[{ required: true, message: t("Please select building") }]}>
-              <Select
-                options={buildings.map((item) => ({ label: item.name, value: item.id }))}
-                onChange={() => generateForm.setFieldValue('room_id', undefined)}
-              />
-            </Form.Item>
-          ) : null}
-          {selectedGenerateScope === 'room' ? (
-            <Form.Item name="room_id" label={t("Room")} rules={[{ required: true, message: t("Please select room") }]}>
-              <Select options={generateRoomOptions.map((item) => ({ label: item.code, value: item.id }))} />
-            </Form.Item>
-          ) : null}
-          <Alert
-            showIcon
-            type="info"
-            message={t("Generation requires an approved utility reading and an effective utility rate for each contract/month.")}
-          />
-          {generateResult ? (
-            <Alert
-              showIcon
-              type={generateResult.skipped > 0 ? 'warning' : 'success'}
-              style={{ marginTop: 12 }}
-              message={`Generated ${generateResult.generated}/${generateResult.total}; skipped ${generateResult.skipped}.`}
-            />
-          ) : null}
-        </Form>
-      </Modal>
     </Space>
     </>
   )
