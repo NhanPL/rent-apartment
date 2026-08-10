@@ -129,6 +129,8 @@ function VietQrImage({ url, alt, maxWidth }: { url: string; alt: string; maxWidt
     <img
       src={url}
       alt={alt}
+      loading="lazy"
+      decoding="async"
       onError={() => setLoadFailed(true)}
       style={{ display: 'block', maxWidth, width: '100%', margin: '0 auto' }}
     />

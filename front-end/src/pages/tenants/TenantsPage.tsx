@@ -475,7 +475,7 @@ export function TenantsPage() {
     <div className="tenant-identity-detail-item">
       <Typography.Text strong>{label}</Typography.Text>
       {document ? (
-        <Image src={document.file_url} alt={label} />
+        <Image src={document.file_url} alt={label} loading="lazy" />
       ) : (
         <div className="tenant-identity-detail-empty">{t("No image")}</div>
       )}

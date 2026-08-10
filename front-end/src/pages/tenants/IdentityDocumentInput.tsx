@@ -43,7 +43,7 @@ export function IdentityDocumentInput({ value = null, onChange, disabled }: Iden
     <div className="tenant-identity-image-input">
       <div className="tenant-identity-image-preview">
         {previewUrl ? (
-          <Image src={previewUrl} alt={fileName || 'Identity card'} preview={!isFile(value)} />
+          <Image src={previewUrl} alt={fileName || 'Identity card'} loading="lazy" preview={!isFile(value)} />
         ) : (
           <div className="tenant-identity-image-empty">
             <IdcardOutlined />

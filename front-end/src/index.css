@@ -7,6 +7,8 @@ body {
   background: #f4f6fb;
 }
 button, input, textarea, select { font: inherit; }
+img { max-width: 100%; height: auto; }
+.ant-table-cell > .ant-space { flex-wrap: wrap; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
