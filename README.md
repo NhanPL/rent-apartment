@@ -4,7 +4,7 @@ Fullstack apartment rental management app built with React, TypeScript, Ant Desi
 
 ## Prerequisites
 
-- Node.js 20 or newer
+- Node.js 22 (see `.nvmrc`)
 - npm
 - PostgreSQL 14 or newer
 - PowerShell, Bash, or another terminal
@@ -199,6 +199,7 @@ to application logs.
 SMTP is optional in local development. If these values are blank, account activation and password reset emails are skipped and the API keeps running. Managers can resend the invitation after SMTP is configured:
 
 ```env
+SMTP_ENABLED=false
 SMTP_HOST=
 SMTP_PORT=587
 SMTP_SECURE=false
@@ -208,7 +209,13 @@ SMTP_FROM_NAME=
 SMTP_FROM_EMAIL=
 ```
 
-For production or a shared staging environment, configure all SMTP variables so account invitation emails can be sent. Activation links are single-use and expire after `ACCOUNT_ACTIVATION_EXPIRES_HOURS` (48 hours by default).
+Set `SMTP_ENABLED=true` only with `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, and
+`SMTP_FROM_EMAIL`; partial configuration fails startup. Shared staging and
+production should enable SMTP when account invitation and password reset email
+are supported. Activation links are single-use and expire after
+`ACCOUNT_ACTIVATION_EXPIRES_HOURS` (48 hours by default). The complete
+environment matrix and container workflow are documented in
+[`docs/environments.md`](docs/environments.md).
 
 ## API Documentation
 

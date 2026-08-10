@@ -29,7 +29,7 @@ interface PasswordChangedPayload {
 let transporter: ReturnType<typeof nodemailer.createTransport> | null = null;
 
 const isSmtpConfigured = (): boolean =>
-  Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS && env.SMTP_FROM_EMAIL);
+  env.SMTP_ENABLED;
 
 const getTransporter = (): ReturnType<typeof nodemailer.createTransport> | null => {
   if (!isSmtpConfigured()) {
