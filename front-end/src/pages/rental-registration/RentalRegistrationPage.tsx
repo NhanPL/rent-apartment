@@ -2,7 +2,6 @@ import {
   FileDoneOutlined,
   FileTextOutlined,
   HomeOutlined,
-  ReloadOutlined,
   DeleteOutlined,
   StopOutlined,
 } from '@ant-design/icons'
@@ -18,7 +17,6 @@ import {
   Modal,
   Select,
   Space,
-  Steps,
   Table,
   Tabs,
   Tag,
@@ -51,8 +49,6 @@ import {
 } from '../../services/rentalRegistrationService'
 import type {
   AvailableRoom,
-  HandoverPayload,
-  ReservePayload,
 } from '../../services/rentalRegistrationService'
 import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
 import { uploadFileToCloudinary, type UploadedCloudinaryFile } from '../../services/uploadService'
@@ -60,37 +56,17 @@ import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMe
 import { Localized } from '../../shared/components/Localized'
 import { vndCurrency } from '../../i18n'
 import './RentalRegistrationPage.css'
-
-interface ReserveFormValues {
-  building_id?: string
-  room_id?: string
-  tenant_mode: 'existing' | 'new'
-  tenant_id?: string
-  full_name?: string
-  phone?: string
-  identity_number?: string
-  email?: string
-  permanent_address?: string
-  privacy_consent?: boolean
-  start_date?: string
-  end_date?: string
-  rent_price?: number
-  deposit_amount?: number
-  billing_day?: number
-  note?: string
-}
+import { RegistrationQueueStep, ReserveRegistrationStep } from './components/RegistrationSteps'
+import {
+  nullableText,
+  toHandoverPayload,
+  toReservePayload,
+  type HandoverFormValues,
+  type ReserveFormValues,
+} from './rentalRegistrationPayload'
 
 interface DocumentFormValues {
   doc_type: ContractDocumentType
-  note?: string
-}
-
-interface HandoverFormValues {
-  move_in_date?: string
-  electricity_curr?: number
-  water_curr?: number
-  persons_count?: number
-  vehicles_count?: number
   note?: string
 }
 
@@ -117,11 +93,6 @@ const stageLabels: Record<string, string> = {
 }
 
 const today = () => new Date().toISOString().slice(0, 10)
-const nullableText = (value: string | undefined): string | null => {
-  const trimmed = value?.trim() ?? ''
-  return trimmed.length > 0 ? trimmed : null
-}
-
 const documentFileKey = (file: File): string => `${file.name}:${file.size}:${file.lastModified}`
 
 export function RentalRegistrationPage() {
@@ -223,38 +194,7 @@ export function RentalRegistrationPage() {
     setSaving(true)
     try {
       const values = await reserveForm.validateFields()
-      if (!values.room_id || !values.start_date || !values.rent_price || values.deposit_amount === undefined || !values.billing_day) {
-        throw new Error('Please complete all required reservation fields.')
-      }
-      const payload: ReservePayload = {
-        room_id: values.room_id,
-        start_date: values.start_date,
-        end_date: values.end_date ?? null,
-        rent_price: values.rent_price,
-        deposit_amount: values.deposit_amount,
-        billing_day: values.billing_day,
-        note: nullableText(values.note),
-      }
-
-      if (values.tenant_mode === 'new') {
-        if (!values.full_name || !values.phone || !values.identity_number) {
-          throw new Error('Please complete all required new tenant fields.')
-        }
-        payload.tenant = {
-          full_name: values.full_name,
-          phone: values.phone,
-          identity_number: values.identity_number,
-          email: nullableText(values.email),
-          permanent_address: nullableText(values.permanent_address),
-          privacy_consent: true,
-        }
-      } else if (values.tenant_id) {
-        payload.tenant_id = values.tenant_id
-      } else {
-        throw new Error('Please select a tenant.')
-      }
-
-      const reserved = await reserveRoom(payload)
+      const reserved = await reserveRoom(toReservePayload(values))
       setLastReserved(reserved)
       resetReserveForm()
       await Promise.all([loadOptions(), loadWorkQueues()])
@@ -355,18 +295,7 @@ export function RentalRegistrationPage() {
     setHandoverSaving(true)
     try {
       const values = await handoverForm.validateFields()
-      if (!values.move_in_date || values.electricity_curr === undefined || values.water_curr === undefined || values.persons_count === undefined || values.vehicles_count === undefined) {
-        throw new Error('Please complete all required handover fields.')
-      }
-      const payload: HandoverPayload = {
-        move_in_date: values.move_in_date,
-        electricity_curr: values.electricity_curr,
-        water_curr: values.water_curr,
-        persons_count: values.persons_count,
-        vehicles_count: values.vehicles_count,
-        note: nullableText(values.note),
-      }
-      await handoverContract(handoverContractDetail.id, payload)
+      await handoverContract(handoverContractDetail.id, toHandoverPayload(values))
       setHandoverContractDetail(null)
       await Promise.all([loadOptions(), loadWorkQueues()])
       message.success('Contract activated and initial utility readings recorded.')
@@ -506,16 +435,7 @@ export function RentalRegistrationPage() {
   ]
 
   const reserveContent = (
-    <Space direction="vertical" size={16} style={{ width: '100%' }}>
-      <Steps
-        size={screens.md ? 'default' : 'small'}
-        direction={screens.md ? 'horizontal' : 'vertical'}
-        items={[
-          { title: 'Available room', status: selectedRoomId ? 'finish' : 'process' },
-          { title: 'Tenant', status: selectedRoomId ? 'process' : 'wait' },
-          { title: 'Reserve room', status: 'wait' },
-        ]}
-      />
+    <ReserveRegistrationStep compact={!screens.md} roomSelected={Boolean(selectedRoomId)}>
 
       {lastReserved ? (
         <Alert
@@ -631,19 +551,7 @@ export function RentalRegistrationPage() {
           </Space>
         </section>
       </div>
-    </Space>
-  )
-
-  const queueHeader = (title: string, description: string) => (
-    <div className="registration-toolbar">
-      <div>
-        <Typography.Title level={5} style={{ margin: 0 }}>{title}</Typography.Title>
-        <Typography.Text type="secondary">{description}</Typography.Text>
-      </div>
-      <Button icon={<ReloadOutlined />} loading={queueLoading} onClick={() => void loadWorkQueues()}>
-        Reload
-      </Button>
-    </div>
+    </ReserveRegistrationStep>
   )
 
   return (
@@ -664,38 +572,12 @@ export function RentalRegistrationPage() {
           {
             key: 'documents',
             label: `Add documents (${draftContracts.length})`,
-            children: (
-              <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                {queueHeader('Pending registrations', 'Select a draft contract to add documents when the tenant provides them.')}
-                <Table<ContractListItem>
-                  rowKey="id"
-                  loading={queueLoading}
-                  columns={documentColumns}
-                  dataSource={draftContracts}
-                  pagination={{ pageSize: 10 }}
-                  scroll={{ x: 820 }}
-                  locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No registrations awaiting documents" /> }}
-                />
-              </Space>
-            ),
+            children: <RegistrationQueueStep title="Pending registrations" description="Select a draft contract to add documents when the tenant provides them." emptyText="No registrations awaiting documents" loading={queueLoading} items={draftContracts} columns={documentColumns} onReload={() => void loadWorkQueues()} />,
           },
           {
             key: 'handover',
             label: `Room handover (${handoverContracts.length})`,
-            children: (
-              <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                {queueHeader('Ready for handover', 'Only contracts with a signed scan or PDF are shown.')}
-                <Table<ContractListItem>
-                  rowKey="id"
-                  loading={queueLoading}
-                  columns={handoverColumns}
-                  dataSource={handoverContracts}
-                  pagination={{ pageSize: 10 }}
-                  scroll={{ x: 820 }}
-                  locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No registrations ready for handover" /> }}
-                />
-              </Space>
-            ),
+            children: <RegistrationQueueStep title="Ready for handover" description="Only contracts with a signed scan or PDF are shown." emptyText="No registrations ready for handover" loading={queueLoading} items={handoverContracts} columns={handoverColumns} onReload={() => void loadWorkQueues()} />,
           },
         ]}
       />

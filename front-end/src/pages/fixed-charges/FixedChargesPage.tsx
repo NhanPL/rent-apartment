@@ -15,7 +15,6 @@ import {
   InputNumber,
   Modal,
   Select,
-  Skeleton,
   Space,
   Switch,
   Table,
@@ -75,6 +74,9 @@ import type {
   RoomOption,
 } from './types'
 import './FixedChargesPage.css'
+import { ChargeAssignmentPanel } from './components/ChargeAssignmentPanel'
+import { ChargeCatalogPanel } from './components/ChargeCatalogPanel'
+import { MonthlyExtrasPanel } from './components/MonthlyExtrasPanel'
 
 type TabKey = 'catalog' | 'building' | 'room' | 'contract' | 'extra' | 'preview'
 type EditableKind = Exclude<TabKey, 'preview'>
@@ -776,63 +778,27 @@ export function FixedChargesPage() {
           {
             key: 'catalog',
             label: 'Catalog',
-            children: (
-              <Card>
-                {loading ? <Skeleton active paragraph={{ rows: 6 }} /> : error ? (
-                  <Empty description={error}><Button onClick={() => void loadTables()}>Retry</Button></Empty>
-                ) : (
-                  <Table<ChargeCatalog> rowKey="id" columns={catalogColumns} dataSource={catalog} scroll={{ x: 1000 }} />
-                )}
-              </Card>
-            ),
+            children: <ChargeCatalogPanel loading={loading} error={error} items={catalog} columns={catalogColumns} onRetry={() => void loadTables()} />,
           },
           {
             key: 'building',
             label: 'Building Defaults',
-            children: (
-              <Card>
-                <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                  {renderFilters()}
-                  <Table<BuildingCharge> rowKey="id" columns={buildingColumns} dataSource={visibleBuildingCharges} loading={loading} scroll={{ x: 1120 }} />
-                </Space>
-              </Card>
-            ),
+            children: <ChargeAssignmentPanel filters={renderFilters()} loading={loading} items={visibleBuildingCharges} columns={buildingColumns} scrollWidth={1120} />,
           },
           {
             key: 'room',
             label: 'Room Overrides',
-            children: (
-              <Card>
-                <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                  {renderFilters()}
-                  <Table<RoomChargeOverride> rowKey="id" columns={roomColumns} dataSource={visibleRoomOverrides} loading={loading} scroll={{ x: 1240 }} />
-                </Space>
-              </Card>
-            ),
+            children: <ChargeAssignmentPanel filters={renderFilters()} loading={loading} items={visibleRoomOverrides} columns={roomColumns} scrollWidth={1240} />,
           },
           {
             key: 'contract',
             label: 'Contract Overrides',
-            children: (
-              <Card>
-                <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                  {renderFilters(true)}
-                  <Table<ContractChargeOverride> rowKey="id" columns={contractColumns} dataSource={visibleContractOverrides} loading={loading} scroll={{ x: 1460 }} />
-                </Space>
-              </Card>
-            ),
+            children: <ChargeAssignmentPanel filters={renderFilters(true)} loading={loading} items={visibleContractOverrides} columns={contractColumns} scrollWidth={1460} />,
           },
           {
             key: 'extra',
             label: 'Monthly Extras',
-            children: (
-              <Card>
-                <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                  {renderFilters(false, true)}
-                  <Table<RoomMonthExtra> rowKey="id" columns={extraColumns} dataSource={visibleExtras} loading={loading} scroll={{ x: 980 }} />
-                </Space>
-              </Card>
-            ),
+            children: <MonthlyExtrasPanel filters={renderFilters(false, true)} loading={loading} items={visibleExtras} columns={extraColumns} />,
           },
           {
             key: 'preview',

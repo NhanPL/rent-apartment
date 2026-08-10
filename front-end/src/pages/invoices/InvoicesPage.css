@@ -48,3 +48,11 @@
     grid-template-columns: 1fr;
   }
 }
+
+.invoice-vietqr {
+  display: block;
+  width: 100%;
+  max-width: 280px;
+  height: auto;
+  margin: 0 auto;
+}

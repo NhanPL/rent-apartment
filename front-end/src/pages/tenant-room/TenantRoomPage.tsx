@@ -1,5 +1,5 @@
-import { EyeOutlined, TeamOutlined } from '@ant-design/icons'
-import { Alert, Button, Card, Checkbox, Col, Descriptions, Drawer, Empty, Form, Grid, Input, InputNumber, List, Row, Select, Skeleton, Space, Statistic, Table, Tag, Typography, message } from 'antd'
+import { TeamOutlined } from '@ant-design/icons'
+import { Alert, Button, Card, Col, Descriptions, Drawer, Empty, Form, Grid, Input, InputNumber, List, Row, Select, Skeleton, Space, Table, Tag, Typography, message } from 'antd'
 import dayjs from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
 import {
@@ -35,10 +35,12 @@ import {
   type TenantUtilityReadingFormValues,
 } from './utilityReadingForm'
 
-interface PaymentProofFormValues {
-  transfer_amount?: number
-  payer_note?: string
-}
+import { CurrentInvoice } from './components/CurrentInvoice'
+import { DocumentEvidencePreview } from './components/DocumentEvidencePreview'
+import { InvoiceHistory } from './components/InvoiceHistory'
+import { type PaymentProofFormValues } from './components/PaymentProofForm'
+import { RoomContractSummary } from './components/RoomContractSummary'
+import { UtilityReadingForm } from './components/UtilityReadingForm'
 
 interface TenantDocumentFormValues {
   doc_type: TenantDocumentType
@@ -184,7 +186,6 @@ export function TenantRoomPage() {
 
   const currentReading = utilitySnapshot?.current_reading ?? null
   const readingLocked = isTenantUtilityReadingLocked(currentReading?.status)
-  const currentRemainingAmount = currentBill ? Math.max(currentBill.total - currentBill.paid_amount, 0) : 0
   const billDetailRemainingAmount = billDetail ? Math.max(billDetail.total - billDetail.paid_amount, 0) : 0
   const canSubmitBillDetailPaymentProof = Boolean(
     billDetail
@@ -473,118 +474,26 @@ export function TenantRoomPage() {
 
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={12}>
-          <Card title="Thông tin phòng">
-            <Descriptions bordered column={1} size={isMobile ? 'small' : 'default'}>
-              <Descriptions.Item label="Tòa nhà">{context.building.name}</Descriptions.Item>
-              <Descriptions.Item label="Mã phòng">{context.room.code}</Descriptions.Item>
-              <Descriptions.Item label="Trạng thái">
-                <Tag color={context.room.status === 'ACTIVE' ? 'green' : 'default'}>{context.room.status}</Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label="Giá thuê hợp đồng">{currency.format(context.contract.rent_price)}</Descriptions.Item>
-              <Descriptions.Item label="Sức chứa">{context.room.max_occupants} người</Descriptions.Item>
-              <Descriptions.Item label="Tầng">{context.room.floor ?? '-'}</Descriptions.Item>
-              <Descriptions.Item label="Diện tích">{context.room.area_m2 ? `${context.room.area_m2} m²` : '-'}</Descriptions.Item>
-              <Descriptions.Item label="Ghi chú">{context.room.note ?? '-'}</Descriptions.Item>
-            </Descriptions>
-          </Card>
+          <RoomContractSummary context={context} compact={isMobile} formatCurrency={(value) => currency.format(value)} />
         </Col>
 
         <Col xs={24} xl={12}>
-          <Card title="Hóa đơn tháng hiện tại" extra={currentBill ? <Tag color={invoiceStatusColor[currentBill.status]}>{currentBill.status}</Tag> : null}>
-            {!currentBill ? (
-              <Alert showIcon type="info" message="Tháng này chưa có hóa đơn." />
-            ) : (
-              <Space direction="vertical" size={14} style={{ width: '100%' }}>
-                <Typography.Text type="secondary">Kỳ hóa đơn: {dayjs(currentBill.month).format('MM/YYYY')}</Typography.Text>
-                <Row gutter={[12, 12]}>
-                  <Col xs={12}><Statistic title="Tiền phòng" value={currentBill.rent_amount} formatter={(value) => currency.format(Number(value))} /></Col>
-                  <Col xs={12}><Statistic title="Tiền điện" value={currentBill.electric_amount} formatter={(value) => currency.format(Number(value))} /></Col>
-                  <Col xs={12}><Statistic title="Tiền nước" value={currentBill.water_amount} formatter={(value) => currency.format(Number(value))} /></Col>
-                  <Col xs={12}><Statistic title="Phí khác" value={currentBill.other_amount} formatter={(value) => currency.format(Number(value))} /></Col>
-                </Row>
-                <Card size="small" style={{ background: '#f6ffed' }}>
-                  <Statistic title="Tổng thanh toán" value={currentBill.total} valueStyle={{ color: '#389e0d' }} formatter={(value) => currency.format(Number(value))} />
-                </Card>
-                <Space wrap>
-                  <Typography.Text type="secondary">Hạn thanh toán: {currentBill.due_date ? dayjs(currentBill.due_date).format('DD/MM/YYYY') : '-'}</Typography.Text>
-                  {currentBill.payment_status ? <Tag color={paymentStatusColor[currentBill.payment_status]}>Payment: {currentBill.payment_status}</Tag> : null}
-                  {currentBill.payment_request_status ? <Tag color={paymentRequestStatusColor[currentBill.payment_request_status]}>Request: {currentBill.payment_request_status}</Tag> : null}
-                </Space>
-                <Typography.Text type="secondary">Ngày thanh toán: {currentBill.paid_at ? dayjs(currentBill.paid_at).format('DD/MM/YYYY') : '-'}</Typography.Text>
-                <Typography.Text type="secondary">Đã thanh toán: {currency.format(currentBill.paid_amount)}</Typography.Text>
-                <Typography.Text type="secondary">Remaining: {currency.format(currentRemainingAmount)}</Typography.Text>
-                {currentPaymentRequestError ? (
-                  <Alert showIcon type="error" message={currentPaymentRequestError} />
-                ) : !currentPaymentRequest ? (
-                  <Alert showIcon type="info" message="Chưa có yêu cầu chuyển khoản cho hóa đơn này." />
-                ) : (
-                  <Card size="small" title="Thanh toán chuyển khoản">
-                    <Space direction="vertical" size={12} style={{ width: '100%' }}>
-                      <Descriptions bordered size="small" column={1}>
-                        <Descriptions.Item label="Số tiền cần chuyển">{currency.format(currentPaymentRequest.remaining_amount ?? currentPaymentRequest.amount)}</Descriptions.Item>
-                        <Descriptions.Item label="Ngân hàng">{currentPaymentRequest.bank_code ?? '-'}</Descriptions.Item>
-                        <Descriptions.Item label="Số tài khoản">{currentPaymentRequest.bank_account_no ?? '-'}</Descriptions.Item>
-                        <Descriptions.Item label="Chủ tài khoản">{currentPaymentRequest.bank_account_name ?? '-'}</Descriptions.Item>
-                        <Descriptions.Item label="Nội dung chuyển khoản">{currentPaymentRequest.transfer_note ?? '-'}</Descriptions.Item>
-                        <Descriptions.Item label="Hạn yêu cầu">{currentPaymentRequest.expires_at ? dayjs(currentPaymentRequest.expires_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
-                      </Descriptions>
-                      {currentPaymentRequest.qr_image_url ? (
-                        <VietQrImage
-                          key={currentPaymentRequest.qr_image_url}
-                          url={currentPaymentRequest.qr_image_url}
-                          alt={`VietQR payment for invoice ${dayjs(currentBill.month).format('MM/YYYY')}`}
-                          maxWidth={280}
-                        />
-                      ) : currentPaymentRequest.qr_content ? (
-                        <Input.TextArea value={currentPaymentRequest.qr_content} autoSize readOnly />
-                      ) : null}
-                      {(currentPaymentRequest.status === 'WAITING_TRANSFER' || currentPaymentRequest.status === 'REJECTED') && currentBill.status !== 'PAID' ? (
-                        <Form<PaymentProofFormValues>
-                          form={paymentProofForm}
-                          layout="vertical"
-                          onFinish={handlePaymentProofSubmit}
-                          onFinishFailed={notifyFormFailure}
-                        >
-                          <Form.Item
-                            name="transfer_amount"
-                            label="Số tiền đã chuyển"
-                            initialValue={currentPaymentRequest.remaining_amount ?? currentPaymentRequest.amount}
-                            rules={[{ required: true, message: 'Vui lòng nhập số tiền đã chuyển' }]}
-                          >
-                            <InputNumber min={1} max={currentPaymentRequest.remaining_amount || undefined} precision={0} style={{ width: '100%' }} />
-                          </Form.Item>
-                          <Form.Item label="Ảnh biên lai" required>
-                            <Space wrap>
-                              <CloudinaryUploadButton
-                                accept={imageAccept}
-                                context="PAYMENT_PROOF"
-                                onUploaded={setPaymentProofFile}
-                              >
-                                Upload image
-                              </CloudinaryUploadButton>
-                              {paymentProofFile ? (
-                                <Typography.Link href={paymentProofFile.file_url} target="_blank" rel="noreferrer">
-                                  {paymentProofFile.file_name}
-                                </Typography.Link>
-                              ) : (
-                                <Typography.Text type="secondary">No image uploaded</Typography.Text>
-                              )}
-                            </Space>
-                          </Form.Item>
-                          <Form.Item name="payer_note" label="Ghi chú">
-                            <Input.TextArea rows={2} />
-                          </Form.Item>
-                          <Button htmlType="submit" type="primary" loading={paymentProofSubmitting} block={isMobile}>Gửi biên lai</Button>
-                        </Form>
-                      ) : (
-                        <Alert showIcon type={currentPaymentRequest.status === 'TRANSFER_SUBMITTED' ? 'warning' : 'success'} message={currentPaymentRequest.status === 'TRANSFER_SUBMITTED' ? 'Biên lai đang chờ quản lý duyệt.' : 'Yêu cầu thanh toán đang không nhận biên lai mới.'} />
-                      )}
-                    </Space>
-                  </Card>
-                )}
-              </Space>
-            )}
-          </Card>
+          <CurrentInvoice
+            invoice={currentBill}
+            paymentRequest={currentPaymentRequest}
+            paymentRequestError={currentPaymentRequestError}
+            form={paymentProofForm}
+            proofFile={paymentProofFile}
+            proofSubmitting={paymentProofSubmitting}
+            compact={isMobile}
+            formatCurrency={(value) => currency.format(value)}
+            invoiceStatusColor={invoiceStatusColor}
+            paymentStatusColor={paymentStatusColor}
+            requestStatusColor={paymentRequestStatusColor}
+            onProofFileChange={setPaymentProofFile}
+            onProofSubmit={handlePaymentProofSubmit}
+            onFormFailure={notifyFormFailure}
+          />
         </Col>
       </Row>
 
@@ -677,18 +586,7 @@ export function TenantRoomPage() {
             </Button>
           </Form>
 
-          <List
-            dataSource={tenantDocuments}
-            locale={{ emptyText: 'No documents uploaded.' }}
-            renderItem={(item) => (
-              <List.Item actions={[<Typography.Link href={item.file_url} target="_blank" rel="noreferrer">Open</Typography.Link>]}>
-                <List.Item.Meta
-                  title={tenantDocumentTypeLabel[item.doc_type] ?? item.doc_type}
-                  description={`${item.file_name ?? 'Uploaded file'} - ${item.mime_type} - ${dayjs(item.uploaded_at).format('DD/MM/YYYY HH:mm')}`}
-                />
-              </List.Item>
-            )}
-          />
+          <DocumentEvidencePreview documents={tenantDocuments} labels={tenantDocumentTypeLabel} />
         </Space>
       </Card>
 
@@ -736,233 +634,32 @@ export function TenantRoomPage() {
         )}
       </Card>
 
-      <Card title="Nhập chỉ số điện / nước theo tháng">
-        <Form<TenantUtilityReadingFormValues>
-          form={form}
-          layout="vertical"
-          onFinish={handleSubmit}
-          onFinishFailed={notifyFormFailure}
-          initialValues={{
-            month: dayjs().format('YYYY-MM'),
-            electricity_prev: null,
-            electricity_curr: null,
-            water_prev: null,
-            water_curr: null,
-            electricity_meter_reset: false,
-            water_meter_reset: false,
-            meter_reset_note: '',
-            note: '',
-          }}
-        >
-          <Row gutter={[16, 8]}>
-            <Col xs={24} md={8}>
-              <Form.Item name="month" label="Tháng ghi chỉ số" rules={[{ required: true, message: 'Vui lòng chọn tháng' }]}>
-                <Input type="month" />
-              </Form.Item>
-            </Col>
-          </Row>
+      <UtilityReadingForm
+        form={form}
+        snapshot={utilitySnapshot}
+        electricityUsage={electricUsage}
+        waterUsage={waterUsage}
+        electricityMeterReset={electricityMeterReset}
+        waterMeterReset={waterMeterReset}
+        electricityEvidence={electricityEvidenceFile}
+        waterEvidence={waterEvidenceFile}
+        locked={readingLocked}
+        submitting={submitting}
+        compact={isMobile}
+        onElectricityEvidenceChange={setElectricityEvidenceFile}
+        onWaterEvidenceChange={setWaterEvidenceFile}
+        onFinish={handleSubmit}
+        onFinishFailed={notifyFormFailure}
+      />
 
-          <Row gutter={[16, 8]}>
-            <Col xs={24} md={12}>
-              <Form.Item name="electricity_prev" label="Chỉ số điện tháng trước (tự động)">
-                <InputNumber style={{ width: '100%' }} disabled precision={0} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item
-                name="electricity_curr"
-                label="Chỉ số điện tháng này"
-                dependencies={['electricity_prev', 'electricity_meter_reset']}
-                rules={[
-                  { required: true, type: 'number', message: 'Vui lòng nhập chỉ số điện hiện tại' },
-                  { type: 'number', min: 0, message: 'Chỉ số phải >= 0' },
-                  ({ getFieldValue }) => ({
-                    validator(_, value: number | null) {
-                      const prev = getFieldValue('electricity_prev') as number | null
-                      const reset = Boolean(getFieldValue('electricity_meter_reset'))
-                      if (value === null || value === undefined || prev === null || prev === undefined || value >= prev || reset) {
-                        return Promise.resolve()
-                      }
-                      return Promise.reject(new Error('Chỉ số điện hiện tại phải lớn hơn hoặc bằng chỉ số tháng trước'))
-                    },
-                  }),
-                ]}
-              >
-                <InputNumber style={{ width: '100%' }} precision={0} min={0} />
-              </Form.Item>
-              <Form.Item name="electricity_meter_reset" valuePropName="checked">
-                <Checkbox disabled={readingLocked || submitting}>Electric meter was reset or replaced</Checkbox>
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item name="water_prev" label="Chỉ số nước tháng trước (tự động)">
-                <InputNumber style={{ width: '100%' }} disabled precision={0} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item
-                name="water_curr"
-                label="Chỉ số nước tháng này"
-                dependencies={['water_prev', 'water_meter_reset']}
-                rules={[
-                  { required: true, type: 'number', message: 'Vui lòng nhập chỉ số nước hiện tại' },
-                  { type: 'number', min: 0, message: 'Chỉ số phải >= 0' },
-                  ({ getFieldValue }) => ({
-                    validator(_, value: number | null) {
-                      const prev = getFieldValue('water_prev') as number | null
-                      const reset = Boolean(getFieldValue('water_meter_reset'))
-                      if (value === null || value === undefined || prev === null || prev === undefined || value >= prev || reset) {
-                        return Promise.resolve()
-                      }
-                      return Promise.reject(new Error('Chỉ số nước hiện tại phải lớn hơn hoặc bằng chỉ số tháng trước'))
-                    },
-                  }),
-                ]}
-              >
-                <InputNumber style={{ width: '100%' }} precision={0} min={0} />
-              </Form.Item>
-              <Form.Item name="water_meter_reset" valuePropName="checked">
-                <Checkbox disabled={readingLocked || submitting}>Water meter was reset or replaced</Checkbox>
-              </Form.Item>
-            </Col>
-          </Row>
 
-          <Row gutter={[16, 8]}>
-            <Col xs={24} md={12}>
-              <Card size="small"><Statistic title="Sản lượng điện (kWh)" value={electricUsage ?? '-'} /></Card>
-            </Col>
-            <Col xs={24} md={12}>
-              <Card size="small"><Statistic title="Sản lượng nước (m³)" value={waterUsage ?? '-'} /></Card>
-            </Col>
-          </Row>
-
-          {electricityMeterReset || waterMeterReset ? (
-            <Form.Item
-              name="meter_reset_note"
-              label="Meter reset reason"
-              rules={[{ required: true, whitespace: true, message: 'Please explain why the meter was reset or replaced.' }]}
-            >
-              <Input.TextArea rows={2} maxLength={500} showCount disabled={readingLocked || submitting} />
-            </Form.Item>
-          ) : null}
-
-          <Form.Item name="note" label="Ghi chú" style={{ marginTop: 16 }}>
-            <Input.TextArea rows={3} maxLength={500} showCount placeholder="Ghi chú (không bắt buộc)" />
-          </Form.Item>
-
-          <Row gutter={[16, 8]}>
-            <Col xs={24} md={12}>
-              <Form.Item label="Electricity evidence" required>
-                <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                  <CloudinaryUploadButton
-                    accept={imageAccept}
-                    context="UTILITY_EVIDENCE"
-                    deferred
-                    disabled={readingLocked || submitting}
-                    onSelected={setElectricityEvidenceFile}
-                  >
-                    Select electricity image
-                  </CloudinaryUploadButton>
-                  <Typography.Text type={electricityEvidenceFile ? undefined : 'secondary'} ellipsis title={electricityEvidenceFile?.name}>
-                    {electricityEvidenceFile?.name ?? 'No image selected'}
-                  </Typography.Text>
-                  {electricityEvidenceFile ? (
-                    <Button size="small" danger disabled={submitting} onClick={() => setElectricityEvidenceFile(null)}>
-                      Remove
-                    </Button>
-                  ) : null}
-                </Space>
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={12}>
-              <Form.Item label="Water evidence" required>
-                <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                  <CloudinaryUploadButton
-                    accept={imageAccept}
-                    context="UTILITY_EVIDENCE"
-                    deferred
-                    disabled={readingLocked || submitting}
-                    onSelected={setWaterEvidenceFile}
-                  >
-                    Select water image
-                  </CloudinaryUploadButton>
-                  <Typography.Text type={waterEvidenceFile ? undefined : 'secondary'} ellipsis title={waterEvidenceFile?.name}>
-                    {waterEvidenceFile?.name ?? 'No image selected'}
-                  </Typography.Text>
-                  {waterEvidenceFile ? (
-                    <Button size="small" danger disabled={submitting} onClick={() => setWaterEvidenceFile(null)}>
-                      Remove
-                    </Button>
-                  ) : null}
-                </Space>
-              </Form.Item>
-            </Col>
-          </Row>
-
-          {readingLocked ? (
-            <Alert
-              type="warning"
-              showIcon
-              style={{ marginBottom: 16 }}
-              message="This month has already been submitted. The saved readings are shown above and can only be updated after the manager rejects them for correction."
-            />
-          ) : null}
-
-          {utilitySnapshot?.current_reading?.reported_at ? (
-            <Alert
-              type="success"
-              showIcon
-              style={{ marginBottom: 16 }}
-              message={`Lần gửi gần nhất: ${dayjs(utilitySnapshot.current_reading.reported_at).format('HH:mm DD/MM/YYYY')}`}
-            />
-          ) : (
-            <Alert
-              type="info"
-              showIcon
-              style={{ marginBottom: 16 }}
-              message="Chưa có chỉ số cho tháng này. Vui lòng nhập và lưu bên dưới."
-            />
-          )}
-
-          <Button htmlType="submit" type="primary" loading={submitting} disabled={readingLocked} block={isMobile}>
-            Lưu chỉ số tháng
-          </Button>
-        </Form>
-      </Card>
-
-      <Card title="Lịch sử hóa đơn gần đây">
-        <Table<InvoiceSummary>
-          rowKey="id"
-          dataSource={billHistory}
-          pagination={false}
-          scroll={{ x: 680 }}
-          columns={[
-            { title: 'Tháng', dataIndex: 'month', render: (value: string) => dayjs(value).format('MM/YYYY') },
-            { title: 'Tổng tiền', dataIndex: 'total', align: 'right', render: (value: number) => currency.format(value) },
-            { title: 'Đã trả', dataIndex: 'paid_amount', align: 'right', render: (value: number) => currency.format(value) },
-            { title: 'Hóa đơn', dataIndex: 'status', render: (value: InvoiceSummary['status']) => <Tag color={invoiceStatusColor[value]}>{value}</Tag> },
-            {
-              title: 'Thanh toán',
-              dataIndex: 'payment_status',
-              render: (value: InvoiceSummary['payment_status']) => (value ? <Tag color={paymentStatusColor[value]}>{value}</Tag> : '-'),
-            },
-            { title: 'Ngày thanh toán', dataIndex: 'paid_at', render: (value: string | null) => (value ? dayjs(value).format('DD/MM/YYYY') : '-') },
-            {
-              title: '',
-              key: 'actions',
-              width: 72,
-              render: (_, row) => (
-                <Button
-                  size="small"
-                  icon={<EyeOutlined />}
-                  aria-label={`View invoice ${dayjs(row.month).format('MM/YYYY')}`}
-                  onClick={() => void openBillDetail(row.id)}
-                />
-              ),
-            },
-          ]}
-        />
-      </Card>
+      <InvoiceHistory
+        items={billHistory}
+        formatCurrency={(value) => currency.format(value)}
+        invoiceStatusColor={invoiceStatusColor}
+        paymentStatusColor={paymentStatusColor}
+        onOpen={(id) => void openBillDetail(id)}
+      />
 
       <Drawer
         title="Chi tiết hóa đơn"

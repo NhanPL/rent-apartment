@@ -1,12 +1,9 @@
 import {
   BankOutlined,
-  CheckOutlined,
   DeleteOutlined,
   EditOutlined,
   EyeOutlined,
   PlusOutlined,
-  QrcodeOutlined,
-  ReloadOutlined,
   StopOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons'
@@ -26,7 +23,6 @@ import {
   Select,
   Skeleton,
   Space,
-  Spin,
   Statistic,
   Table,
   Tag,
@@ -44,14 +40,8 @@ import {
   deleteInvoice,
   getInvoice,
   getInvoicePrefill,
-  getInvoicesSummary,
   generateInvoices,
   issueInvoice,
-  listBuildings,
-  listContracts,
-  listInvoices,
-  listRooms,
-  listTenants,
   updateInvoice,
   voidInvoice,
 } from '../../services/invoicesService'
@@ -69,15 +59,15 @@ import {
   type PaymentRequest,
   type PaymentRequestStatus,
 } from '../../services/paymentsService'
-import {
-  getInvoiceFormDefaultValues,
-  invoiceFormDefaultValues,
-  type InvoiceFormValues,
-} from './components/invoiceFormState'
-import { InvoiceFormFields } from './components/invoiceFormShared'
+import { getInvoiceFormDefaultValues, type InvoiceFormValues } from './components/invoiceFormState'
 import './components/invoiceFormShared.css'
+import { InvoiceDetailHeader } from './components/InvoiceDetailHeader'
+import { InvoiceFilters } from './components/InvoiceFilters'
+import { InvoiceFormDrawer } from './components/InvoiceFormDrawer'
+import { InvoiceList } from './components/InvoiceList'
+import { VietQrDisplay } from './components/VietQrDisplay'
+import { useInvoicesData } from './hooks/useInvoicesData'
 import type {
-  Contract,
   InvoiceDetail,
   InvoiceGenerateScope,
   InvoiceListItem,
@@ -192,13 +182,8 @@ export function InvoicesPage() {
   const [issueForm] = Form.useForm<IssueInvoiceFormValues>()
   const [voidForm] = Form.useForm<VoidInvoiceFormValues>()
 
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [items, setItems] = useState<InvoiceListItem[]>([])
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
-  const [total, setTotal] = useState(0)
-  const [summary, setSummary] = useState({ totalInvoices: 0, paidInvoices: 0, unpaidInvoices: 0, totalRevenue: 0 })
 
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
@@ -208,11 +193,6 @@ export function InvoicesPage() {
   const [buildingFilter, setBuildingFilter] = useState<string | undefined>()
   const [roomFilter, setRoomFilter] = useState<string | undefined>()
   const [tenantFilter, setTenantFilter] = useState<string | undefined>()
-
-  const [buildings, setBuildings] = useState<{ id: string; name: string }[]>([])
-  const [rooms, setRooms] = useState<{ id: string; building_id: string; code: string; base_rent: number }[]>([])
-  const [tenants, setTenants] = useState<{ id: string; full_name: string }[]>([])
-  const [contracts, setContracts] = useState<Contract[]>([])
 
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerMode, setDrawerMode] = useState<'create' | 'edit'>('create')
@@ -252,63 +232,17 @@ export function InvoicesPage() {
     return () => window.clearTimeout(timer)
   }, [searchInput])
 
-  const loadOptions = useCallback(async () => {
-    try {
-      const [buildingRows, roomRows, tenantRows, contractRows] = await Promise.all([
-        listBuildings(),
-        listRooms(),
-        listTenants(),
-        listContracts(),
-      ])
-
-      setBuildings(buildingRows)
-      setRooms(roomRows)
-      setTenants(tenantRows)
-      setContracts(contractRows)
-    } catch (error) {
-      message.error(getUserErrorMessage(error, 'Unable to load the invoice form options.'))
-    }
-  }, [])
-
-  const loadData = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-
-    try {
-      const [invoicePage, summaryRows] = await Promise.all([
-        listInvoices({
-          search,
-          month: monthFilter,
-          invoice_status: invoiceStatusFilter,
-          payment_status: paymentStatusFilter,
-          building_id: buildingFilter,
-          room_id: roomFilter,
-          tenant_id: tenantFilter,
-          page,
-          pageSize,
-          sortBy: 'month',
-          sortOrder: 'desc',
-        }),
-        getInvoicesSummary(monthFilter),
-      ])
-
-      setItems(invoicePage.items)
-      setTotal(invoicePage.total)
-      setSummary(summaryRows)
-    } catch (error) {
-      setError(getUserErrorMessage(error, 'Khong tai duoc danh sach hoa don.'))
-    } finally {
-      setLoading(false)
-    }
-  }, [search, monthFilter, invoiceStatusFilter, paymentStatusFilter, buildingFilter, roomFilter, tenantFilter, page, pageSize])
-
-  useEffect(() => {
-    void loadOptions()
-  }, [loadOptions])
-
-  useEffect(() => {
-    void loadData()
-  }, [loadData])
+  const dataFilters = useMemo(() => ({
+    search,
+    month: monthFilter,
+    invoiceStatus: invoiceStatusFilter,
+    paymentStatus: paymentStatusFilter,
+    buildingId: buildingFilter,
+    roomId: roomFilter,
+    tenantId: tenantFilter,
+  }), [search, monthFilter, invoiceStatusFilter, paymentStatusFilter, buildingFilter, roomFilter, tenantFilter])
+  const { loading, error, items, total, summary, references, reload: loadData } = useInvoicesData(dataFilters, page, pageSize)
+  const { buildings, rooms, tenants, contracts } = references
 
   const roomFilterOptions = useMemo(() => {
     if (!buildingFilter) {
@@ -847,26 +781,28 @@ export function InvoicesPage() {
       </div>
 
       <Card>
-        <div className="invoices-filters">
-          <Input placeholder="Search building, room, tenant" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} allowClear />
-          <Input type="month" value={monthFilter} onChange={(event) => { setMonthFilter(event.target.value); setPage(1) }} />
-          <Select allowClear placeholder="Invoice status" value={invoiceStatusFilter} onChange={(value) => { setInvoiceStatusFilter(value); setPage(1) }} options={invoiceStatusOptions.map((item) => ({ label: item.label, value: item.value }))} />
-          <Select allowClear placeholder="Payment status" value={paymentStatusFilter} onChange={(value) => { setPaymentStatusFilter(value); setPage(1) }} options={paymentStatusOptions.map((item) => ({ label: item.label, value: item.value }))} />
-          <Select
-            allowClear
-            placeholder="Building"
-            value={buildingFilter}
-            onChange={(value) => {
-              setBuildingFilter(value)
-              setRoomFilter(undefined)
-              setPage(1)
-            }}
-            options={buildings.map((item) => ({ label: item.name, value: item.id }))}
-          />
-          <Select allowClear placeholder="Room" value={roomFilter} onChange={(value) => { setRoomFilter(value); setPage(1) }} options={roomFilterOptions.map((item) => ({ label: item.code, value: item.id }))} />
-          <Select allowClear placeholder="Tenant" value={tenantFilter} onChange={(value) => { setTenantFilter(value); setPage(1) }} options={tenants.map((item) => ({ label: item.full_name, value: item.id }))} />
-          <Button icon={<ReloadOutlined />} onClick={() => void loadData()}>Refresh</Button>
-        </div>
+        <InvoiceFilters
+          search={searchInput}
+          month={monthFilter}
+          invoiceStatus={invoiceStatusFilter}
+          paymentStatus={paymentStatusFilter}
+          buildingId={buildingFilter}
+          roomId={roomFilter}
+          tenantId={tenantFilter}
+          buildings={buildings}
+          rooms={roomFilterOptions}
+          tenants={tenants}
+          invoiceStatuses={invoiceStatusOptions}
+          paymentStatuses={paymentStatusOptions}
+          onSearchChange={setSearchInput}
+          onMonthChange={(value) => { setMonthFilter(value); setPage(1) }}
+          onInvoiceStatusChange={(value) => { setInvoiceStatusFilter(value); setPage(1) }}
+          onPaymentStatusChange={(value) => { setPaymentStatusFilter(value); setPage(1) }}
+          onBuildingChange={(value) => { setBuildingFilter(value); setRoomFilter(undefined); setPage(1) }}
+          onRoomChange={(value) => { setRoomFilter(value); setPage(1) }}
+          onTenantChange={(value) => { setTenantFilter(value); setPage(1) }}
+          onRefresh={() => void loadData()}
+        />
       </Card>
 
       <div className="invoices-summary-grid">
@@ -877,97 +813,56 @@ export function InvoicesPage() {
       </div>
 
       <Card title="Monthly invoices">
-        {loading ? (
-          <Skeleton active paragraph={{ rows: 8 }} />
-        ) : error ? (
-          <Empty description={error}><Button onClick={() => void loadData()}>Retry</Button></Empty>
-        ) : (
-          <Table
-            rowKey="id"
-            columns={columns}
-            dataSource={items}
-            scroll={{ x: 1950 }}
-            pagination={{
-              current: page,
-              pageSize,
-              total,
-              showSizeChanger: true,
-              pageSizeOptions: [10, 20, 50, 100],
-              showTotal: (value) => `${value} invoices`,
-              onChange: (nextPage, nextPageSize) => {
-                setPage(nextPageSize === pageSize ? nextPage : 1)
-                setPageSize(nextPageSize)
-              },
-            }}
-            locale={{ emptyText: <Empty description="No invoices found" /> }}
-          />
-        )}
+        <InvoiceList
+          loading={loading}
+          error={error}
+          items={items}
+          columns={columns}
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          onRetry={() => void loadData()}
+          onPageChange={(nextPage, nextPageSize) => {
+            setPage(nextPageSize === pageSize ? nextPage : 1)
+            setPageSize(nextPageSize)
+          }}
+        />
       </Card>
 
-      <Drawer
-        title={drawerMode === 'create' ? (utilitySourceId ? 'Create invoice from utility reading' : 'Add invoice') : 'Edit invoice'}
-        placement="right"
+      <InvoiceFormDrawer
         open={drawerOpen}
+        mode={drawerMode}
         width={isMobile ? '100%' : 500}
+        form={form}
+        loading={utilityPrefillLoading}
+        saveLoading={saveLoading}
+        utilitySourceId={utilitySourceId}
+        buildings={buildings}
+        rooms={rooms}
+        contracts={contracts}
+        tenantName={selectedTenantName ?? undefined}
+        currencyFormatter={(value) => currency.format(value)}
         onClose={closeInvoiceDrawer}
-        destroyOnClose
-      >
-        <Spin spinning={utilityPrefillLoading} tip="Loading approved utility reading...">
-          <Form form={form} layout="vertical" initialValues={invoiceFormDefaultValues}>
-            <InvoiceFormFields
-              form={form}
-              buildings={buildings}
-              rooms={rooms}
-              contracts={contracts}
-              tenantName={selectedTenantName ?? undefined}
-              invoiceStatusOptions={[{ label: 'Draft', value: 'DRAFT' }]}
-              currencyFormatter={(value) => currency.format(value)}
-              sourceLocked={Boolean(utilitySourceId)}
-              autoFillFromLatest={drawerMode === 'create' && !utilitySourceId}
-            />
-            <Space className="invoice-drawer-actions">
-              <Button onClick={closeInvoiceDrawer}>Cancel</Button>
-              <Button type="primary" loading={saveLoading} disabled={utilityPrefillLoading} onClick={() => void onSave()}>Save</Button>
-            </Space>
-          </Form>
-        </Spin>
-      </Drawer>
+        onSave={() => void onSave()}
+      />
 
       <Drawer title="Invoice detail" placement="right" open={detailOpen} width={isMobile ? '100%' : 720} onClose={closeDetail}>
         {detailLoading || !detailItem ? (
           <Skeleton active paragraph={{ rows: 8 }} />
         ) : (
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
-            <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
-              <Space direction="vertical" size={2}>
-                <Typography.Text strong>{detailItem.building_name} / Room {detailItem.room_code}</Typography.Text>
-                <Typography.Text type="secondary">{dayjs(detailItem.month).format('MM/YYYY')}</Typography.Text>
-              </Space>
-              <Space wrap>
-                {pendingPaymentProof ? (
-                  <Button
-                    type="primary"
-                    icon={<CheckOutlined />}
-                    onClick={() => setConfirmingPaymentProof(pendingPaymentProof)}
-                  >
-                    {pendingPaymentProof.transfer_amount >= paymentRemainingAmount
-                      ? 'Confirm and complete invoice'
-                      : 'Confirm payment'}
-                  </Button>
-                ) : null}
-                {detailItem.status === 'DRAFT' ? <Button type="primary" icon={<QrcodeOutlined />} onClick={openIssueModal}>Issue and create QR</Button> : null}
-                {detailItem.status === 'DRAFT' ? <Button icon={<PlusOutlined />} onClick={() => setAdjustmentOpen(true)}>Adjustment</Button> : null}
-                {detailItem.status === 'DRAFT' ? (
-                  <Button danger icon={<DeleteOutlined />} onClick={() => setDeletingInvoiceId(detailItem.id)}>Delete draft</Button>
-                ) : null}
-                {['ISSUED', 'PARTIALLY_PAID', 'PAID'].includes(detailItem.status) ? (
-                  <Button danger icon={<StopOutlined />} onClick={() => openVoidModal(detailItem.id)}>Void invoice</Button>
-                ) : null}
-                {detailItem.status === 'VOID' && !detailItem.replacement_invoice_id ? (
-                  <Button type="primary" icon={<PlusOutlined />} loading={replacementLoading} onClick={() => void createReplacement()}>Create replacement</Button>
-                ) : null}
-              </Space>
-            </Space>
+            <InvoiceDetailHeader
+              invoice={detailItem}
+              hasPendingProof={Boolean(pendingPaymentProof)}
+              pendingProofCompletesInvoice={Boolean(pendingPaymentProof && pendingPaymentProof.transfer_amount >= paymentRemainingAmount)}
+              replacementLoading={replacementLoading}
+              onConfirmPayment={() => pendingPaymentProof && setConfirmingPaymentProof(pendingPaymentProof)}
+              onIssue={openIssueModal}
+              onAdjustment={() => setAdjustmentOpen(true)}
+              onDelete={() => setDeletingInvoiceId(detailItem.id)}
+              onVoid={() => openVoidModal(detailItem.id)}
+              onCreateReplacement={() => void createReplacement()}
+            />
             <Descriptions column={isMobile ? 1 : 2} size="small" bordered>
               <Descriptions.Item label="Tenant">{detailItem.tenant_name}</Descriptions.Item>
               <Descriptions.Item label="Invoice status"><Tag color={invoiceStatusOptions.find((item) => item.value === detailItem.status)?.color}>{detailItem.status}</Tag></Descriptions.Item>
@@ -1050,13 +945,7 @@ export function InvoicesPage() {
                     <Descriptions.Item label="Expires at">{detailPaymentRequest.expires_at ? dayjs(detailPaymentRequest.expires_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
                     <Descriptions.Item label="Sent at">{detailPaymentRequest.sent_at ? dayjs(detailPaymentRequest.sent_at).format('DD/MM/YYYY HH:mm') : '-'}</Descriptions.Item>
                   </Descriptions>
-                  {detailPaymentRequest.qr_image_url ? (
-                    <img
-                      src={detailPaymentRequest.qr_image_url}
-                      alt="VietQR bank transfer"
-                      style={{ display: 'block', width: '100%', maxWidth: 280, margin: '0 auto' }}
-                    />
-                  ) : null}
+                  <VietQrDisplay src={detailPaymentRequest.qr_image_url} />
                   {!['VERIFIED', 'CANCELLED', 'EXPIRED'].includes(detailPaymentRequest.status) ? (
                     <Space>
                       <Button danger loading={paymentActionLoading === 'cancel'} onClick={() => void runPaymentRequestAction('cancel')}>Cancel request</Button>
