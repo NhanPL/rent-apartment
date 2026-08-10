@@ -3,7 +3,7 @@ import { ExclamationCircleOutlined } from '@ant-design/icons'
 import { Button, Drawer, Form, Grid, Input, InputNumber, Modal, Select, Space, message } from 'antd'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Room, RoomStatus, RoomUpsertPayload } from './roomTypes'
-import { getFormErrorMessage, isFormValidationError } from '../../../services/errorMessage'
+import { applyApiFieldErrors, getFormErrorMessage, isFormValidationError } from '../../../services/errorMessage'
 
 interface RoomsUpsertDrawerProps {
   open: boolean
@@ -89,6 +89,7 @@ export function RoomsUpsertDrawer({ open, mode, room, building_id, loading, exis
       closeDrawer()
     } catch (error) {
       if (isFormValidationError(error)) {
+        applyApiFieldErrors(form, error)
         message.error(getFormErrorMessage(error))
       }
     }

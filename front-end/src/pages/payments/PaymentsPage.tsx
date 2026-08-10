@@ -16,7 +16,7 @@ import {
   type PaymentRequestListFilters,
   type PaymentRequestStatus,
 } from '../../services/paymentsService'
-import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
+import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
 import { vndCurrency } from '../../i18n'
 
 const currency = vndCurrency
@@ -234,6 +234,7 @@ export function PaymentsPage() {
       await refreshDetail()
       message.success('Payment proof rejected.')
     } catch (error) {
+      applyApiFieldErrors(rejectForm, error)
       message.error(getFormErrorMessage(error, 'Unable to reject the payment proof.'))
     } finally {
       setReviewLoading(null)
@@ -251,6 +252,7 @@ export function PaymentsPage() {
       await refreshDetail()
       message.success('Payment reversed. The original ledger entry was retained.')
     } catch (error) {
+      applyApiFieldErrors(reverseForm, error)
       message.error(getFormErrorMessage(error, 'Unable to reverse the payment.'))
     } finally {
       setReviewLoading(null)

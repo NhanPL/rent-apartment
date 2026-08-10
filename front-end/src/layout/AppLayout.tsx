@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 import type { ChangePasswordPayload } from '../features/auth/types/auth'
 import { PASSWORD_MAX_LENGTH, passwordLengthRules } from '../features/auth/passwordPolicy'
 import type { SidebarRouteItem } from '../routes/routeConfig'
-import { getFormErrorMessage, getUserErrorMessage } from '../services/errorMessage'
+import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../services/errorMessage'
 import { useI18n } from '../i18n'
 import { LanguageSwitcher } from '../shared/components/LanguageSwitcher'
 import './AppLayout.css'
@@ -83,6 +83,7 @@ export function AppLayout({
       setChangePasswordOpen(false)
       changePasswordForm.resetFields()
     } catch (error) {
+      applyApiFieldErrors(changePasswordForm, error)
       setChangePasswordError(getUserErrorMessage(error, t('Unable to change your password.')))
     } finally {
       setChangingPassword(false)

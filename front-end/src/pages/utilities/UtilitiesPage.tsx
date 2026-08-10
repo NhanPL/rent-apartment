@@ -46,7 +46,7 @@ import {
   requestUtilityReadingCorrection,
   updateUtilityRate,
 } from '../../services/utilitiesService'
-import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
+import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
 import { vndCurrency } from '../../i18n'
 import type {
   BuildingOption,
@@ -281,6 +281,7 @@ export function UtilitiesPage() {
       setRejectTarget(null)
       await refreshReadingDetailAndList(rejectTarget.id)
     } catch (error: unknown) {
+      applyApiFieldErrors(rejectForm, error)
       message.error(getFormErrorMessage(error, 'Unable to update the utility reading.'))
     } finally {
       setRejectLoading(false)
@@ -341,6 +342,7 @@ export function UtilitiesPage() {
       setRateDrawerOpen(false)
       await loadRates()
     } catch (error: unknown) {
+      applyApiFieldErrors(rateForm, error)
       message.error(getFormErrorMessage(error, 'Unable to save the utility rate.'))
     } finally {
       setRateSaving(false)

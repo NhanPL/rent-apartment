@@ -48,7 +48,7 @@ import type {
   ContractTenant,
   ContractUpdatePayload,
 } from './types'
-import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
+import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
 import { vndCurrency } from '../../i18n'
 import { ContractFilters } from './components/ContractFilters'
 import { ContractTable } from './components/ContractTable'
@@ -370,6 +370,7 @@ export function ContractsPage() {
       setFormDrawerOpen(false)
       await loadData()
     } catch (error: unknown) {
+      applyApiFieldErrors(contractForm, error)
       message.error(getFormErrorMessage(error, 'Unable to save the contract.'))
     } finally {
       setSaveLoading(false)
@@ -422,6 +423,7 @@ export function ContractsPage() {
       setCloseAction(null)
       await refreshDetailAndList(detailItem.id)
     } catch (error: unknown) {
+      applyApiFieldErrors(closeForm, error)
       message.error(getFormErrorMessage(error, 'Unable to close the contract.'))
     } finally {
       setCloseLoading(false)
@@ -446,6 +448,7 @@ export function ContractsPage() {
       message.success('Tenant added to contract')
       await refreshDetailAndList(detailItem.id)
     } catch (error: unknown) {
+      applyApiFieldErrors(addTenantForm, error)
       message.error(getFormErrorMessage(error, 'Unable to add the tenant to the contract.'))
     } finally {
       setActionLoading(null)
@@ -515,6 +518,7 @@ export function ContractsPage() {
       message.success('Contract document uploaded')
       await refreshDetailAndList(detailItem.id)
     } catch (error: unknown) {
+      applyApiFieldErrors(documentForm, error)
       message.error(getFormErrorMessage(error, 'Unable to save the contract document.'))
     } finally {
       setDocumentSaving(false)

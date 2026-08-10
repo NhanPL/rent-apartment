@@ -2,7 +2,7 @@ import { Alert, Button, Card, Checkbox, Form, Input, Typography } from 'antd'
 import { useState } from 'react'
 import { useAuth } from '../useAuth'
 import type { LoginFormValues } from '../types/auth'
-import { getFormErrorMessage, getUserErrorMessage } from '../../../services/errorMessage'
+import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../../../services/errorMessage'
 import { useI18n } from '../../../i18n'
 import { LanguageSwitcher } from '../../../shared/components/LanguageSwitcher'
 import { PASSWORD_MAX_LENGTH } from '../passwordPolicy'
@@ -21,6 +21,7 @@ function goToForgotPassword() {
 
 export function LoginForm() {
   const { t } = useI18n()
+  const [form] = Form.useForm<LoginFormValues>()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>('')
   const { login } = useAuth()
@@ -39,6 +40,7 @@ export function LoginForm() {
       window.history.replaceState(null, '', targetPath)
       window.dispatchEvent(new PopStateEvent('popstate'))
     } catch (loginError) {
+      applyApiFieldErrors(form, loginError)
       setError(getUserErrorMessage(loginError, t('Unable to sign in. Please check your account details.')))
     } finally {
       setLoading(false)
@@ -62,6 +64,7 @@ export function LoginForm() {
       {error ? <Alert type="error" message={error} showIcon className="login-error" /> : null}
 
       <Form<LoginFormValues>
+        form={form}
         layout="vertical"
         requiredMark={false}
         onFinish={onFinish}

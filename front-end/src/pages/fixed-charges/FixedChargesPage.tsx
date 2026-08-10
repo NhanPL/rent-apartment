@@ -53,7 +53,7 @@ import {
   updateRoomChargeOverride,
   updateRoomMonthExtra,
 } from '../../services/fixedChargesService'
-import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
+import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
 import { vndCurrency } from '../../i18n'
 import type {
   BuildingCharge,
@@ -511,11 +511,14 @@ export function FixedChargesPage() {
       closeDrawer()
       await loadTables()
     } catch (error: unknown) {
+      if (drawerKind === 'catalog') applyApiFieldErrors(catalogForm, error)
+      else if (drawerKind === 'extra') applyApiFieldErrors(extraForm, error)
+      else applyApiFieldErrors(chargeForm, error)
       message.error(getFormErrorMessage(error, 'Unable to save the fixed charge.'))
     } finally {
       setSaving(false)
     }
-  }, [closeDrawer, drawerKind, loadTables, submitCatalog, submitCharge, submitExtra])
+  }, [catalogForm, chargeForm, closeDrawer, drawerKind, extraForm, loadTables, submitCatalog, submitCharge, submitExtra])
 
   const confirmDelete = useCallback((kind: EditableKind, id: string, title: string) => {
     Modal.confirm({
@@ -549,6 +552,7 @@ export function FixedChargesPage() {
       }
       setPreview(await resolveFixedCharges(values.contract_id, monthToDate(values.month)))
     } catch (error) {
+      applyApiFieldErrors(previewForm, error)
       message.error(getFormErrorMessage(error, 'Unable to calculate the fixed charges.'))
     } finally {
       setPreviewLoading(false)

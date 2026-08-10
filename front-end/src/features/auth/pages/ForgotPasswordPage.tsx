@@ -1,7 +1,7 @@
 import { useI18n } from '../../../i18n'
 import { Alert, Button, Card, Form, Input, Result, Typography } from 'antd'
 import { useState } from 'react'
-import { getFormErrorMessage, getUserErrorMessage } from '../../../services/errorMessage'
+import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../../../services/errorMessage'
 import { LanguageSwitcher } from '../../../shared/components/LanguageSwitcher'
 import { AuthLayout } from '../../../shared/layout/AuthLayout'
 import { requestPasswordReset } from '../authApi'
@@ -17,6 +17,7 @@ const goToLogin = () => {
 }
 
 export function ForgotPasswordPage() {
+  const [form] = Form.useForm<ForgotPasswordFormValues>()
   const { t } = useI18n()
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
@@ -31,6 +32,7 @@ export function ForgotPasswordPage() {
       setResponseMessage(response.message)
       setSubmitted(true)
     } catch (requestError) {
+      applyApiFieldErrors(form, requestError)
       setError(getUserErrorMessage(
         requestError,
         'Unable to request a password reset. Please try again.',
@@ -70,6 +72,7 @@ export function ForgotPasswordPage() {
               {error ? <Alert type="error" message={error} showIcon className="password-reset-error" /> : null}
 
               <Form<ForgotPasswordFormValues>
+                form={form}
                 layout="vertical"
                 requiredMark={false}
                 size="large"

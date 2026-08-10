@@ -1,7 +1,7 @@
 import { useI18n } from '../../../i18n'
 import { Alert, Button, Card, Form, Input, Result, Typography } from 'antd'
 import { useMemo, useState } from 'react'
-import { getFormErrorMessage, getUserErrorMessage } from '../../../services/errorMessage'
+import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../../../services/errorMessage'
 import { LanguageSwitcher } from '../../../shared/components/LanguageSwitcher'
 import { AuthLayout } from '../../../shared/layout/AuthLayout'
 import { confirmPasswordReset } from '../authApi'
@@ -20,6 +20,7 @@ const goToLogin = () => {
 }
 
 export function ResetPasswordPage() {
+  const [form] = Form.useForm<ResetPasswordFormValues>()
   const { t } = useI18n()
   const { logout } = useAuth()
   const token = useMemo(() => new URLSearchParams(window.location.search).get('token')?.trim() ?? '', [])
@@ -35,6 +36,7 @@ export function ResetPasswordPage() {
       await logout()
       setCompleted(true)
     } catch (resetError) {
+      applyApiFieldErrors(form, resetError)
       setError(getUserErrorMessage(
         resetError,
         'Unable to reset your password. Please request a new link and try again.',
@@ -81,6 +83,7 @@ export function ResetPasswordPage() {
               {error ? <Alert type="error" message={error} showIcon className="password-reset-error" /> : null}
 
               <Form<ResetPasswordFormValues>
+                form={form}
                 layout="vertical"
                 requiredMark={false}
                 size="large"

@@ -17,6 +17,8 @@ interface RequestOptions {
 interface ApiErrorPayload {
   message?: string
   code?: string
+  fieldErrors?: Record<string, string[]> | null
+  requestId?: string
 }
 
 interface RefreshSession {
@@ -26,17 +28,33 @@ interface RefreshSession {
 export class ApiError extends Error {
   code: string
   status?: number
+  fieldErrors: Record<string, string[]> | null
+  requestId?: string
 
-  constructor(message: string, code: string = 'REQUEST_FAILED', status?: number) {
+  constructor(
+    message: string,
+    code: string = 'REQUEST_FAILED',
+    status?: number,
+    fieldErrors: Record<string, string[]> | null = null,
+    requestId?: string,
+  ) {
     super(message)
     this.code = code
     this.status = status
+    this.fieldErrors = fieldErrors
+    this.requestId = requestId
   }
 }
 
 async function parseError(response: Response): Promise<ApiError> {
   const payload = (await response.json().catch(() => null)) as ApiErrorPayload | null
-  return new ApiError(payload?.message ?? 'Request failed', payload?.code ?? 'REQUEST_FAILED', response.status)
+  return new ApiError(
+    payload?.message ?? 'Request failed',
+    payload?.code ?? 'REQUEST_FAILED',
+    response.status,
+    payload?.fieldErrors ?? null,
+    payload?.requestId,
+  )
 }
 
 let refreshPromise: Promise<RefreshSession> | null = null

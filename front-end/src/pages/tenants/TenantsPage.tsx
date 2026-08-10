@@ -36,7 +36,7 @@ import {
   updateTenant,
   updateTenantIdentityDocuments,
 } from '../../services/tenantsService'
-import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
+import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
 import { uploadFileToCloudinary } from '../../services/uploadService'
 import type {
   TenantDetail,
@@ -285,6 +285,7 @@ export function TenantsPage() {
       setDrawerOpen(false)
       await loadTenants()
     } catch (saveError: unknown) {
+      applyApiFieldErrors(form, saveError)
       const formError = saveError as { errorFields?: Array<{ name: (string | number)[] }> }
       const firstError = formError.errorFields?.[0]
       let userMessage: string

@@ -46,7 +46,7 @@ import {
   updateInvoice,
   voidInvoice,
 } from '../../services/invoicesService'
-import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
+import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
 import { vndCurrency } from '../../i18n'
 import { getUtilityReading } from '../../services/utilitiesService'
 import {
@@ -503,6 +503,7 @@ export function InvoicesPage() {
       closeInvoiceDrawer()
       void loadData()
     } catch (error) {
+      applyApiFieldErrors(form, error)
       message.error(getFormErrorMessage(error, 'Unable to save the invoice. Please review the submitted data.'))
     } finally {
       setSaveLoading(false)
@@ -549,6 +550,7 @@ export function InvoicesPage() {
       message.success(`Generated ${result.generated.length} invoice(s).`)
       await loadData()
     } catch (error) {
+      applyApiFieldErrors(generateForm, error)
       message.error(getFormErrorMessage(error, 'Unable to generate invoices.'))
     } finally {
       setGenerateLoading(false)
@@ -572,6 +574,7 @@ export function InvoicesPage() {
       await loadData()
       message.success('Invoice voided. Financial history has been retained.')
     } catch (error) {
+      applyApiFieldErrors(voidForm, error)
       message.error(getFormErrorMessage(error, 'Unable to void the invoice.'))
     } finally {
       setVoidLoading(false)
@@ -605,6 +608,7 @@ export function InvoicesPage() {
       await loadData()
       message.success('Adjustment added to the draft invoice.')
     } catch (error) {
+      applyApiFieldErrors(adjustmentForm, error)
       message.error(getFormErrorMessage(error, 'Unable to add the adjustment.'))
     } finally { setAdjustmentLoading(false) }
   }, [adjustmentForm, detailItem, loadData])
@@ -647,6 +651,7 @@ export function InvoicesPage() {
       await loadData()
       message.success('Invoice issued and VietQR payment request created.')
     } catch (error) {
+      applyApiFieldErrors(issueForm, error)
       message.error(getFormErrorMessage(error, 'Unable to issue the invoice and create its VietQR payment request.'))
     } finally {
       setIssueLoading(false)
@@ -716,6 +721,7 @@ export function InvoicesPage() {
       setPaymentRequestOpen(false)
       message.success('Payment request created.')
     } catch (error) {
+      applyApiFieldErrors(paymentRequestForm, error)
       message.error(getFormErrorMessage(error, 'Unable to create the payment request.'))
     } finally {
       setPaymentRequestLoading(false)

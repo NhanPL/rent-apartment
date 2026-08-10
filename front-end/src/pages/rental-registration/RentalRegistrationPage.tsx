@@ -53,7 +53,7 @@ import type {
 } from '../../services/rentalRegistrationService'
 import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
 import { uploadFileToCloudinary, type UploadedCloudinaryFile } from '../../services/uploadService'
-import { getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
+import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
 import { vndCurrency } from '../../i18n'
 import './RentalRegistrationPage.css'
 import { RegistrationQueueStep, ReserveRegistrationStep } from './components/RegistrationSteps'
@@ -201,6 +201,7 @@ export function RentalRegistrationPage() {
       await Promise.all([loadOptions(), loadWorkQueues()])
       message.success('Room reserved. Documents and handover can be completed later.')
     } catch (error: unknown) {
+      applyApiFieldErrors(reserveForm, error)
       message.error(getFormErrorMessage(error, 'Unable to reserve the room.'))
     } finally {
       setSaving(false)
@@ -268,6 +269,7 @@ export function RentalRegistrationPage() {
       await loadWorkQueues()
       message.success(`Added ${savedCount} and removed ${deletedCount} document(s).`)
     } catch (error: unknown) {
+      applyApiFieldErrors(documentForm, error)
       const reason = getFormErrorMessage(error, 'Unable to save documents.')
       const completedCount = savedCount + deletedCount
       message.error(completedCount > 0 ? `Completed ${completedCount} change(s). The remaining changes failed: ${reason}` : reason)
@@ -301,6 +303,7 @@ export function RentalRegistrationPage() {
       await Promise.all([loadOptions(), loadWorkQueues()])
       message.success('Contract activated and initial utility readings recorded.')
     } catch (error) {
+      applyApiFieldErrors(handoverForm, error)
       message.error(getFormErrorMessage(error, 'Unable to complete the room handover.'))
     } finally {
       setHandoverSaving(false)
@@ -327,6 +330,7 @@ export function RentalRegistrationPage() {
       await Promise.all([loadOptions(), loadWorkQueues()])
       message.success('Rental registration cancelled.')
     } catch (error) {
+      applyApiFieldErrors(cancelForm, error)
       message.error(getFormErrorMessage(error, 'Unable to cancel the rental registration.'))
     } finally {
       setCancelSaving(false)

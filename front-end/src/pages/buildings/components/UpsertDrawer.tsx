@@ -3,7 +3,7 @@ import { ExclamationCircleOutlined } from '@ant-design/icons'
 import { Button, Drawer, Form, Grid, Input, Modal, Space, message } from 'antd'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { BuildingEntity, BuildingFormValues } from './types'
-import { getFormErrorMessage, isFormValidationError } from '../../../services/errorMessage'
+import { applyApiFieldErrors, getFormErrorMessage, isFormValidationError } from '../../../services/errorMessage'
 
 interface UpsertDrawerProps {
   open: boolean
@@ -81,6 +81,7 @@ export function UpsertDrawer({ open, mode, item, loading, existingCodes, onClose
       closeDrawer()
     } catch (error) {
       if (isFormValidationError(error)) {
+        applyApiFieldErrors(form, error)
         message.error(getFormErrorMessage(error))
       }
     }

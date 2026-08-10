@@ -1,7 +1,7 @@
 import { useI18n } from '../../../i18n'
 import { Alert, Button, Card, Form, Input, Result, Spin, Typography } from 'antd'
 import { useEffect, useMemo, useState } from 'react'
-import { getFormErrorMessage, getUserErrorMessage } from '../../../services/errorMessage'
+import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../../../services/errorMessage'
 import { LanguageSwitcher } from '../../../shared/components/LanguageSwitcher'
 import { AuthLayout } from '../../../shared/layout/AuthLayout'
 import { activateAccount, validateAccountActivation } from '../authApi'
@@ -20,6 +20,7 @@ const goToLogin = () => {
 }
 
 export function ActivateAccountPage() {
+  const [form] = Form.useForm<ActivationFormValues>()
   const { t } = useI18n()
   const token = useMemo(() => new URLSearchParams(window.location.search).get('token')?.trim() ?? '', [])
   const [details, setDetails] = useState<ActivationTokenDetails | null>(null)
@@ -63,6 +64,7 @@ export function ActivateAccountPage() {
       await activateAccount({ token, ...values })
       setActivated(true)
     } catch (activationError) {
+      applyApiFieldErrors(form, activationError)
       setError(getUserErrorMessage(activationError, 'Unable to activate your account.'))
     } finally {
       setSubmitting(false)
@@ -115,6 +117,7 @@ export function ActivateAccountPage() {
               {error ? <Alert type="error" message={error} showIcon className="activation-error" /> : null}
 
               <Form<ActivationFormValues>
+                form={form}
                 layout="vertical"
                 requiredMark={false}
                 size="large"
