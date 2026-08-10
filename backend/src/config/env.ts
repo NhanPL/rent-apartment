@@ -142,6 +142,13 @@ const envSchema = z.object({
   APP_VERSION: z.string().trim().min(1).max(100).default('development'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .optional(),
+  SENTRY_DSN: z.union([z.string().trim().url(), z.literal('')]).optional().default(''),
+  METRICS_ALERT_MIN_REQUESTS: z.coerce.number().int().min(1).default(20),
+  METRICS_ALERT_ERROR_RATE_PERCENT: z.coerce.number().min(0).max(100).default(10),
+  METRICS_ALERT_LATENCY_MS: z.coerce.number().int().min(1).default(2000),
+  METRICS_ALERT_DB_POOL_PERCENT: z.coerce.number().min(1).max(100).default(90),
+  METRICS_ALERT_LOGIN_FAILURES: z.coerce.number().int().min(1).default(10),
+  METRICS_ALERT_COOLDOWN_MINUTES: z.coerce.number().int().min(1).default(5),
   PORT: z.coerce.number().int().positive().default(4000),
   DATABASE_URL: z.string().min(1),
   DB_SSL: z.enum(['true', 'false']).optional(),

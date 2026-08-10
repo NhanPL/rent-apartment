@@ -1,5 +1,9 @@
 import type { NextFunction, Request, Response } from 'express';
 import { logger } from '../services/logger.service';
+import {
+  classifyOperationalFeature,
+  observeHttpRequest
+} from '../services/metrics.service';
 
 export interface RequestLogEntry {
   [key: string]: unknown;
@@ -34,6 +38,11 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction): 
   const startedAt = process.hrtime.bigint();
   res.once('finish', () => {
     const entry = buildRequestLogEntry(req, res, startedAt);
+    observeHttpRequest({
+      durationMs: entry.durationMs,
+      statusCode: entry.statusCode,
+      feature: classifyOperationalFeature(req.originalUrl)
+    });
     if (entry.statusCode >= 500) logger.error(entry, 'HTTP request completed');
     else if (entry.statusCode >= 400) logger.warn(entry, 'HTTP request completed');
     else logger.info(entry, 'HTTP request completed');

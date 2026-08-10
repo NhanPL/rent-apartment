@@ -16,6 +16,7 @@
     "db:schema:export": "node scripts/export-schema.js --output ../database.sql"
   },
   "dependencies": {
+    "@sentry/node": "^10.70.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^16.4.5",

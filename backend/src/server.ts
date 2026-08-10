@@ -5,6 +5,7 @@ import { startSessionCleanupScheduler } from './modules/auth/session.service';
 import { startDocumentAssetScheduler } from './modules/documents/document-asset-jobs.service';
 import { toSafeErrorLog } from './shared/utils/safe-log';
 import { logger } from './shared/services/logger.service';
+import { initializeMonitoring } from './shared/services/monitoring.service';
 
 process.on('unhandledRejection', (reason) => {
   logger.error({ error: toSafeErrorLog(reason) }, 'Unhandled rejection');
@@ -16,6 +17,7 @@ process.on('uncaughtException', (error) => {
 
 async function bootstrap() {
   try {
+    initializeMonitoring();
     await assertDatabaseConnection();
     logger.info({}, 'Database connected successfully');
     startSessionCleanupScheduler();

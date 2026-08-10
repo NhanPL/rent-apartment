@@ -31,6 +31,7 @@ import { auditRequestContext } from './shared/middleware/audit-context';
 import { requestLogger } from './shared/middleware/request-logger';
 import { AppError } from './shared/errors/app-error';
 import openApiDocsRoutes from './openapi/docs.routes';
+import operationsRoutes from './modules/operations/operations.routes';
 
 export const app = express();
 const frontendDistPath = path.resolve(__dirname, '../../front-end/dist');
@@ -76,6 +77,7 @@ app.use('/api/documents', documentAssetsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/audit-logs', auditLogsRoutes);
+app.use('/api/operations', operationsRoutes);
 app.use('/api', (_req, _res, next) => {
   next(new AppError(404, 'API route not found', 'ROUTE_NOT_FOUND'));
 });

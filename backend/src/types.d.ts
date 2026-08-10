@@ -12,6 +12,9 @@ declare module 'pg' {
     constructor(config?: { connectionString?: string; max?: number; idleTimeoutMillis?: number; connectionTimeoutMillis?: number; ssl?: { rejectUnauthorized: boolean; ca?: string } })
     query<T = unknown>(text: string, params?: unknown[]): Promise<QueryResult<T>>
     connect(): Promise<PoolClient>
+    readonly totalCount: number
+    readonly idleCount: number
+    readonly waitingCount: number
   }
 }
 

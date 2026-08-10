@@ -226,6 +226,41 @@ describe('backend API smoke tests', () => {
     }));
   });
 
+  it('exposes operational metrics only to managers', async () => {
+    const managerSession = await login('manager@example.com');
+    const tenantSession = await login('tenant@example.com');
+
+    const response = await request(app)
+      .get('/api/operations/metrics')
+      .set(auth(managerSession.accessToken))
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      http: {
+        requests: expect.any(Number),
+        errors: expect.any(Number),
+        averageDurationMs: expect.any(Number)
+      },
+      failures: {
+        auth_login: expect.any(Number),
+        upload: expect.any(Number),
+        invoice: expect.any(Number),
+        payment: expect.any(Number)
+      },
+      databasePool: {
+        configuredMax: expect.any(Number),
+        total: expect.any(Number),
+        idle: expect.any(Number),
+        waiting: expect.any(Number)
+      }
+    });
+
+    await request(app)
+      .get('/api/operations/metrics')
+      .set(auth(tenantSession.accessToken))
+      .expect(403);
+  });
+
   it('revokes the current session on logout', async () => {
     const session = await login('tenant@example.com');
 
