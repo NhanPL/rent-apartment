@@ -15,8 +15,6 @@ import {
   type UploadResourceType
 } from '../uploads/uploads.service';
 import type { DocumentKind } from './document-assets.service';
-import { processDueTenantAnonymization } from '../tenants/tenant-privacy.service';
-import { logger } from '../../shared/services/logger.service';
 
 type AssetJobAction = 'DELETE' | 'MIGRATE_AUTHENTICATED';
 type AssetJobStatus = 'PENDING' | 'PROCESSING' | 'RETRY' | 'COMPLETED' | 'FAILED';
@@ -458,54 +456,4 @@ export const reconcileDocumentAssets = async (): Promise<{
   );
 
   return { databaseOrphans, cloudinaryOrphans, legacyAssets };
-};
-
-let scheduler: NodeJS.Timeout | null = null;
-let reconciliationScheduler: NodeJS.Timeout | null = null;
-let running = false;
-
-const runMaintenance = async (): Promise<void> => {
-  if (running) return;
-  running = true;
-  try {
-    await processDueTenantAnonymization();
-    await processExpiredDocumentRetention();
-    await processCloudinaryAssetJobs();
-  } catch (error) {
-    logger.error({ code: getErrorCode(error) }, 'Document asset maintenance failed');
-  } finally {
-    running = false;
-  }
-};
-
-const runReconciliation = async (): Promise<void> => {
-  try {
-    await reconcileDocumentAssets();
-  } catch (error) {
-    logger.error({ code: getErrorCode(error) }, 'Document asset reconciliation failed');
-  }
-};
-
-export const startDocumentAssetScheduler = (): void => {
-  if (scheduler) return;
-  void runMaintenance();
-  void runReconciliation();
-  scheduler = setInterval(
-    () => void runMaintenance(),
-    env.DOCUMENT_JOB_INTERVAL_MINUTES * 60_000
-  );
-  scheduler.unref();
-
-  reconciliationScheduler = setInterval(
-    () => void runReconciliation(),
-    env.DOCUMENT_RECONCILIATION_INTERVAL_HOURS * 60 * 60_000
-  );
-  reconciliationScheduler.unref();
-};
-
-export const stopDocumentAssetScheduler = (): void => {
-  if (scheduler) clearInterval(scheduler);
-  if (reconciliationScheduler) clearInterval(reconciliationScheduler);
-  scheduler = null;
-  reconciliationScheduler = null;
 };

@@ -6,7 +6,6 @@ import { AppError } from '../../shared/errors/app-error';
 import type { AppRole } from '../../shared/middleware/auth';
 import { writeAuditLog } from '../../shared/services/audit-log.service';
 import { signAccessToken } from '../../shared/utils/jwt';
-import { logger } from '../../shared/services/logger.service';
 
 type SessionClient = Pick<PoolClient, 'query'>;
 
@@ -327,19 +326,4 @@ export const cleanupExpiredSessions = async (): Promise<number> => {
     [env.SESSION_RETENTION_DAYS]
   );
   return result.rows.length;
-};
-
-export const startSessionCleanupScheduler = (): NodeJS.Timeout => {
-  const runCleanup = (): void => {
-    void cleanupExpiredSessions().catch((error) => {
-      logger.error({ error }, 'Failed to clean up expired authentication sessions');
-    });
-  };
-  runCleanup();
-  const timer = setInterval(
-    runCleanup,
-    env.SESSION_CLEANUP_INTERVAL_HOURS * 60 * 60 * 1000
-  );
-  timer.unref();
-  return timer;
 };

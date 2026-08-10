@@ -26,6 +26,16 @@ interface PasswordChangedPayload {
   to: string;
 }
 
+export interface PaymentReminderPayload {
+  to: string;
+  tenantName: string;
+  roomCode: string;
+  month: string;
+  dueDate: string;
+  outstandingAmount: number;
+  timing: 'BEFORE_DUE' | 'AFTER_DUE';
+}
+
 let transporter: ReturnType<typeof nodemailer.createTransport> | null = null;
 
 const isSmtpConfigured = (): boolean =>
@@ -112,6 +122,27 @@ export const sendPasswordChangedEmail = async (payload: PasswordChangedPayload):
     <p>Your rental account password has been changed successfully.</p>
     <p>All existing sessions have been signed out.</p>
     <p>If you did not make this change, contact your property manager immediately.</p>
+  `;
+
+  return sendEmail({ to: payload.to, subject, html });
+};
+
+export const sendPaymentReminderEmail = async (payload: PaymentReminderPayload): Promise<boolean> => {
+  const timingText = payload.timing === 'BEFORE_DUE'
+    ? 'is due soon'
+    : 'is overdue';
+  const subject = payload.timing === 'BEFORE_DUE'
+    ? `Payment reminder for room ${payload.roomCode}`
+    : `Overdue payment for room ${payload.roomCode}`;
+  const amount = new Intl.NumberFormat('en-US', {
+    style: 'currency', currency: 'VND', maximumFractionDigits: 0
+  }).format(payload.outstandingAmount);
+  const html = `
+    <p>Hello ${escapeHtml(payload.tenantName)},</p>
+    <p>Your invoice for room ${escapeHtml(payload.roomCode)} (${escapeHtml(payload.month)}) ${timingText}.</p>
+    <p>Due date: ${escapeHtml(payload.dueDate)}</p>
+    <p>Outstanding amount: ${escapeHtml(amount)}</p>
+    <p>Please open RentMate to review the invoice and payment QR.</p>
   `;
 
   return sendEmail({ to: payload.to, subject, html });

@@ -1,9 +1,10 @@
 import { app } from './app';
 import { env } from './config/env';
 import { assertDatabaseConnection } from './db/connection';
-import { startSessionCleanupScheduler } from './modules/auth/session.service';
-import { startDocumentAssetScheduler } from './modules/documents/document-asset-jobs.service';
-import { stopDocumentAssetScheduler } from './modules/documents/document-asset-jobs.service';
+import {
+  startBackgroundJobScheduler,
+  stopBackgroundJobScheduler
+} from './modules/operations/background-jobs.service';
 import { toSafeErrorLog } from './shared/utils/safe-log';
 import { logger } from './shared/services/logger.service';
 import { flushMonitoring, initializeMonitoring } from './shared/services/monitoring.service';
@@ -15,8 +16,7 @@ async function bootstrap() {
     initializeMonitoring();
     await assertDatabaseConnection();
     logger.info({}, 'Database connected successfully');
-    const sessionCleanupTimer = startSessionCleanupScheduler();
-    startDocumentAssetScheduler();
+    startBackgroundJobScheduler();
 
     const server = app.listen(env.PORT, () => {
       logger.info({ port: env.PORT }, 'Backend listening');
@@ -24,10 +24,7 @@ async function bootstrap() {
     const shutdown = createGracefulShutdown({
       server,
       timeoutMs: env.SHUTDOWN_TIMEOUT_MS,
-      stopSchedulers: () => {
-        clearInterval(sessionCleanupTimer);
-        stopDocumentAssetScheduler();
-      },
+      stopSchedulers: stopBackgroundJobScheduler,
       closeDatabase: () => pool.end(),
       flushMonitoring: () => flushMonitoring(),
       flushLogger: () => logger.flush(),
