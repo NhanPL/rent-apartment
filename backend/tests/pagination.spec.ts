@@ -124,6 +124,37 @@ describe('pagination contract', () => {
     expect(response).toEqual({ total: 7, page: 1, pageSize: 20, items: [] });
   });
 
+  it('paginates reconciliation ledger entries with room and tenant scope', async () => {
+    mockPageQueries(3);
+    const response = await loadReportDetailRows(
+      'manager-id',
+      {
+        monthFrom: '2026-01',
+        monthTo: '2026-07',
+        roomId: '00000000-0000-4000-8000-000000000301',
+        tenantId: '00000000-0000-4000-8000-000000000101'
+      },
+      'reconciliation',
+      { page: 1, pageSize: 20, sortBy: 'paymentDate', sortOrder: 'desc' }
+    );
+
+    const [itemSql, itemParams] = dbMocks.query.mock.calls[1] as [string, unknown[]];
+    expect(itemSql).toContain("payment.entry_type='REVERSAL'");
+    expect(itemSql).toContain('AS signed_amount');
+    expect(itemSql).toContain('r.id=$4');
+    expect(itemSql).toContain('tenant.tenant_id=$5');
+    expect(itemParams).toEqual([
+      'manager-id',
+      '2026-01-01',
+      '2026-07-01',
+      '00000000-0000-4000-8000-000000000301',
+      '00000000-0000-4000-8000-000000000101',
+      20,
+      0
+    ]);
+    expect(response).toEqual({ total: 3, page: 1, pageSize: 20, items: [] });
+  });
+
   it('computes report summary with aggregate queries instead of loading detail rows', async () => {
     dbMocks.query.mockResolvedValue({ rows: [] });
 

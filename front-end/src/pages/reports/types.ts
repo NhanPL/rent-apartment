@@ -1,10 +1,12 @@
 export type ReportInvoiceStatus = 'DRAFT' | 'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'VOID'
-export type ReportSection = 'revenue' | 'debt' | 'occupancy'
+export type ReportSection = 'revenue' | 'debt' | 'occupancy' | 'reconciliation'
 
 export interface ReportFilters {
   monthFrom: string
   monthTo: string
   buildingId?: string
+  roomId?: string
+  tenantId?: string
   status?: ReportInvoiceStatus
 }
 
@@ -22,6 +24,9 @@ export type ReportDetailSortBy =
   | 'vacantRooms'
   | 'activeTenants'
   | 'occupancyRate'
+  | 'paymentDate'
+  | 'entryType'
+  | 'amount'
 
 export interface ReportDetailParams {
   page?: number
@@ -30,11 +35,22 @@ export interface ReportDetailParams {
   sortOrder?: 'asc' | 'desc'
 }
 
-export type ReportDetailItem = RevenueBuildingRow | DebtReportRow | OccupancyReportRow
+export type ReportDetailItem = RevenueBuildingRow | DebtReportRow | OccupancyReportRow | ReconciliationReportRow
 
 export interface ReportBuildingOption {
   id: string
   name: string
+}
+
+export interface ReportRoomOption {
+  id: string
+  buildingId: string
+  code: string
+}
+
+export interface ReportTenantOption {
+  id: string
+  fullName: string
 }
 
 export interface RevenueMonthRow {
@@ -45,6 +61,8 @@ export interface RevenueMonthRow {
   grossPayments: number
   reversals: number
   unpaid: number
+  voidInvoiceCount: number
+  voidAmount: number
 }
 
 export interface RevenueBuildingRow {
@@ -56,6 +74,8 @@ export interface RevenueBuildingRow {
   grossPayments: number
   reversals: number
   unpaid: number
+  voidInvoiceCount: number
+  voidAmount: number
 }
 
 export interface DebtReportRow {
@@ -93,6 +113,33 @@ export interface OccupancyReportRow {
   occupancyRate: number
 }
 
+export interface ReconciliationReportRow {
+  paymentId: string
+  invoiceId: string
+  originalPaymentId: string | null
+  buildingName: string
+  roomCode: string
+  tenantName: string
+  month: string
+  invoiceStatus: ReportInvoiceStatus
+  entryType: 'PAYMENT' | 'REVERSAL'
+  amount: number
+  signedAmount: number
+  paidAt: string
+  referenceCode: string | null
+  reversalReason: string | null
+}
+
+export interface ReportDefinitions {
+  currency: 'VND'
+  timezone: 'UTC'
+  billed: string
+  collected: string
+  outstanding: string
+  overdue: string
+  void: string
+}
+
 export interface ReportsSummary {
   billed: number
   collected: number
@@ -100,6 +147,8 @@ export interface ReportsSummary {
   reversals: number
   unpaid: number
   invoiceCount: number
+  voidInvoiceCount: number
+  voidAmount: number
   unpaidInvoices: number
   unpaidAmount: number
   overdueInvoices: number
@@ -113,6 +162,7 @@ export interface ReportsSummary {
 
 export interface ReportsData {
   filters: ReportFilters
+  definitions: ReportDefinitions
   summary: ReportsSummary
   revenueByMonth: RevenueMonthRow[]
   revenueByBuilding: RevenueBuildingRow[]

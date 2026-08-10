@@ -4,6 +4,7 @@ import {
   ReloadOutlined,
 } from '@ant-design/icons'
 import {
+  Alert,
   Button,
   Card,
   DatePicker,
@@ -22,13 +23,22 @@ import {
 import type { ColumnsType } from 'antd/es/table'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { exportReportsCsv, getReportDetails, getReportsData, listReportBuildings } from '../../services/reportsService'
+import {
+  exportReportsCsv,
+  getReportDetails,
+  getReportsData,
+  listReportBuildings,
+  listReportRooms,
+  listReportTenants,
+} from '../../services/reportsService'
 import { getUserErrorMessage } from '../../services/errorMessage'
 import { vndCurrency } from '../../i18n'
 import type {
   DebtReportRow,
   OccupancyReportRow,
   ReportBuildingOption,
+  ReportRoomOption,
+  ReportTenantOption,
   ReportFilters,
   ReportDetailItem,
   ReportInvoiceStatus,
@@ -36,6 +46,7 @@ import type {
   ReportsData,
   RevenueBuildingRow,
   RevenueMonthRow,
+  ReconciliationReportRow,
 } from './types'
 import './ReportsPage.css'
 
@@ -67,8 +78,12 @@ export function ReportsPage() {
   const { t } = useI18n()
   const [range, setRange] = useState<[Dayjs, Dayjs]>(() => defaultRange())
   const [buildingId, setBuildingId] = useState<string | undefined>()
+  const [roomId, setRoomId] = useState<string | undefined>()
+  const [tenantId, setTenantId] = useState<string | undefined>()
   const [status, setStatus] = useState<ReportInvoiceStatus | undefined>()
   const [buildings, setBuildings] = useState<ReportBuildingOption[]>([])
+  const [rooms, setRooms] = useState<ReportRoomOption[]>([])
+  const [tenants, setTenants] = useState<ReportTenantOption[]>([])
   const [data, setData] = useState<ReportsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -84,8 +99,10 @@ export function ReportsPage() {
     monthFrom: range[0].format('YYYY-MM'),
     monthTo: range[1].format('YYYY-MM'),
     buildingId,
+    roomId,
+    tenantId,
     status,
-  }), [buildingId, range, status])
+  }), [buildingId, range, roomId, status, tenantId])
 
   const loadReports = useCallback(async () => {
     setLoading(true)
@@ -128,18 +145,31 @@ export function ReportsPage() {
   useEffect(() => {
     let active = true
 
-    listReportBuildings()
-      .then((items) => {
-        if (active) setBuildings(items)
+    Promise.all([listReportBuildings(), listReportRooms(), listReportTenants()])
+      .then(([buildingItems, roomItems, tenantItems]) => {
+        if (active) {
+          setBuildings(buildingItems)
+          setRooms(roomItems)
+          setTenants(tenantItems)
+        }
       })
       .catch(() => {
-        if (active) setBuildings([])
+        if (active) {
+          setBuildings([])
+          setRooms([])
+          setTenants([])
+        }
       })
 
     return () => {
       active = false
     }
   }, [])
+
+  const roomOptions = useMemo(
+    () => rooms.filter((room) => !buildingId || room.buildingId === buildingId),
+    [buildingId, rooms],
+  )
 
   const downloadCsv = useCallback(async () => {
     setExporting(true)
@@ -170,6 +200,7 @@ export function ReportsPage() {
     { title: t("Reversals"), dataIndex: 'reversals', width: 160, align: 'right', render: formatCurrency },
     { title: t("Net payments"), dataIndex: 'collected', width: 160, align: 'right', render: formatCurrency },
     { title: t("Unpaid"), dataIndex: 'unpaid', width: 160, align: 'right', render: formatCurrency },
+    { title: t("Void amount"), dataIndex: 'voidAmount', width: 160, align: 'right', render: formatCurrency },
   ]
 
   const buildingRevenueColumns: ColumnsType<RevenueBuildingRow> = [
@@ -180,6 +211,7 @@ export function ReportsPage() {
     { title: t("Reversals"), dataIndex: 'reversals', width: 160, align: 'right', render: formatCurrency },
     { title: t("Net payments"), dataIndex: 'collected', width: 160, align: 'right', render: formatCurrency },
     { title: t("Unpaid"), dataIndex: 'unpaid', width: 160, align: 'right', render: formatCurrency },
+    { title: t("Void amount"), dataIndex: 'voidAmount', width: 160, align: 'right', render: formatCurrency },
   ]
 
   const debtColumns: ColumnsType<DebtReportRow> = [
@@ -217,12 +249,32 @@ export function ReportsPage() {
     },
   ]
 
+  const reconciliationColumns: ColumnsType<ReconciliationReportRow> = [
+    { title: t("Paid at (UTC)"), dataIndex: 'paidAt', width: 180, render: (value: string) => `${new Date(value).toLocaleString('en-GB', { timeZone: 'UTC' })} UTC` },
+    { title: t("Building"), dataIndex: 'buildingName', width: 180 },
+    { title: t("Room"), dataIndex: 'roomCode', width: 100 },
+    { title: t("Tenant"), dataIndex: 'tenantName', width: 180 },
+    { title: t("Month"), dataIndex: 'month', width: 110, render: (value: string) => formatMonth(value) },
+    { title: t("Invoice status"), dataIndex: 'invoiceStatus', width: 150, render: statusTag },
+    { title: t("Entry type"), dataIndex: 'entryType', width: 120, render: (value: ReconciliationReportRow['entryType']) => <Tag color={value === 'REVERSAL' ? 'red' : 'green'}>{t(value === 'REVERSAL' ? 'Reversal' : 'Payment')}</Tag> },
+    { title: t("Amount"), dataIndex: 'amount', width: 150, align: 'right', render: formatCurrency },
+    { title: t("Net amount"), dataIndex: 'signedAmount', width: 150, align: 'right', render: (value: number) => <Typography.Text type={value < 0 ? 'danger' : undefined}>{formatCurrency(value)}</Typography.Text> },
+    { title: t("Reference"), dataIndex: 'referenceCode', width: 160, render: (value: string | null) => value ?? '-' },
+    { title: t("Reversal reason"), dataIndex: 'reversalReason', width: 220, render: (value: string | null) => value ?? '-' },
+  ]
+
   const tabItems = [
     {
       key: 'revenue',
       label: t("Revenue"),
       children: (
         <Space direction="vertical" size={16} className="reports-tab-content">
+          <Alert
+            showIcon
+            type="info"
+            message={t("Financial definitions")}
+            description={data ? `${t(data.definitions.billed)} ${t(data.definitions.collected)} ${t(data.definitions.void)} ${t("Currency")}: ${data.definitions.currency}. ${t("Timezone")}: ${data.definitions.timezone}.` : undefined}
+          />
           <Card title={t("Revenue by month")}>
             <Table<RevenueMonthRow>
               rowKey="month"
@@ -280,6 +332,33 @@ export function ReportsPage() {
             }}
             scroll={{ x: 1370 }}
             locale={{ emptyText: <Empty description={t("No unpaid invoices")} /> }}
+          />
+        </Card>
+      ),
+    },
+    {
+      key: 'reconciliation',
+      label: t("Payment reconciliation"),
+      children: (
+        <Card title={t("Immutable payment ledger")}>
+          <Table<ReconciliationReportRow>
+            rowKey="paymentId"
+            columns={reconciliationColumns}
+            dataSource={activeSection === 'reconciliation' ? detailItems as ReconciliationReportRow[] : []}
+            loading={detailLoading}
+            pagination={{
+              current: detailPage,
+              pageSize: detailPageSize,
+              total: detailTotal,
+              showSizeChanger: true,
+              pageSizeOptions: [10, 20, 50, 100],
+              onChange: (page, pageSize) => {
+                setDetailPage(pageSize === detailPageSize ? page : 1)
+                setDetailPageSize(pageSize)
+              },
+            }}
+            scroll={{ x: 1550 }}
+            locale={{ emptyText: <Empty description={t("No payment ledger entries")} /> }}
           />
         </Card>
       ),
@@ -354,8 +433,30 @@ export function ReportsPage() {
             optionFilterProp="label"
             placeholder={t("All buildings")}
             value={buildingId}
-            onChange={(value) => { setBuildingId(value); setDetailPage(1) }}
+            onChange={(value) => {
+              setBuildingId(value)
+              if (roomId && !rooms.some((room) => room.id === roomId && (!value || room.buildingId === value))) setRoomId(undefined)
+              setDetailPage(1)
+            }}
             options={buildings.map((building) => ({ label: building.name, value: building.id }))}
+          />
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder={t("All rooms")}
+            value={roomId}
+            onChange={(value) => { setRoomId(value); setDetailPage(1) }}
+            options={roomOptions.map((room) => ({ label: room.code, value: room.id }))}
+          />
+          <Select
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder={t("All tenants")}
+            value={tenantId}
+            onChange={(value) => { setTenantId(value); setDetailPage(1) }}
+            options={tenants.map((tenant) => ({ label: tenant.fullName, value: tenant.id }))}
           />
           <Select
             allowClear
@@ -371,6 +472,7 @@ export function ReportsPage() {
         <Card><Statistic title={t("Billed")} value={data?.summary.billed ?? 0} formatter={(value) => formatCurrency(Number(value))} /></Card>
         <Card><Statistic title={t("Net payments")} value={data?.summary.collected ?? 0} formatter={(value) => formatCurrency(Number(value))} /></Card>
         <Card><Statistic title={t("Unpaid")} value={data?.summary.unpaidAmount ?? 0} formatter={(value) => formatCurrency(Number(value))} /></Card>
+        <Card><Statistic title={t("Void amount")} value={data?.summary.voidAmount ?? 0} formatter={(value) => formatCurrency(Number(value))} /></Card>
         <Card><Statistic title={t("Occupancy")} value={data?.summary.occupancyRate ?? 0} suffix="%" /></Card>
       </div>
 
