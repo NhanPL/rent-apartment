@@ -37,6 +37,7 @@ import notificationsRoutes from './modules/notifications/notifications.routes';
 import importsRoutes from './modules/imports/imports.routes';
 import invoiceBrandingRoutes from './modules/invoice-branding/invoice-branding.routes';
 import featureFlagsRoutes from './modules/feature-flags/feature-flags.routes';
+import preferencesRoutes from './modules/preferences/preferences.routes';
 
 export const app = express();
 const frontendDistPath = path.resolve(__dirname, '../../front-end/dist');
@@ -91,6 +92,7 @@ app.use('/api/notifications', notificationsRoutes);
 app.use('/api/imports', importsRoutes);
 app.use('/api/invoice-branding', invoiceBrandingRoutes);
 app.use('/api/feature-flags', featureFlagsRoutes);
+app.use('/api/preferences', preferencesRoutes);
 app.use('/api', (_req, _res, next) => {
   next(new AppError(404, 'API route not found', 'ROUTE_NOT_FOUND'));
 });

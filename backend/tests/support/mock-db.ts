@@ -85,10 +85,10 @@ class FakeDb {
     this.transactionTail = Promise.resolve();
 
     this.users = [
-      { id: ids.managerAUser, role: 'MANAGER', email: 'manager@example.com', username: 'manager', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null, two_factor_enabled: false, two_factor_secret_encrypted: null, two_factor_pending_secret_encrypted: null, two_factor_enabled_at: null },
-      { id: ids.managerBUser, role: 'MANAGER', email: 'manager-b@example.com', username: 'manager-b', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null, two_factor_enabled: false, two_factor_secret_encrypted: null, two_factor_pending_secret_encrypted: null, two_factor_enabled_at: null },
-      { id: ids.tenantAUser, role: 'TENANT', email: 'tenant@example.com', username: 'tenant', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null, two_factor_enabled: false, two_factor_secret_encrypted: null, two_factor_pending_secret_encrypted: null, two_factor_enabled_at: null },
-      { id: ids.tenantBUser, role: 'TENANT', email: 'tenant-b@example.com', username: 'tenant-b', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null, two_factor_enabled: false, two_factor_secret_encrypted: null, two_factor_pending_secret_encrypted: null, two_factor_enabled_at: null }
+      { id: ids.managerAUser, role: 'MANAGER', email: 'manager@example.com', username: 'manager', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null, two_factor_enabled: false, two_factor_secret_encrypted: null, two_factor_pending_secret_encrypted: null, two_factor_enabled_at: null, preferred_language: 'en' },
+      { id: ids.managerBUser, role: 'MANAGER', email: 'manager-b@example.com', username: 'manager-b', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null, two_factor_enabled: false, two_factor_secret_encrypted: null, two_factor_pending_secret_encrypted: null, two_factor_enabled_at: null, preferred_language: 'en' },
+      { id: ids.tenantAUser, role: 'TENANT', email: 'tenant@example.com', username: 'tenant', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null, two_factor_enabled: false, two_factor_secret_encrypted: null, two_factor_pending_secret_encrypted: null, two_factor_enabled_at: null, preferred_language: 'en' },
+      { id: ids.tenantBUser, role: 'TENANT', email: 'tenant-b@example.com', username: 'tenant-b', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null, two_factor_enabled: false, two_factor_secret_encrypted: null, two_factor_pending_secret_encrypted: null, two_factor_enabled_at: null, preferred_language: 'en' }
     ];
     this.managerProfiles = [
       { user_id: ids.managerAUser, full_name: 'Manager A' },
@@ -479,14 +479,14 @@ class FakeDb {
       return result<T>([]);
     }
 
-    if (sql.startsWith('select id, email::text as email from app_user where email=$1')) {
+    if (sql.startsWith('select id, email::text as email') && sql.includes('from app_user') && sql.includes('where email=$1')) {
       const user = this.users.find((item) => (
         String(item.email).toLocaleLowerCase() === String(params[0]).toLocaleLowerCase()
         && item.account_status === 'ACTIVE'
         && item.is_active
         && Boolean(String(item.password_hash ?? '').trim())
       ));
-      return result<T>(user ? [{ id: user.id, email: user.email } as T] : []);
+      return result<T>(user ? [{ id: user.id, email: user.email, preferred_language: user.preferred_language } as T] : []);
     }
 
     if (sql.startsWith('update app_user set password_hash')) {
@@ -711,7 +711,8 @@ class FakeDb {
         id: resetToken.id,
         user_id: resetToken.user_id,
         email: user.email,
-        password_hash: user.password_hash
+        password_hash: user.password_hash,
+        preferred_language: user.preferred_language
       } as T] : []);
     }
 

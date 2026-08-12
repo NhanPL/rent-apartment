@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg';
 import { env } from '../../config/env';
+import type { EmailLocale } from './email.service';
 
 export type NotificationTemplateCode =
   | 'UTILITY_READING_REJECTED'
@@ -13,6 +14,7 @@ interface NotificationRecipient {
   tenant_name: string;
   room_code: string;
   month: string;
+  locale: EmailLocale;
 }
 
 const enqueue = async (
@@ -42,6 +44,7 @@ const enqueue = async (
           tenantName: recipient.tenant_name,
           roomCode: recipient.room_code,
           month: recipient.month,
+          locale: recipient.locale,
           ...payload
         }),
         templateCode.startsWith('PAYMENT_') ? 'PAYMENT' : templateCode.startsWith('INVOICE_') ? 'INVOICE' : 'UTILITY_READING',
@@ -66,6 +69,7 @@ const enqueue = async (
         tenantName: recipient.tenant_name,
         roomCode: recipient.room_code,
         month: recipient.month,
+        locale: recipient.locale,
         ...payload
       }),
       deduplicationKey,
@@ -81,7 +85,8 @@ const readingRecipient = async (client: PoolClient, readingId: string): Promise<
             COALESCE(app_user.email::text, tenant.email::text) AS email,
             tenant.full_name AS tenant_name,
             room.code AS room_code,
-            to_char(reading.month, 'YYYY-MM') AS month
+            to_char(reading.month, 'YYYY-MM') AS month,
+            COALESCE(app_user.preferred_language, 'en') AS locale
      FROM utility_reading reading
      JOIN room ON room.id=reading.room_id
      JOIN contract_tenant assignment ON assignment.contract_id=reading.contract_id
@@ -101,7 +106,8 @@ const invoiceRecipient = async (client: PoolClient, invoiceId: string): Promise<
             COALESCE(app_user.email::text, tenant.email::text) AS email,
             tenant.full_name AS tenant_name,
             room.code AS room_code,
-            to_char(invoice.month, 'YYYY-MM') AS month
+            to_char(invoice.month, 'YYYY-MM') AS month,
+            COALESCE(app_user.preferred_language, 'en') AS locale
      FROM invoice
      JOIN room ON room.id=invoice.room_id
      JOIN contract_tenant assignment ON assignment.contract_id=invoice.contract_id
@@ -121,7 +127,8 @@ const proofRecipient = async (client: PoolClient, proofId: string): Promise<Noti
             COALESCE(app_user.email::text, tenant.email::text) AS email,
             tenant.full_name AS tenant_name,
             room.code AS room_code,
-            to_char(invoice.month, 'YYYY-MM') AS month
+            to_char(invoice.month, 'YYYY-MM') AS month,
+            COALESCE(app_user.preferred_language, 'en') AS locale
      FROM payment_proof proof
      JOIN payment_request request ON request.id=proof.payment_request_id
      JOIN invoice ON invoice.id=request.invoice_id

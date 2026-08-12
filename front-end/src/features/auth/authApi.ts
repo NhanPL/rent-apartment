@@ -37,6 +37,13 @@ export function logoutApi() {
   })
 }
 
+export function updatePreferredLanguage(language: 'en' | 'vi') {
+  return apiRequest<{ preferredLanguage: 'en' | 'vi' }>(API_ROUTES.preferences.language, {
+    method: 'PUT',
+    body: { language },
+  })
+}
+
 export function revokeAllSessions() {
   return apiRequest<{ success: boolean }>(API_ROUTES.auth.revokeAllSessions, {
     method: 'POST',

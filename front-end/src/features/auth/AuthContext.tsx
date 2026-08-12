@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { login as loginRequest, logoutApi, me, refresh } from './authApi'
+import { login as loginRequest, logoutApi, me, refresh, updatePreferredLanguage } from './authApi'
 import { clearAuthStorage, setAccessToken } from './authStorage'
 import type { AuthUser, LoginPayload } from './types/auth'
 import { AuthContext, type AuthContextValue } from './auth-context-value'
+import { useI18n } from '../../i18n'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const { setLanguage } = useI18n()
   const [user, setUser] = useState<AuthUser | null>(null)
   const [isInitializing, setIsInitializing] = useState(true)
 
@@ -16,13 +18,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAccessToken(session.accessToken)
       const profile = await me()
       setUser(profile)
+      if (profile.preferredLanguage) setLanguage(profile.preferredLanguage)
     } catch {
       clearAuthStorage()
       setUser(null)
     } finally {
       setIsInitializing(false)
     }
-  }, [])
+  }, [setLanguage])
 
   useEffect(() => {
     void refreshCurrentUser()
@@ -32,7 +35,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const data = await loginRequest(payload)
     setAccessToken(data.accessToken)
     setUser(data.user)
+    if (data.user.preferredLanguage) setLanguage(data.user.preferredLanguage)
     return data.user
+  }, [setLanguage])
+
+  const setPreferredLanguage = useCallback(async (language: 'en' | 'vi') => {
+    await updatePreferredLanguage(language)
+    setUser((current) => current ? { ...current, preferredLanguage: language } : current)
   }, [])
 
   const logout = useCallback(async () => {
@@ -53,8 +62,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       logout,
       refreshCurrentUser,
+      setPreferredLanguage,
     }),
-    [isInitializing, login, logout, refreshCurrentUser, user],
+    [isInitializing, login, logout, refreshCurrentUser, setPreferredLanguage, user],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

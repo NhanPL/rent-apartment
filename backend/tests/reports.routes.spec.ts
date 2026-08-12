@@ -90,9 +90,25 @@ describe('reports CSV export route', () => {
     expect(response.headers['x-injected']).toBeUndefined();
     expect(response.headers['cache-control']).toBe('private, no-store, max-age=0');
     expect(response.headers['x-content-type-options']).toBe('nosniff');
+    expect(mockedGetReportsCsv).toHaveBeenCalledWith(
+      '00000000-0000-4000-8000-000000000001',
+      expect.any(Object),
+      'revenue',
+      'en'
+    );
 
     const body = response.body as Buffer;
     expect([...body.subarray(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
     expect(body.toString('utf8')).toContain('Nguyễn An');
+  });
+
+  it('forwards the selected export locale', async () => {
+    await request(app).get('/reports/export.csv?section=debt&locale=vi').expect(200);
+    expect(mockedGetReportsCsv).toHaveBeenCalledWith(
+      '00000000-0000-4000-8000-000000000001',
+      expect.any(Object),
+      'debt',
+      'vi'
+    );
   });
 });

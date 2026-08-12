@@ -7,6 +7,7 @@ export interface AuthUser {
   username: string | null
   fullName: string | null
   tenantId: string | null
+  preferredLanguage: 'en' | 'vi'
 }
 
 export interface LoginFormValues {

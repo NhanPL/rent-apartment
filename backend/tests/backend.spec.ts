@@ -881,7 +881,8 @@ describe('backend API smoke tests', () => {
       .expect(200);
 
     expect(emailServiceMocks.sendPasswordChangedEmail).toHaveBeenCalledWith({
-      to: 'manager@example.com'
+      to: 'manager@example.com',
+      locale: 'en'
     });
     expect(fakeDb.passwordResetTokens[0].used_at).toEqual(expect.any(String));
     expect(fakeDb.passwordResetTokens[1].revoked_at).toEqual(expect.any(String));

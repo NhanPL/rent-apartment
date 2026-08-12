@@ -403,6 +403,16 @@ const featureFlagPaths = {
   }
 };
 
+const preferencePaths = {
+  '/preferences/language': {
+    put: operation('Preferences', 'Update preferred language', 'AUTHENTICATED', {
+      body: requestBody('LanguagePreference'),
+      responses: ok('LanguagePreferenceResult'),
+      errorCodes: ['VALIDATION_ERROR', 'USER_NOT_FOUND']
+    })
+  }
+};
+
 export const openApiPaths = {
   ...authPaths,
   ...tenantPaths,
@@ -412,5 +422,6 @@ export const openApiPaths = {
   ...paymentPaths,
   ...importPaths,
   ...invoiceBrandingPaths,
-  ...featureFlagPaths
+  ...featureFlagPaths,
+  ...preferencePaths
 };

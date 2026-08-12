@@ -311,7 +311,8 @@ export const createTenant = async (raw: CreateTenantCommand, managerId: string):
       email: loginEmail,
       username,
       invitation,
-      source: 'TENANT_CREATED'
+      source: 'TENANT_CREATED',
+      locale: 'en'
     });
   } catch (error) {
     logger.error({

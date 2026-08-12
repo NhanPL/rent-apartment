@@ -55,13 +55,15 @@ const paymentReminderPayloadSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
   dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   outstandingAmount: z.coerce.number().positive(),
-  timing: z.enum(['BEFORE_DUE', 'AFTER_DUE'])
+  timing: z.enum(['BEFORE_DUE', 'AFTER_DUE']),
+  locale: z.enum(['en', 'vi']).default('en')
 });
 
 const tenantNotificationSchema = z.object({
   tenantName: z.string().min(1),
   roomCode: z.string().min(1),
-  month: z.string().regex(/^\d{4}-\d{2}$/)
+  month: z.string().regex(/^\d{4}-\d{2}$/),
+  locale: z.enum(['en', 'vi']).default('en')
 });
 const notificationPayloadSchemas = {
   PAYMENT_REMINDER: paymentReminderPayloadSchema,
@@ -120,13 +122,15 @@ export const enqueuePaymentReminders = async (): Promise<number> => {
                 'month', to_char(invoice.month, 'YYYY-MM'),
                 'dueDate', to_char(invoice.due_date, 'YYYY-MM-DD'),
                 'outstandingAmount', balance.outstanding_amount,
-                'timing', reminder.timing
+                'timing', reminder.timing,
+                'locale', tenant.preferred_language
               ) AS payload,
               concat('invoice:', invoice.id, ':', reminder.timing, ':', invoice.due_date) AS deduplication_key
        FROM invoice
        JOIN room ON room.id=invoice.room_id
        JOIN LATERAL (
-         SELECT app_user.id AS user_id, app_user.email::text AS email, profile.full_name
+         SELECT app_user.id AS user_id, app_user.email::text AS email, profile.full_name,
+                app_user.preferred_language
          FROM contract_tenant assignment
          JOIN tenant profile ON profile.id=assignment.tenant_id
          JOIN app_user ON app_user.id=profile.user_id

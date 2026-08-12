@@ -32,6 +32,7 @@ interface UserRow {
   session_version: number;
   two_factor_enabled: boolean;
   two_factor_secret_encrypted: string | null;
+  preferred_language: 'en' | 'vi';
 }
 
 
@@ -42,6 +43,7 @@ interface UserProfile {
   username: string | null;
   fullName: string | null;
   tenantId: string | null;
+  preferredLanguage: 'en' | 'vi';
 }
 
 export interface LoginResult {
@@ -72,7 +74,8 @@ const toUserProfile = async (user: UserRow): Promise<UserProfile> => {
     email: user.email,
     username: user.username,
     fullName: managerProfile.rows[0]?.full_name ?? tenant.rows[0]?.full_name ?? null,
-    tenantId: tenant.rows[0]?.id ?? null
+    tenantId: tenant.rows[0]?.id ?? null,
+    preferredLanguage: user.preferred_language ?? 'en'
   };
 };
 
@@ -129,7 +132,7 @@ export const authenticateLogin = async (
 
   const { rows } = await query<UserRow>(
     `SELECT id, role, email, username, password_hash, is_active, account_status, session_version,
-            two_factor_enabled,two_factor_secret_encrypted
+            two_factor_enabled,two_factor_secret_encrypted,preferred_language
      FROM app_user
      WHERE email = $1 OR username = $1
      LIMIT 1`,
@@ -180,7 +183,7 @@ export const authenticateLogin = async (
 
 export const getCurrentUser = async (userId: string): Promise<UserProfile> => {
   const { rows } = await query<UserRow>(
-    'SELECT id, role, email, username, password_hash, is_active, account_status, session_version FROM app_user WHERE id = $1 LIMIT 1',
+    'SELECT id, role, email, username, password_hash, is_active, account_status, session_version, preferred_language FROM app_user WHERE id = $1 LIMIT 1',
     [userId]
   );
 
@@ -195,7 +198,7 @@ export const getCurrentUser = async (userId: string): Promise<UserProfile> => {
 export const changePassword = async (userId: string, currentPassword: string, newPassword: string): Promise<void> => {
   assertPasswordPolicy(newPassword);
   const { rows } = await query<UserRow>(
-    'SELECT id, role, email, username, password_hash, is_active, account_status, session_version FROM app_user WHERE id = $1 LIMIT 1',
+    'SELECT id, role, email, username, password_hash, is_active, account_status, session_version, preferred_language FROM app_user WHERE id = $1 LIMIT 1',
     [userId]
   );
 

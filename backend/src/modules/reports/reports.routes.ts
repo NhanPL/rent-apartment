@@ -28,7 +28,8 @@ const reportsQuerySchema = z.object({
 });
 
 const reportsExportQuerySchema = reportsQuerySchema.extend({
-  section: reportSectionSchema.default('revenue')
+  section: reportSectionSchema.default('revenue'),
+  locale: z.enum(['en', 'vi']).default('en')
 });
 
 const reportDetailSortFields = [
@@ -88,7 +89,7 @@ router.get('/details', requireRole('MANAGER'), asyncHandler(async (req, res) => 
 
 router.get('/export.csv', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const query = parseQuery(reportsExportQuerySchema, req.query);
-  const csv = await getReportsCsv(req.auth!.userId, toFilters(query), query.section);
+  const csv = await getReportsCsv(req.auth!.userId, toFilters(query), query.section, query.locale);
 
   res.set({
     'Content-Type': 'text/csv; charset=utf-8',

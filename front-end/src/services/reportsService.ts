@@ -204,8 +204,9 @@ export async function getReportDetails(
   return { ...response, items }
 }
 
-export async function exportReportsCsv(filters: ReportFilters, section: ReportSection): Promise<string> {
+export async function exportReportsCsv(filters: ReportFilters, section: ReportSection, locale: 'en' | 'vi'): Promise<string> {
   const params = buildReportsParams(filters, section)
+  params.set('locale', locale)
   return apiRequestText(`${API_ROUTES.reports.exportCsv}?${params.toString()}`)
 }
 

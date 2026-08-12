@@ -55,6 +55,9 @@ export const API_ROUTES = {
   },
   invoiceBranding: '/invoice-branding',
   featureFlags: '/feature-flags',
+  preferences: {
+    language: '/preferences/language',
+  },
   contracts: {
     list: '/contracts',
     detail: (id: string) => `/contracts/${id}`,

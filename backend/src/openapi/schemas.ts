@@ -31,12 +31,13 @@ export const openApiSchemas: Record<string, OpenApiSchema> = {
   },
   User: {
     type: 'object',
-    required: ['id', 'username', 'role'],
+    required: ['id', 'username', 'role', 'preferredLanguage'],
     properties: {
       id: uuid,
       username: { type: 'string' },
       email: nullableString,
       role: { type: 'string', enum: ['MANAGER', 'TENANT'] },
+      preferredLanguage: { type: 'string', enum: ['en', 'vi'] },
       account_status: { type: 'string', enum: ['PENDING_ACTIVATION', 'ACTIVE', 'SUSPENDED', 'DELETED'] }
     },
     additionalProperties: true
@@ -393,6 +394,16 @@ export const openApiSchemas: Record<string, OpenApiSchema> = {
     type: 'object', required: ['key', 'enabled'], properties: {
       key: { type: 'string', enum: ['CSV_IMPORTS', 'BULK_BILLING_ACTIONS', 'LIVE_DASHBOARD', 'INVOICE_BRANDING'] },
       enabled: { type: 'boolean' }
+    }
+  },
+  LanguagePreference: {
+    type: 'object', required: ['language'], properties: {
+      language: { type: 'string', enum: ['en', 'vi'] }
+    }
+  },
+  LanguagePreferenceResult: {
+    type: 'object', required: ['preferredLanguage'], properties: {
+      preferredLanguage: { type: 'string', enum: ['en', 'vi'] }
     }
   }
 };

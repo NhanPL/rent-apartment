@@ -8,6 +8,7 @@ export interface AuthContextValue {
   login: (payload: LoginPayload) => Promise<AuthUser>
   logout: () => Promise<void>
   refreshCurrentUser: () => Promise<void>
+  setPreferredLanguage: (language: 'en' | 'vi') => Promise<void>
 }
 
 export const AuthContext = createContext<AuthContextValue | undefined>(undefined)

@@ -38,7 +38,8 @@ export const openApiDocument = {
     { name: 'Payments', description: 'Bank-transfer requests, proofs and immutable payment ledger reversals.' },
     { name: 'Imports', description: 'Validated manager CSV imports for buildings, rooms and tenants.' },
     { name: 'Invoice Branding', description: 'Manager-owned invoice identity and immutable issue-time snapshots.' },
-    { name: 'Feature Flags', description: 'Manager-scoped controlled rollout configuration.' }
+    { name: 'Feature Flags', description: 'Manager-scoped controlled rollout configuration.' },
+    { name: 'Preferences', description: 'Authenticated account preferences used by UI, email and exports.' }
   ],
   paths: openApiPaths,
   components: {

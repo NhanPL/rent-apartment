@@ -10,6 +10,28 @@ import {
 export type { ReportsFilters } from './reports.repository';
 
 export type ReportSection = 'revenue' | 'debt' | 'occupancy' | 'reconciliation';
+export type ReportLocale = 'en' | 'vi';
+
+const csvLabels = {
+  en: {
+    yes: 'Yes', no: 'No', revenueFilename: 'reports-revenue', debtFilename: 'reports-debt',
+    reconciliationFilename: 'reports-reconciliation', occupancyFilename: 'reports-occupancy',
+    revenue: ['Month', 'Invoice count', 'Billed (VND)', 'Gross payments (VND)', 'Reversals (VND)', 'Net payments (VND)', 'Unpaid (VND)', 'Void invoices', 'Void amount (VND)'],
+    debt: ['Building', 'Room', 'Tenant', 'Month', 'Status', 'Overdue', 'Due date', 'Total (VND)', 'Paid (VND)', 'Outstanding (VND)'],
+    reconciliation: ['Payment ID', 'Invoice ID', 'Original payment ID', 'Building', 'Room', 'Tenant', 'Invoice month', 'Invoice status', 'Entry type', 'Amount (VND)', 'Net amount (VND)', 'Paid at UTC', 'Reference', 'Reversal reason'],
+    occupancy: ['Building', 'Total rooms', 'Occupied', 'Vacant', 'Maintenance', 'Inactive', 'Active tenants', 'Occupancy rate']
+  },
+  vi: {
+    yes: 'Có', no: 'Không', revenueFilename: 'bao-cao-doanh-thu', debtFilename: 'bao-cao-cong-no',
+    reconciliationFilename: 'bao-cao-doi-soat', occupancyFilename: 'bao-cao-cong-suat',
+    revenue: ['Tháng', 'Số hóa đơn', 'Đã lập hóa đơn (VND)', 'Thanh toán gộp (VND)', 'Hoàn trả (VND)', 'Thanh toán ròng (VND)', 'Chưa thanh toán (VND)', 'Hóa đơn đã hủy', 'Giá trị đã hủy (VND)'],
+    debt: ['Tòa nhà', 'Phòng', 'Người thuê', 'Tháng', 'Trạng thái', 'Quá hạn', 'Hạn thanh toán', 'Tổng tiền (VND)', 'Đã thanh toán (VND)', 'Còn lại (VND)'],
+    reconciliation: ['Mã thanh toán', 'Mã hóa đơn', 'Mã thanh toán gốc', 'Tòa nhà', 'Phòng', 'Người thuê', 'Tháng hóa đơn', 'Trạng thái hóa đơn', 'Loại bút toán', 'Số tiền (VND)', 'Số tiền ròng (VND)', 'Thời gian thanh toán UTC', 'Mã tham chiếu', 'Lý do hoàn trả'],
+    occupancy: ['Tòa nhà', 'Tổng số phòng', 'Đang thuê', 'Còn trống', 'Bảo trì', 'Ngừng hoạt động', 'Người thuê đang ở', 'Tỷ lệ lấp đầy']
+  }
+} as const;
+
+export const getReportCsvLabels = (locale: ReportLocale) => csvLabels[locale];
 
 const reportDefinitions = {
   currency: 'VND',
@@ -112,14 +134,16 @@ export const getReportsSummary = async (managerId: string, filters: ReportsFilte
 export const getReportsCsv = async (
   managerId: string,
   filters: ReportsFilters,
-  section: ReportSection
+  section: ReportSection,
+  locale: ReportLocale = 'en'
 ) => {
   const data = await getReportsData(managerId, filters);
+  const labels = getReportCsvLabels(locale);
   if (section === 'revenue') {
     return {
-      filename: sanitizeCsvFilename(`reports-revenue-${data.filters.monthFrom.slice(0, 7)}-${data.filters.monthTo.slice(0, 7)}.csv`),
+      filename: sanitizeCsvFilename(`${labels.revenueFilename}-${data.filters.monthFrom.slice(0, 7)}-${data.filters.monthTo.slice(0, 7)}.csv`),
       content: createCsv(
-        ['Month', 'Invoice count', 'Billed (VND)', 'Gross payments (VND)', 'Reversals (VND)', 'Net payments (VND)', 'Unpaid (VND)', 'Void invoices', 'Void amount (VND)'],
+        [...labels.revenue],
         data.revenueByMonth.map((item) => [
           item.month, item.invoiceCount, item.billed, item.grossPayments,
           item.reversals, item.collected, item.unpaid, item.voidInvoiceCount, item.voidAmount
@@ -129,21 +153,21 @@ export const getReportsCsv = async (
   }
   if (section === 'debt') {
     return {
-      filename: sanitizeCsvFilename(`reports-debt-${data.filters.monthFrom.slice(0, 7)}-${data.filters.monthTo.slice(0, 7)}.csv`),
+      filename: sanitizeCsvFilename(`${labels.debtFilename}-${data.filters.monthFrom.slice(0, 7)}-${data.filters.monthTo.slice(0, 7)}.csv`),
       content: createCsv(
-        ['Building', 'Room', 'Tenant', 'Month', 'Status', 'Overdue', 'Due date', 'Total (VND)', 'Paid (VND)', 'Outstanding (VND)'],
+        [...labels.debt],
         data.debtItems.map((item) => [
           item.buildingName, item.roomCode, item.tenantName, item.month.slice(0, 7), item.status,
-          item.isOverdue ? 'Yes' : 'No', item.dueDate ?? '', item.total, item.paidAmount, item.outstandingAmount
+          item.isOverdue ? labels.yes : labels.no, item.dueDate ?? '', item.total, item.paidAmount, item.outstandingAmount
         ])
       )
     };
   }
   if (section === 'reconciliation') {
     return {
-      filename: sanitizeCsvFilename(`reports-reconciliation-${data.filters.monthFrom.slice(0, 7)}-${data.filters.monthTo.slice(0, 7)}.csv`),
+      filename: sanitizeCsvFilename(`${labels.reconciliationFilename}-${data.filters.monthFrom.slice(0, 7)}-${data.filters.monthTo.slice(0, 7)}.csv`),
       content: createCsv(
-        ['Payment ID', 'Invoice ID', 'Original payment ID', 'Building', 'Room', 'Tenant', 'Invoice month', 'Invoice status', 'Entry type', 'Amount (VND)', 'Net amount (VND)', 'Paid at UTC', 'Reference', 'Reversal reason'],
+        [...labels.reconciliation],
         data.reconciliationItems.map((item) => [
           item.paymentId, item.invoiceId, item.originalPaymentId ?? '', item.buildingName,
           item.roomCode, item.tenantName, item.month.slice(0, 7), item.invoiceStatus,
@@ -154,9 +178,9 @@ export const getReportsCsv = async (
     };
   }
   return {
-    filename: sanitizeCsvFilename(`reports-occupancy-${data.filters.monthTo.slice(0, 7)}.csv`),
+    filename: sanitizeCsvFilename(`${labels.occupancyFilename}-${data.filters.monthTo.slice(0, 7)}.csv`),
     content: createCsv(
-      ['Building', 'Total rooms', 'Occupied', 'Vacant', 'Maintenance', 'Inactive', 'Active tenants', 'Occupancy rate'],
+      [...labels.occupancy],
       data.occupancyByBuilding.map((item) => [
         item.buildingName, item.totalRooms, item.occupiedRooms, item.vacantRooms,
         item.maintenanceRooms, item.inactiveRooms, item.activeTenants, `${item.occupancyRate}%`
