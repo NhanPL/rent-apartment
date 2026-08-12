@@ -24,6 +24,7 @@ const tenantId = uuidPath('tenantId');
 const documentId = uuidPath('documentId');
 const invoiceId = uuidPath('invoiceId');
 const paymentId = uuidPath('paymentId');
+const sessionId = uuidPath('sessionId');
 const uuidQuery = (name: string, description: string) => queryParameter(name, { type: 'string', format: 'uuid' }, description);
 const searchQuery = queryParameter('search', { type: 'string', maxLength: 200 }, 'Case-insensitive search text.');
 
@@ -89,6 +90,20 @@ const authPaths = {
   '/auth/sessions/revoke-all': {
     post: operation('Auth', 'Revoke all sessions', 'AUTHENTICATED', {
       responses: ok('Success'), errorCodes: ['UNAUTHORIZED']
+    })
+  },
+  '/auth/sessions': {
+    get: operation('Auth', 'List active sessions', 'AUTHENTICATED', {
+      description: 'Lists active, unexpired browser/device sessions owned by the authenticated user.',
+      responses: ok('AuthSessionList'), errorCodes: ['UNAUTHORIZED']
+    })
+  },
+  '/auth/sessions/{sessionId}': {
+    delete: operation('Auth', 'Revoke a session', 'AUTHENTICATED', {
+      description: 'Revokes one browser/device session owned by the authenticated user.',
+      parameters: [sessionId],
+      responses: ok('AuthSessionRevokeResponse'),
+      errorCodes: ['UNAUTHORIZED', 'AUTH_SESSION_NOT_FOUND', 'VALIDATION_ERROR']
     })
   }
 };

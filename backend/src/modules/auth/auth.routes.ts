@@ -23,7 +23,9 @@ import {
   requestPasswordReset
 } from './password-reset.service';
 import {
+  listUserSessions,
   revokeAllUserSessions,
+  revokeOwnSession,
   revokeSessionByRefreshToken,
   rotateRefreshToken
 } from './session.service';
@@ -37,7 +39,7 @@ import {
   passwordResetRateLimit,
   refreshRateLimit
 } from '../../config/rate-limit';
-import { parseBody, parseEmptyBody, parseQuery } from '../../shared/utils/validation';
+import { parseBody, parseEmptyBody, parseParams, parseQuery, uuidSchema } from '../../shared/utils/validation';
 
 const router = Router();
 
@@ -70,6 +72,7 @@ const confirmPasswordResetSchema = z.object({
   newPassword: z.string().min(1),
   confirmPassword: z.string().min(1)
 });
+const sessionParamsSchema = z.object({ sessionId: uuidSchema });
 
 const validateNewPassword = (
   newPassword: string,
@@ -202,6 +205,19 @@ router.post('/sessions/revoke-all', requireAuth, asyncHandler(async (req, res) =
   await revokeAllUserSessions(req.auth!.userId);
   clearRefreshTokenCookie(res);
   res.json({ success: true });
+}));
+
+router.get('/sessions', requireAuth, asyncHandler(async (req, res) => {
+  res.json({
+    items: await listUserSessions(req.auth!.userId, req.auth!.sessionId)
+  });
+}));
+
+router.delete('/sessions/:sessionId', requireAuth, asyncHandler(async (req, res) => {
+  const { sessionId } = parseParams(sessionParamsSchema, req.params);
+  const result = await revokeOwnSession(req.auth!.userId, sessionId, req.auth!.sessionId);
+  if (result.revokedCurrent) clearRefreshTokenCookie(res);
+  res.json(result);
 }));
 
 export default router;

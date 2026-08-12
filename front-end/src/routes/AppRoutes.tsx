@@ -36,8 +36,10 @@ const UtilitiesPage = lazy(() => import('../pages/utilities/UtilitiesPage').then
 const PaymentsPage = lazy(() => import('../pages/payments/PaymentsPage').then((module) => ({ default: module.PaymentsPage })))
 const ReportsPage = lazy(() => import('../pages/reports/ReportsPage').then((module) => ({ default: module.ReportsPage })))
 const AuditLogsPage = lazy(() => import('../pages/audit-logs/AuditLogsPage').then((module) => ({ default: module.AuditLogsPage })))
+const SessionsPage = lazy(() => import('../features/auth/pages/SessionsPage').then((module) => ({ default: module.SessionsPage })))
 
-const managerPaths = new Set(routeItems.filter((item) => item.path !== '/my-room').map((item) => item.path))
+const sharedPaths = new Set(['/sessions'])
+const managerPaths = new Set(routeItems.filter((item) => item.path !== '/my-room' && !sharedPaths.has(item.path)).map((item) => item.path))
 
 function RouteFallback() {
   const { t } = useI18n()
@@ -154,6 +156,7 @@ function AppRouteTree() {
             <Route path="/audit-logs" element={<AuditLogsPage />} />
           </Route>
           <Route element={<RoleRoute roles={['TENANT']} />}><Route path="/my-room" element={<TenantRoomPage />} /></Route>
+          <Route path="/sessions" element={<SessionsPage />} />
           <Route path="/403" element={<ForbiddenPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

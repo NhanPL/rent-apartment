@@ -31,6 +31,15 @@ export interface ChangePasswordPayload {
   confirmPassword: string
 }
 
+export interface AuthSession {
+  id: string
+  userAgent: string | null
+  createdAt: string
+  lastUsedAt: string
+  expiresAt: string
+  current: boolean
+}
+
 export interface ActivationTokenDetails {
   valid: true
   emailHint: string

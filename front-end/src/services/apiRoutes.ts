@@ -7,6 +7,8 @@ export const API_ROUTES = {
     password: '/auth/password',
     passwordResetRequest: '/auth/password-reset/request',
     passwordResetConfirm: '/auth/password-reset/confirm',
+    sessions: '/auth/sessions',
+    sessionDetail: (id: string) => `/auth/sessions/${id}`,
     revokeAllSessions: '/auth/sessions/revoke-all',
     activation: '/auth/activation',
     activate: '/auth/activate',

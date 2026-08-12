@@ -52,6 +52,26 @@ export const openApiSchemas: Record<string, OpenApiSchema> = {
   AccessTokenResponse: {
     type: 'object', required: ['accessToken'], properties: { accessToken: { type: 'string' } }
   },
+  AuthSession: {
+    type: 'object',
+    required: ['id', 'createdAt', 'lastUsedAt', 'expiresAt', 'current'],
+    properties: {
+      id: uuid,
+      userAgent: nullableString,
+      createdAt: { type: 'string', format: 'date-time' },
+      lastUsedAt: { type: 'string', format: 'date-time' },
+      expiresAt: { type: 'string', format: 'date-time' },
+      current: { type: 'boolean' }
+    }
+  },
+  AuthSessionList: {
+    type: 'object', required: ['items'], properties: {
+      items: { type: 'array', items: { $ref: '#/components/schemas/AuthSession' } }
+    }
+  },
+  AuthSessionRevokeResponse: {
+    type: 'object', required: ['revokedCurrent'], properties: { revokedCurrent: { type: 'boolean' } }
+  },
   PasswordPair: {
     type: 'object', required: ['newPassword', 'confirmPassword'],
     properties: {

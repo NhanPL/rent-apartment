@@ -42,6 +42,23 @@ interface SessionTokens {
   refreshTokenExpiresAt: Date;
 }
 
+interface AuthSessionRow {
+  id: string;
+  user_agent: string | null;
+  created_at: string;
+  last_used_at: string;
+  expires_at: string;
+}
+
+export interface AuthSessionSummary {
+  id: string;
+  userAgent: string | null;
+  createdAt: string;
+  lastUsedAt: string;
+  expiresAt: string;
+  current: boolean;
+}
+
 type RotationResult =
   | { status: 'SUCCESS'; tokens: SessionTokens }
   | { status: 'INVALID' | 'REUSED' };
@@ -313,6 +330,61 @@ export const revokeAllUserSessions = async (userId: string): Promise<void> => {
     });
   });
 };
+
+export const listUserSessions = async (
+  userId: string,
+  currentSessionId: string
+): Promise<AuthSessionSummary[]> => {
+  const result = await query<AuthSessionRow>(
+    `SELECT id,user_agent,created_at,last_used_at,expires_at
+     FROM auth_session
+     WHERE user_id=$1
+       AND revoked_at IS NULL
+       AND expires_at > now()
+     ORDER BY last_used_at DESC,created_at DESC`,
+    [userId]
+  );
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    userAgent: row.user_agent,
+    createdAt: row.created_at,
+    lastUsedAt: row.last_used_at,
+    expiresAt: row.expires_at,
+    current: row.id === currentSessionId
+  }));
+};
+
+export const revokeOwnSession = async (
+  userId: string,
+  sessionId: string,
+  currentSessionId: string
+): Promise<{ revokedCurrent: boolean }> => withTransaction(async (client) => {
+  const result = await client.query<{ id: string }>(
+    `SELECT id
+     FROM auth_session
+     WHERE id=$1
+       AND user_id=$2
+       AND revoked_at IS NULL
+       AND expires_at > now()
+     LIMIT 1
+     FOR UPDATE`,
+    [sessionId, userId]
+  );
+  if (!result.rows[0]) {
+    throw new AppError(404, 'Session not found', 'AUTH_SESSION_NOT_FOUND');
+  }
+
+  await revokeSession(client, sessionId, 'USER_REVOKED_SESSION');
+  await writeAuditLog(client, {
+    actorUserId: userId,
+    action: 'AUTH_SESSION_REVOKED',
+    entityType: 'AUTH_SESSION',
+    entityId: sessionId,
+    metadata: { reason: 'USER_REVOKED_SESSION' }
+  });
+  return { revokedCurrent: sessionId === currentSessionId };
+});
 
 export const cleanupExpiredSessions = async (): Promise<number> => {
   const result = await query<{ id: string }>(

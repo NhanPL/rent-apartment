@@ -371,6 +371,17 @@ class FakeDb {
       return result<T>(session ? [session as T] : []);
     }
 
+    if (sql.startsWith('select id,user_agent,created_at,last_used_at,expires_at from auth_session')) {
+      return result<T>(this.authSessions
+        .filter((session) => session.user_id === params[0] && !session.revoked_at && new Date(session.expires_at).getTime() > Date.now())
+        .sort((left, right) => new Date(right.last_used_at).getTime() - new Date(left.last_used_at).getTime()) as T[]);
+    }
+
+    if (sql.startsWith('select id from auth_session where id=$1 and user_id=$2')) {
+      const session = this.authSessions.find((item) => item.id === params[0] && item.user_id === params[1]);
+      return result<T>(session ? [{ id: session.id } as T] : []);
+    }
+
     if (sql.startsWith('update app_user set session_version=session_version + 1 where id=$1')) {
       const user = this.users.find((item) => item.id === params[0]);
       if (user) user.session_version += 1;

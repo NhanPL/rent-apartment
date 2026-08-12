@@ -3,6 +3,7 @@ import { API_ROUTES } from '../../services/apiRoutes'
 import type {
   ActivateAccountPayload,
   ActivationTokenDetails,
+  AuthSession,
   AuthUser,
   ChangePasswordPayload,
   ConfirmPasswordResetPayload,
@@ -37,6 +38,16 @@ export function logoutApi() {
 export function revokeAllSessions() {
   return apiRequest<{ success: boolean }>(API_ROUTES.auth.revokeAllSessions, {
     method: 'POST',
+  })
+}
+
+export function listSessions() {
+  return apiRequest<{ items: AuthSession[] }>(API_ROUTES.auth.sessions)
+}
+
+export function revokeSession(id: string) {
+  return apiRequest<{ revokedCurrent: boolean }>(API_ROUTES.auth.sessionDetail(id), {
+    method: 'DELETE',
   })
 }
 

@@ -318,6 +318,43 @@ describe('backend API smoke tests', () => {
     }));
   });
 
+  it('lists and revokes only device sessions owned by the authenticated user', async () => {
+    const currentDevice = await login('manager@example.com');
+    const remoteDevice = await login('manager@example.com');
+    await login('tenant@example.com');
+    const managerSessions = fakeDb.authSessions.filter((item) => item.user_id === ids.managerAUser);
+
+    const listResponse = await request(app)
+      .get('/api/auth/sessions')
+      .set(auth(currentDevice.accessToken))
+      .expect(200);
+
+    expect(listResponse.body.items).toHaveLength(2);
+    expect(listResponse.body.items.filter((item: { current: boolean }) => item.current)).toHaveLength(1);
+    expect(listResponse.body.items.every((item: Record<string, unknown>) => !('ipHash' in item))).toBe(true);
+
+    await request(app)
+      .delete(`/api/auth/sessions/${fakeDb.authSessions.find((item) => item.user_id === ids.tenantAUser)!.id}`)
+      .set(auth(currentDevice.accessToken))
+      .expect(404);
+
+    const revokeResponse = await request(app)
+      .delete(`/api/auth/sessions/${managerSessions[1].id}`)
+      .set(auth(currentDevice.accessToken))
+      .expect(200, { revokedCurrent: false });
+    expect(revokeResponse.headers['set-cookie']).toBeUndefined();
+    await request(app).get('/api/auth/me').set(auth(currentDevice.accessToken)).expect(200);
+    await request(app).get('/api/auth/me').set(auth(remoteDevice.accessToken)).expect(401);
+
+    const currentResponse = await request(app)
+      .delete(`/api/auth/sessions/${managerSessions[0].id}`)
+      .set(auth(currentDevice.accessToken))
+      .set('Cookie', currentDevice.refreshCookie)
+      .expect(200, { revokedCurrent: true });
+    expect((currentResponse.headers['set-cookie'] as unknown as string[])[0]).toContain('Expires=Thu, 01 Jan 1970');
+    expect(fakeDb.auditLogs.filter((item) => item.action === 'AUTH_SESSION_REVOKED')).toHaveLength(2);
+  });
+
   it('cleans up expired sessions while retaining active sessions', async () => {
     await login('manager@example.com');
     fakeDb.authSessions.push({
