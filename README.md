@@ -17,6 +17,10 @@ Fullstack apartment rental management app built with React, TypeScript, Ant Desi
 - `seeds`: optional data for disposable local databases
 - `.env.example`: combined environment reference
 
+Start with [`docs/architecture.md`](docs/architecture.md) for the component
+map, authentication/session lifecycle, business state machines, authorization,
+file delivery, and major architectural decisions.
+
 ## Database Setup
 
 Create a local database, configure `DATABASE_URL` in `backend/.env`, then run the
