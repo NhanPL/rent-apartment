@@ -202,6 +202,7 @@ const envSchema = z.object({
   DB_POOL_MAX: z.coerce.number().int().positive().default(10),
   JWT_ACCESS_SECRET: z.string().min(1),
   JWT_REFRESH_SECRET: z.string().min(1),
+  MFA_ENCRYPTION_SECRET: optionalString,
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
   REFRESH_TOKEN_EXPIRES_DAYS: z.coerce.number().int().min(1).max(90).default(7),
   REFRESH_COOKIE_NAME: z.string().trim().min(1).default('rent_refresh_token'),
@@ -280,6 +281,12 @@ if (!parsed.success) {
 }
 
 assertSecureJwtSecrets(parsed.data.JWT_ACCESS_SECRET, parsed.data.JWT_REFRESH_SECRET);
+if (
+  (parsed.data.APP_ENV === 'staging' || parsed.data.APP_ENV === 'production')
+  && parsed.data.MFA_ENCRYPTION_SECRET.length < JWT_SECRET_MIN_LENGTH
+) {
+  throw new Error(`MFA_ENCRYPTION_SECRET must contain at least ${JWT_SECRET_MIN_LENGTH} characters in deployed environments`);
+}
 
 const databaseTls = resolveDatabaseTlsSettings(
   parsed.data.APP_ENV,
@@ -331,5 +338,6 @@ export const env = {
   SMTP_USER: smtp.user,
   SMTP_PASS: smtp.password,
   SMTP_FROM_EMAIL: smtp.fromEmail,
-  AUDIT_IP_HASH_SECRET: parsed.data.AUDIT_IP_HASH_SECRET || parsed.data.JWT_ACCESS_SECRET
+  AUDIT_IP_HASH_SECRET: parsed.data.AUDIT_IP_HASH_SECRET || parsed.data.JWT_ACCESS_SECRET,
+  MFA_ENCRYPTION_SECRET: parsed.data.MFA_ENCRYPTION_SECRET || parsed.data.JWT_REFRESH_SECRET
 };

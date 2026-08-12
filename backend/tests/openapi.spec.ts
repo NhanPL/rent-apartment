@@ -14,6 +14,7 @@ const documentedOperations: Record<string, string[]> = {
   '/auth/password-reset/request': ['post'], '/auth/password-reset/confirm': ['post'],
   '/auth/me': ['get'], '/auth/password': ['put'], '/auth/sessions': ['get'],
   '/auth/sessions/{sessionId}': ['delete'], '/auth/sessions/revoke-all': ['post'],
+  '/auth/2fa': ['get'], '/auth/2fa/setup': ['post'], '/auth/2fa/enable': ['post'], '/auth/2fa/disable': ['post'],
   '/tenants': ['get', 'post'], '/tenants/{id}': ['get', 'patch', 'delete'],
   '/tenants/{id}/account-status': ['patch'],
   '/tenants/{id}/resend-activation': ['post'], '/tenants/{id}/identity-documents': ['put'],

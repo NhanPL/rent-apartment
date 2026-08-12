@@ -83,10 +83,10 @@ class FakeDb {
     this.transactionTail = Promise.resolve();
 
     this.users = [
-      { id: ids.managerAUser, role: 'MANAGER', email: 'manager@example.com', username: 'manager', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null },
-      { id: ids.managerBUser, role: 'MANAGER', email: 'manager-b@example.com', username: 'manager-b', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null },
-      { id: ids.tenantAUser, role: 'TENANT', email: 'tenant@example.com', username: 'tenant', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null },
-      { id: ids.tenantBUser, role: 'TENANT', email: 'tenant-b@example.com', username: 'tenant-b', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null }
+      { id: ids.managerAUser, role: 'MANAGER', email: 'manager@example.com', username: 'manager', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null, two_factor_enabled: false, two_factor_secret_encrypted: null, two_factor_pending_secret_encrypted: null, two_factor_enabled_at: null },
+      { id: ids.managerBUser, role: 'MANAGER', email: 'manager-b@example.com', username: 'manager-b', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null, two_factor_enabled: false, two_factor_secret_encrypted: null, two_factor_pending_secret_encrypted: null, two_factor_enabled_at: null },
+      { id: ids.tenantAUser, role: 'TENANT', email: 'tenant@example.com', username: 'tenant', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null, two_factor_enabled: false, two_factor_secret_encrypted: null, two_factor_pending_secret_encrypted: null, two_factor_enabled_at: null },
+      { id: ids.tenantBUser, role: 'TENANT', email: 'tenant-b@example.com', username: 'tenant-b', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null, two_factor_enabled: false, two_factor_secret_encrypted: null, two_factor_pending_secret_encrypted: null, two_factor_enabled_at: null }
     ];
     this.managerProfiles = [
       { user_id: ids.managerAUser, full_name: 'Manager A' },
@@ -424,6 +424,36 @@ class FakeDb {
     if (sql.startsWith('update app_user set last_login_at')) {
       const user = this.users.find((item) => item.id === params[0]);
       if (user) user.last_login_at = now;
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('update app_user set two_factor_pending_secret_encrypted=$1')) {
+      const user = this.users.find((item) => item.id === params[1]);
+      if (user) user.two_factor_pending_secret_encrypted = params[0];
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('update app_user set two_factor_enabled=true')) {
+      const user = this.users.find((item) => item.id === params[0]);
+      if (user) {
+        user.two_factor_enabled = true;
+        user.two_factor_secret_encrypted = user.two_factor_pending_secret_encrypted;
+        user.two_factor_pending_secret_encrypted = null;
+        user.two_factor_enabled_at = now;
+        user.session_version += 1;
+      }
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('update app_user set two_factor_enabled=false')) {
+      const user = this.users.find((item) => item.id === params[0]);
+      if (user) {
+        user.two_factor_enabled = false;
+        user.two_factor_secret_encrypted = null;
+        user.two_factor_pending_secret_encrypted = null;
+        user.two_factor_enabled_at = null;
+        user.session_version += 1;
+      }
       return result<T>([]);
     }
 

@@ -43,7 +43,11 @@ export const openApiSchemas: Record<string, OpenApiSchema> = {
   },
   LoginRequest: {
     type: 'object', required: ['identifier', 'password'],
-    properties: { identifier: { type: 'string', minLength: 1 }, password: { type: 'string', format: 'password', minLength: 1, maxLength: 128 } }
+    properties: {
+      identifier: { type: 'string', minLength: 1 },
+      password: { type: 'string', format: 'password', minLength: 1, maxLength: 128 },
+      twoFactorCode: { type: 'string', pattern: '^\\d{6}$' }
+    }
   },
   LoginResponse: {
     type: 'object', required: ['accessToken', 'user'],
@@ -71,6 +75,24 @@ export const openApiSchemas: Record<string, OpenApiSchema> = {
   },
   AuthSessionRevokeResponse: {
     type: 'object', required: ['revokedCurrent'], properties: { revokedCurrent: { type: 'boolean' } }
+  },
+  TwoFactorStatus: {
+    type: 'object', required: ['enabled'], properties: { enabled: { type: 'boolean' } }
+  },
+  TwoFactorSetup: {
+    type: 'object', required: ['secret', 'otpauthUri'], properties: {
+      secret: { type: 'string', minLength: 16 },
+      otpauthUri: { type: 'string', pattern: '^otpauth://totp/' }
+    }
+  },
+  TwoFactorCodeRequest: {
+    type: 'object', required: ['code'], properties: { code: { type: 'string', pattern: '^\\d{6}$' } }
+  },
+  TwoFactorDisableRequest: {
+    type: 'object', required: ['currentPassword', 'code'], properties: {
+      currentPassword: { type: 'string', format: 'password', minLength: 1, maxLength: 128 },
+      code: { type: 'string', pattern: '^\\d{6}$' }
+    }
   },
   PasswordPair: {
     type: 'object', required: ['newPassword', 'confirmPassword'],

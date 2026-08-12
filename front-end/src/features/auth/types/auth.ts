@@ -13,11 +13,13 @@ export interface LoginFormValues {
   identifier: string
   password: string
   rememberMe: boolean
+  twoFactorCode?: string
 }
 
 export interface LoginPayload {
   identifier: string
   password: string
+  twoFactorCode?: string
 }
 
 export interface LoginResponse {
@@ -38,6 +40,15 @@ export interface AuthSession {
   lastUsedAt: string
   expiresAt: string
   current: boolean
+}
+
+export interface TwoFactorStatus {
+  enabled: boolean
+}
+
+export interface TwoFactorSetup {
+  secret: string
+  otpauthUri: string
 }
 
 export interface ActivationTokenDetails {

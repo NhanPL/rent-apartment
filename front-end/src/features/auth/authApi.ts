@@ -10,6 +10,8 @@ import type {
   LoginPayload,
   LoginResponse,
   RequestPasswordResetPayload,
+  TwoFactorSetup,
+  TwoFactorStatus,
 } from './types/auth'
 
 export function login(payload: LoginPayload) {
@@ -48,6 +50,28 @@ export function listSessions() {
 export function revokeSession(id: string) {
   return apiRequest<{ revokedCurrent: boolean }>(API_ROUTES.auth.sessionDetail(id), {
     method: 'DELETE',
+  })
+}
+
+export function getTwoFactorStatus() {
+  return apiRequest<TwoFactorStatus>(API_ROUTES.auth.twoFactor)
+}
+
+export function beginTwoFactorSetup() {
+  return apiRequest<TwoFactorSetup>(API_ROUTES.auth.twoFactorSetup, { method: 'POST' })
+}
+
+export function enableTwoFactor(code: string) {
+  return apiRequest<{ success: boolean }>(API_ROUTES.auth.twoFactorEnable, {
+    method: 'POST',
+    body: { code },
+  })
+}
+
+export function disableTwoFactor(payload: { currentPassword: string; code: string }) {
+  return apiRequest<{ success: boolean }>(API_ROUTES.auth.twoFactorDisable, {
+    method: 'POST',
+    body: payload,
   })
 }
 

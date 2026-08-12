@@ -19,6 +19,7 @@ import {
   recordLoginFailure
 } from './login-throttle.service';
 import { writeAuditLog } from '../../shared/services/audit-log.service';
+import { assertManagerLoginTwoFactor } from './two-factor.service';
 
 interface UserRow {
   id: string;
@@ -29,6 +30,8 @@ interface UserRow {
   is_active: boolean;
   account_status: AccountStatus;
   session_version: number;
+  two_factor_enabled: boolean;
+  two_factor_secret_encrypted: string | null;
 }
 
 
@@ -119,12 +122,14 @@ const canAuthenticate = (user: UserRow | undefined): user is UserRow & { passwor
 export const authenticateLogin = async (
   identifier: string,
   password: string,
-  context: SessionRequestContext
+  context: SessionRequestContext,
+  twoFactorCode?: string
 ): Promise<LoginResult> => {
   await assertLoginNotThrottled(identifier, context.clientIp);
 
   const { rows } = await query<UserRow>(
-    `SELECT id, role, email, username, password_hash, is_active, account_status, session_version
+    `SELECT id, role, email, username, password_hash, is_active, account_status, session_version,
+            two_factor_enabled,two_factor_secret_encrypted
      FROM app_user
      WHERE email = $1 OR username = $1
      LIMIT 1`,
@@ -141,6 +146,20 @@ export const authenticateLogin = async (
   if (!passwordMatches) {
     await recordLoginFailure(identifier, context.clientIp);
     throw invalidCredentials();
+  }
+
+  if (user.role === 'MANAGER' && user.two_factor_enabled) {
+    if (!user.two_factor_secret_encrypted) {
+      throw new AppError(500, 'Two-factor authentication configuration is invalid', 'TWO_FACTOR_CONFIGURATION_INVALID');
+    }
+    try {
+      await assertManagerLoginTwoFactor(user.two_factor_secret_encrypted, twoFactorCode);
+    } catch (error) {
+      if (error instanceof AppError && error.code === 'INVALID_TWO_FACTOR_CODE') {
+        await recordLoginFailure(identifier, context.clientIp);
+      }
+      throw error;
+    }
   }
 
   const userProfile = await toUserProfile(user);

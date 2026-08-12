@@ -18,7 +18,7 @@ Staging and production must inject secrets through the deployment platform:
   protection rules for production deployment jobs.
 
 At minimum, treat these values as secrets: `DATABASE_URL`,
-`JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `DOCUMENT_ACCESS_SECRET`,
+`JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `MFA_ENCRYPTION_SECRET`, `DOCUMENT_ACCESS_SECRET`,
 `CLOUDINARY_API_SECRET`, `SMTP_PASS`, and any provider token. Generate JWT
 secrets from a cryptographically secure random source with at least 32 random
 bytes and store the two values separately.
@@ -51,6 +51,11 @@ Changing `JWT_ACCESS_SECRET` invalidates access tokens. Changing
 in again. Rotate both after any suspected disclosure. Database, Cloudinary, and
 SMTP credentials must also be revoked at their owning provider, not merely
 changed in the application configuration.
+
+Changing `MFA_ENCRYPTION_SECRET` without first re-encrypting stored TOTP
+secrets prevents managers with 2FA enabled from signing in. Treat its rotation
+as a data migration: deploy dual-key decryption, re-encrypt every manager TOTP
+secret, then remove the previous key.
 
 ## Repository Scanning
 

@@ -66,6 +66,7 @@ Set strong values for:
 ```env
 JWT_ACCESS_SECRET=<random_access_secret_at_least_32_characters>
 JWT_REFRESH_SECRET=<different_random_refresh_secret_at_least_32_characters>
+MFA_ENCRYPTION_SECRET=<random_mfa_encryption_secret_at_least_32_characters>
 JWT_ACCESS_EXPIRES_IN=15m
 REFRESH_TOKEN_EXPIRES_DAYS=7
 ```
@@ -76,6 +77,7 @@ are:
 | Group | Required | Optional / feature-gated |
 | --- | --- | --- |
 | Core | `APP_ENV`, `DATABASE_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | `PORT`, pool sizing, log level |
+| Manager 2FA | `MFA_ENCRYPTION_SECRET` in staging/production | Falls back to the refresh secret only in local development/test |
 | Browser security | `CORS_ALLOWED_ORIGINS`, `FRONTEND_URL`, exact `TRUST_PROXY_HOPS` in staging/production | Refresh-cookie name/domain/SameSite |
 | Database TLS | `DB_SSL=true` and verified certificates in staging/production | `DB_SSL_CA` when the provider CA is not publicly trusted |
 | Private documents | `DOCUMENT_ACCESS_SECRET`, Cloudinary cloud/key/secret in shared environments | Retention/job intervals and upload-size limits |

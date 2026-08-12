@@ -84,6 +84,7 @@ vi.mock('../src/modules/documents/document-assets.service', async (importOrigina
 import { app } from '../src/app';
 import { AppError } from '../src/shared/errors/app-error';
 import { cleanupExpiredSessions } from '../src/modules/auth/session.service';
+import { generate } from 'otplib';
 import { hashPassword } from '../src/shared/utils/password';
 import { logger } from '../src/shared/services/logger.service';
 import { fakeDb, ids } from './support/mock-db';
@@ -353,6 +354,67 @@ describe('backend API smoke tests', () => {
       .expect(200, { revokedCurrent: true });
     expect((currentResponse.headers['set-cookie'] as unknown as string[])[0]).toContain('Expires=Thu, 01 Jan 1970');
     expect(fakeDb.auditLogs.filter((item) => item.action === 'AUTH_SESSION_REVOKED')).toHaveLength(2);
+  });
+
+  it('enables manager TOTP, requires it at login, and revokes sessions after security changes', async () => {
+    const manager = await login('manager@example.com');
+
+    await request(app)
+      .get('/api/auth/2fa')
+      .set(auth(manager.accessToken))
+      .expect(200, { enabled: false });
+
+    const setup = await request(app)
+      .post('/api/auth/2fa/setup')
+      .set(auth(manager.accessToken))
+      .expect(200);
+    expect(setup.body).toMatchObject({
+      secret: expect.any(String),
+      otpauthUri: expect.stringMatching(/^otpauth:\/\/totp\//)
+    });
+
+    const code = await generate({ secret: setup.body.secret });
+    const enabled = await request(app)
+      .post('/api/auth/2fa/enable')
+      .set(auth(manager.accessToken))
+      .set('Cookie', manager.refreshCookie)
+      .send({ code })
+      .expect(200, { success: true });
+    expect((enabled.headers['set-cookie'] as unknown as string[])[0]).toContain('Expires=Thu, 01 Jan 1970');
+    await request(app).get('/api/auth/me').set(auth(manager.accessToken)).expect(401);
+
+    const missingCode = await request(app)
+      .post('/api/auth/login')
+      .send({ identifier: 'manager@example.com', password: 'password' })
+      .expect(401);
+    expect(missingCode.body).toMatchObject({ code: 'TWO_FACTOR_REQUIRED' });
+
+    const invalidCode = await request(app)
+      .post('/api/auth/login')
+      .send({ identifier: 'manager@example.com', password: 'password', twoFactorCode: '000000' })
+      .expect(401);
+    expect(invalidCode.body).toMatchObject({ code: 'INVALID_TWO_FACTOR_CODE' });
+
+    const activeCode = await generate({ secret: setup.body.secret });
+    const verifiedManager = await request(app)
+      .post('/api/auth/login')
+      .send({ identifier: 'manager@example.com', password: 'password', twoFactorCode: activeCode })
+      .expect(200);
+
+    const disabled = await request(app)
+      .post('/api/auth/2fa/disable')
+      .set(auth(verifiedManager.body.accessToken))
+      .send({ currentPassword: 'password', code: activeCode })
+      .expect(200, { success: true });
+    expect((disabled.headers['set-cookie'] as unknown as string[])[0]).toContain('Expires=Thu, 01 Jan 1970');
+    expect(fakeDb.auditLogs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ action: 'MANAGER_TWO_FACTOR_SETUP_STARTED' }),
+      expect.objectContaining({ action: 'MANAGER_TWO_FACTOR_ENABLED' }),
+      expect.objectContaining({ action: 'MANAGER_TWO_FACTOR_DISABLED' })
+    ]));
+
+    const tenant = await login('tenant@example.com');
+    await request(app).get('/api/auth/2fa').set(auth(tenant.accessToken)).expect(403);
   });
 
   it('cleans up expired sessions while retaining active sessions', async () => {

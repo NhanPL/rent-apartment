@@ -29,6 +29,31 @@
   font-size: 20px;
 }
 
+.sessions-security-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.sessions-security-heading h4 {
+  margin: 0 0 4px;
+}
+
+.sessions-security-error {
+  margin-bottom: 16px;
+}
+
+.two-factor-setup,
+.two-factor-form {
+  width: 100%;
+}
+
+.two-factor-setup .ant-qrcode {
+  align-self: center;
+}
+
 @media (max-width: 575px) {
   .sessions-header {
     align-items: stretch;

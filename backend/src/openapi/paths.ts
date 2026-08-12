@@ -34,7 +34,7 @@ const authPaths = {
       description: 'Authenticates by username or email. Returns a short-lived access token and sets the refresh token as an HttpOnly cookie.',
       body: requestBody('LoginRequest'),
       responses: ok('LoginResponse'),
-      errorCodes: ['INVALID_CREDENTIALS', 'LOGIN_TEMPORARILY_LOCKED', 'LOGIN_RATE_LIMIT_EXCEEDED']
+      errorCodes: ['INVALID_CREDENTIALS', 'TWO_FACTOR_REQUIRED', 'INVALID_TWO_FACTOR_CODE', 'LOGIN_TEMPORARILY_LOCKED', 'LOGIN_RATE_LIMIT_EXCEEDED']
     })
   },
   '/auth/refresh': {
@@ -104,6 +104,28 @@ const authPaths = {
       parameters: [sessionId],
       responses: ok('AuthSessionRevokeResponse'),
       errorCodes: ['UNAUTHORIZED', 'AUTH_SESSION_NOT_FOUND', 'VALIDATION_ERROR']
+    })
+  },
+  '/auth/2fa': {
+    get: operation('Auth', 'Get two-factor status', 'MANAGER', {
+      responses: ok('TwoFactorStatus'), errorCodes: ['UNAUTHORIZED', 'FORBIDDEN']
+    })
+  },
+  '/auth/2fa/setup': {
+    post: operation('Auth', 'Start two-factor setup', 'MANAGER', {
+      responses: ok('TwoFactorSetup'), errorCodes: ['TWO_FACTOR_ALREADY_ENABLED', 'TWO_FACTOR_MANAGER_ONLY']
+    })
+  },
+  '/auth/2fa/enable': {
+    post: operation('Auth', 'Enable two-factor authentication', 'MANAGER', {
+      body: requestBody('TwoFactorCodeRequest'), responses: ok('Success'),
+      errorCodes: ['INVALID_TWO_FACTOR_CODE', 'TWO_FACTOR_ALREADY_ENABLED', 'TWO_FACTOR_SETUP_REQUIRED']
+    })
+  },
+  '/auth/2fa/disable': {
+    post: operation('Auth', 'Disable two-factor authentication', 'MANAGER', {
+      body: requestBody('TwoFactorDisableRequest'), responses: ok('Success'),
+      errorCodes: ['CURRENT_PASSWORD_INCORRECT', 'INVALID_TWO_FACTOR_CODE', 'TWO_FACTOR_NOT_ENABLED']
     })
   }
 };
