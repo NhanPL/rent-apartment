@@ -14,6 +14,7 @@
     "db:migrate": "node scripts/migrate.js",
     "db:migrate:verify": "node scripts/migrate.js --verify",
     "db:seed": "node scripts/migrate.js --seed",
+    "db:seed:e2e": "node scripts/seed-e2e.js",
     "db:schema:export": "node scripts/export-schema.js --output ../database.sql"
   },
   "dependencies": {
