@@ -35,7 +35,8 @@ export const openApiDocument = {
     { name: 'Contracts', description: 'Contract lifecycle, participants and protected documents.' },
     { name: 'Utilities', description: 'Utility rates, monthly readings and evidence.' },
     { name: 'Invoices', description: 'Invoice generation, issue, adjustment, void and replacement.' },
-    { name: 'Payments', description: 'Bank-transfer requests, proofs and immutable payment ledger reversals.' }
+    { name: 'Payments', description: 'Bank-transfer requests, proofs and immutable payment ledger reversals.' },
+    { name: 'Imports', description: 'Validated manager CSV imports for buildings, rooms and tenants.' }
   ],
   paths: openApiPaths,
   components: {

@@ -380,11 +380,21 @@ const paymentPaths = {
   }
 };
 
+const importPaths = {
+  '/imports/preview': {
+    post: operation('Imports', 'Validate imported rows without writing data', 'MANAGER', { body: requestBody('ImportRequest'), responses: ok('ImportPreview'), errorCodes: ['VALIDATION_ERROR', 'IMPORT_VALIDATION_FAILED'] })
+  },
+  '/imports/commit': {
+    post: operation('Imports', 'Import previously validated rows', 'MANAGER', { body: requestBody('ImportRequest'), responses: created('ImportResult'), errorCodes: ['VALIDATION_ERROR', 'IMPORT_VALIDATION_FAILED', 'IMPORT_ROW_FAILED'] })
+  }
+};
+
 export const openApiPaths = {
   ...authPaths,
   ...tenantPaths,
   ...contractPaths,
   ...utilityPaths,
   ...invoicePaths,
-  ...paymentPaths
+  ...paymentPaths,
+  ...importPaths
 };

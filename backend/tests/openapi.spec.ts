@@ -39,7 +39,8 @@ const documentedOperations: Record<string, string[]> = {
   '/payments/requests/{id}/expire': ['post'], '/payments/requests/{id}/proofs': ['post'],
   '/payments/proofs/{id}/approve': ['post'], '/payments/proofs/{id}/reject': ['post'],
   '/payments/proofs/bulk/review': ['post'],
-  '/payments/ledger/{paymentId}/reverse': ['post']
+  '/payments/ledger/{paymentId}/reverse': ['post'],
+  '/imports/preview': ['post'], '/imports/commit': ['post']
 };
 
 const routeSources = [
@@ -49,7 +50,8 @@ const routeSources = [
   ['utility-rates', '../src/modules/utility-rates/utility-rates.routes.ts'],
   ['utility-readings', '../src/modules/utility-readings/utility-readings.routes.ts'],
   ['invoices', '../src/modules/invoices/invoices.routes.ts'],
-  ['payments', '../src/modules/payments/payments.routes.ts']
+  ['payments', '../src/modules/payments/payments.routes.ts'],
+  ['imports', '../src/modules/imports/imports.routes.ts']
 ] as const;
 
 const operationsFromRoutes = () => {

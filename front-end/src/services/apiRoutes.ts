@@ -49,6 +49,10 @@ export const API_ROUTES = {
     read: (id: string) => `/notifications/${id}/read`,
     readAll: '/notifications/read-all',
   },
+  imports: {
+    preview: '/imports/preview',
+    commit: '/imports/commit',
+  },
   contracts: {
     list: '/contracts',
     detail: (id: string) => `/contracts/${id}`,
