@@ -9,6 +9,22 @@ export interface TranslationEntry {
 const entry = (en: string, vi: string, ...aliases: string[]): TranslationEntry => ({ en, vi, aliases })
 
 const navigation = [
+  entry('Invoice Branding', 'Nh\u1eadn di\u1ec7n h\u00f3a \u0111\u01a1n'),
+  entry('Customize the identity shown on invoices issued to your tenants.', 'T\u00f9y ch\u1ec9nh th\u00f4ng tin nh\u1eadn di\u1ec7n tr\u00ean h\u00f3a \u0111\u01a1n g\u1eedi cho ng\u01b0\u1eddi thu\u00ea.'),
+  entry('Brand settings', 'C\u00e0i \u0111\u1eb7t nh\u1eadn di\u1ec7n'),
+  entry('Display name', 'T\u00ean hi\u1ec3n th\u1ecb'),
+  entry('Invoice title', 'Ti\u00eau \u0111\u1ec1 h\u00f3a \u0111\u01a1n'),
+  entry('Business address', '\u0110\u1ecba ch\u1ec9 kinh doanh'),
+  entry('Tax code', 'M\u00e3 s\u1ed1 thu\u1ebf'),
+  entry('Accent color', 'M\u00e0u nh\u1ea5n'),
+  entry('Logo URL', '\u0110\u01b0\u1eddng d\u1eabn logo'),
+  entry('Logo URL must use HTTPS.', '\u0110\u01b0\u1eddng d\u1eabn logo ph\u1ea3i d\u00f9ng HTTPS.'),
+  entry('Default invoice note', 'Ghi ch\u00fa h\u00f3a \u0111\u01a1n m\u1eb7c \u0111\u1ecbnh'),
+  entry('Save branding', 'L\u01b0u nh\u1eadn di\u1ec7n'),
+  entry('Invoice branding saved.', '\u0110\u00e3 l\u01b0u nh\u1eadn di\u1ec7n h\u00f3a \u0111\u01a1n.'),
+  entry('Unable to load invoice branding.', 'Kh\u00f4ng th\u1ec3 t\u1ea3i nh\u1eadn di\u1ec7n h\u00f3a \u0111\u01a1n.'),
+  entry('Unable to save invoice branding.', 'Kh\u00f4ng th\u1ec3 l\u01b0u nh\u1eadn di\u1ec7n h\u00f3a \u0111\u01a1n.'),
+  entry('No default invoice note.', 'Ch\u01b0a c\u00f3 ghi ch\u00fa h\u00f3a \u0111\u01a1n m\u1eb7c \u0111\u1ecbnh.'),
   entry('Data Import', 'Nh\u1eadp d\u1eef li\u1ec7u'),
   entry('Data import', 'Nh\u1eadp d\u1eef li\u1ec7u'),
   entry('Rooms', 'Ph\u00f2ng'),

@@ -389,6 +389,13 @@ const importPaths = {
   }
 };
 
+const invoiceBrandingPaths = {
+  '/invoice-branding': {
+    get: operation('Invoice Branding', 'Get manager invoice branding', 'MANAGER', { responses: ok('InvoiceBranding'), errorCodes: ['FORBIDDEN'] }),
+    put: operation('Invoice Branding', 'Update manager invoice branding', 'MANAGER', { body: requestBody('InvoiceBranding'), responses: ok('InvoiceBranding'), errorCodes: ['VALIDATION_ERROR', 'FORBIDDEN'] })
+  }
+};
+
 export const openApiPaths = {
   ...authPaths,
   ...tenantPaths,
@@ -396,5 +403,6 @@ export const openApiPaths = {
   ...utilityPaths,
   ...invoicePaths,
   ...paymentPaths,
-  ...importPaths
+  ...importPaths,
+  ...invoiceBrandingPaths
 };

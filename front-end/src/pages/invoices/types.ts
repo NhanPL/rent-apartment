@@ -144,6 +144,7 @@ export interface InvoiceListItem extends Invoice {
 }
 
 export interface InvoiceDetail extends InvoiceListItem {
+  branding: import('../../services/invoiceBrandingService').InvoiceBranding | null
   items: InvoiceItem[]
   adjustments: InvoiceAdjustment[]
 }

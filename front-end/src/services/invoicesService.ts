@@ -18,6 +18,7 @@ import type {
   Room,
   Tenant,
 } from '../pages/invoices/types'
+import type { InvoiceBranding } from './invoiceBrandingService'
 import { appendPaginationParams, type PaginatedResponse } from './pagination'
 
 interface TenantListResponse {
@@ -59,6 +60,7 @@ type InvoiceItemApiRow = Omit<InvoiceItem, 'quantity' | 'unit_price' | 'amount'>
   amount: number | string | null
 }
 type InvoiceDetailApiRow = InvoiceApiRow & {
+  branding?: InvoiceBranding | null
   items?: InvoiceItemApiRow[]
   adjustments?: InvoiceDetail['adjustments']
 }
@@ -94,6 +96,7 @@ const toInvoiceItem = (row: InvoiceItemApiRow): InvoiceItem => ({
 
 const toInvoiceDetail = (row: InvoiceDetailApiRow): InvoiceDetail => ({
   ...toInvoiceListItem(row),
+  branding: row.branding ?? null,
   items: row.items?.map(toInvoiceItem) ?? [],
   adjustments: row.adjustments ?? [],
 })

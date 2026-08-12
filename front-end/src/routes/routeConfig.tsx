@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { BankOutlined, BarChartOutlined, CreditCardOutlined, DollarOutlined, FileSyncOutlined, FileTextOutlined, DashboardOutlined, FormOutlined, ImportOutlined, LaptopOutlined, ProfileOutlined, SafetyCertificateOutlined, ThunderboltOutlined, UserSwitchOutlined, UserOutlined } from '@ant-design/icons'
+import { BankOutlined, BarChartOutlined, BgColorsOutlined, CreditCardOutlined, DollarOutlined, FileSyncOutlined, FileTextOutlined, DashboardOutlined, FormOutlined, ImportOutlined, LaptopOutlined, ProfileOutlined, SafetyCertificateOutlined, ThunderboltOutlined, UserSwitchOutlined, UserOutlined } from '@ant-design/icons'
 
 export interface RouteDefinition {
   key: string
@@ -25,6 +25,7 @@ export const routeItems: RouteDefinition[] = [
   { key: 'reports', path: '/reports', label: 'Reports' },
   { key: 'audit-logs', path: '/audit-logs', label: 'Audit Log' },
   { key: 'imports', path: '/imports', label: 'Data Import' },
+  { key: 'invoice-branding', path: '/invoice-branding', label: 'Invoice Branding' },
   { key: 'my-room', path: '/my-room', label: 'My Room' },
   { key: 'sessions', path: '/sessions', label: 'Sessions & Devices' },
 ]
@@ -43,6 +44,7 @@ export const sidebarRouteItems: SidebarRouteItem[] = [
   { key: 'reports', path: '/reports', label: 'Reports', icon: <BarChartOutlined /> },
   { key: 'audit-logs', path: '/audit-logs', label: 'Audit Log', icon: <SafetyCertificateOutlined /> },
   { key: 'imports', path: '/imports', label: 'Data Import', icon: <ImportOutlined /> },
+  { key: 'invoice-branding', path: '/invoice-branding', label: 'Invoice Branding', icon: <BgColorsOutlined /> },
   { key: 'my-room', path: '/my-room', label: 'My Room', icon: <UserSwitchOutlined /> },
   { key: 'sessions', path: '/sessions', label: 'Sessions & Devices', icon: <LaptopOutlined /> },
 ]

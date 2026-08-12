@@ -9,6 +9,7 @@ import {
   type PaymentRequest,
   type PaymentRequestStatus,
 } from './paymentsService'
+import type { InvoiceBranding } from './invoiceBrandingService'
 
 export type ContractStatus = 'DRAFT' | 'ACTIVE' | 'ENDED' | 'CANCELLED'
 export type RoomStatus = 'ACTIVE' | 'MAINTENANCE' | 'INACTIVE'
@@ -123,6 +124,7 @@ export interface InvoiceItem {
 }
 
 export interface InvoiceDetail extends InvoiceSummary {
+  branding: InvoiceBranding | null
   subtotal: number
   discount: number
   note: string | null
@@ -299,6 +301,7 @@ function toInvoiceDetail(row: Record<string, unknown>): InvoiceDetail {
     note?: string | null
     items?: Record<string, unknown>[]
     payments?: Record<string, unknown>[]
+    branding?: InvoiceBranding | null
   }
 
   return {
@@ -306,6 +309,7 @@ function toInvoiceDetail(row: Record<string, unknown>): InvoiceDetail {
     subtotal: Number(invoice.subtotal ?? 0),
     discount: Number(invoice.discount ?? 0),
     note: invoice.note ?? null,
+    branding: invoice.branding ?? null,
     items: invoice.items?.map(toInvoiceItem) ?? [],
     payments: invoice.payments?.map(toPaymentRecord) ?? [],
   }

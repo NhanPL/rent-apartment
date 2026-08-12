@@ -23,6 +23,7 @@ import {
   type UtilityReadingSnapshot,
   type UtilityReadingStatus,
 } from '../../services/tenantRoomService'
+import { InvoiceBrandingHeader } from '../../shared/components/InvoiceBrandingHeader'
 import type { PaymentRequest, PaymentRequestStatus } from '../../services/paymentsService'
 import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
 import { uploadFileToCloudinary, type UploadedCloudinaryFile } from '../../services/uploadService'
@@ -682,6 +683,7 @@ export function TenantRoomPage() {
           <Skeleton active paragraph={{ rows: 8 }} />
         ) : (
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
+            <InvoiceBrandingHeader branding={billDetail.branding} />
             <Descriptions bordered size="small" column={isMobile ? 1 : 2}>
               <Descriptions.Item label={t("Kỳ hóa đơn")}>{dayjs(billDetail.month).format('MM/YYYY')}</Descriptions.Item>
               <Descriptions.Item label={t("Trạng thái")}><Tag color={invoiceStatusColor[billDetail.status]}>{billDetail.status}</Tag></Descriptions.Item>

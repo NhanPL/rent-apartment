@@ -368,5 +368,18 @@ export const openApiSchemas: Record<string, OpenApiSchema> = {
   BulkActionResult: { type: 'object', required: ['action', 'succeeded', 'failed', 'total'], properties: { action: { type: 'string' }, succeeded: { type: 'array', items: uuid }, failed: { type: 'array', items: { type: 'object', required: ['id', 'code', 'message'], properties: { id: uuid, code: { type: 'string' }, message: { type: 'string' } } } }, total: { type: 'integer' } } },
   ImportRequest: { type: 'object', required: ['entity', 'rows'], properties: { entity: { type: 'string', enum: ['BUILDING', 'ROOM', 'TENANT'] }, rows: { type: 'array', minItems: 1, maxItems: 500, items: { type: 'object', additionalProperties: true } } } },
   ImportPreview: { type: 'object', required: ['entity', 'valid', 'total', 'rows', 'errors'], properties: { entity: { type: 'string' }, valid: { type: 'boolean' }, total: { type: 'integer' }, rows: { type: 'array', items: { type: 'object', additionalProperties: true } }, errors: { type: 'array', items: { type: 'object', additionalProperties: true } } } },
-  ImportResult: { type: 'object', required: ['entity', 'imported', 'ids', 'failed'], properties: { entity: { type: 'string' }, imported: { type: 'integer' }, ids: { type: 'array', items: uuid }, failed: { type: 'array', items: { type: 'object', additionalProperties: true } } } }
+  ImportResult: { type: 'object', required: ['entity', 'imported', 'ids', 'failed'], properties: { entity: { type: 'string' }, imported: { type: 'integer' }, ids: { type: 'array', items: uuid }, failed: { type: 'array', items: { type: 'object', additionalProperties: true } } } },
+  InvoiceBranding: {
+    type: 'object',
+    required: ['display_name', 'business_address', 'tax_code', 'logo_url', 'accent_color', 'invoice_title', 'default_note'],
+    properties: {
+      display_name: { type: 'string', minLength: 1, maxLength: 120 },
+      business_address: { type: ['string', 'null'], maxLength: 500 },
+      tax_code: { type: ['string', 'null'], maxLength: 50 },
+      logo_url: { type: ['string', 'null'], format: 'uri', pattern: '^https://' },
+      accent_color: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' },
+      invoice_title: { type: 'string', minLength: 1, maxLength: 100 },
+      default_note: { type: ['string', 'null'], maxLength: 1000 }
+    }
+  }
 };

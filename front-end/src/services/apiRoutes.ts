@@ -53,6 +53,7 @@ export const API_ROUTES = {
     preview: '/imports/preview',
     commit: '/imports/commit',
   },
+  invoiceBranding: '/invoice-branding',
   contracts: {
     list: '/contracts',
     detail: (id: string) => `/contracts/${id}`,

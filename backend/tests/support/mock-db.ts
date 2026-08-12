@@ -40,6 +40,7 @@ const result = <T extends Row>(rows: T[]) => ({
 class FakeDb {
   users: Row[] = [];
   managerProfiles: Row[] = [];
+  invoiceBrandings: Row[] = [];
   tenants: Row[] = [];
   buildings: Row[] = [];
   rooms: Row[] = [];
@@ -92,6 +93,7 @@ class FakeDb {
       { user_id: ids.managerAUser, full_name: 'Manager A' },
       { user_id: ids.managerBUser, full_name: 'Manager B' }
     ];
+    this.invoiceBrandings = [];
     this.buildings = [
       { id: ids.buildingA, name: 'Alpha Building', address: 'A Street', manager_user_id: ids.managerAUser },
       { id: ids.buildingB, name: 'Beta Building', address: 'B Street', manager_user_id: ids.managerBUser }
@@ -425,6 +427,16 @@ class FakeDb {
       const user = this.users.find((item) => item.id === params[0]);
       if (user) user.last_login_at = now;
       return result<T>([]);
+    }
+
+    if (sql.startsWith('select display_name, business_address, tax_code, logo_url, accent_color, invoice_title, default_note from invoice_branding')) {
+      return result<T>(this.invoiceBrandings.filter((branding) => branding.manager_user_id === params[0]) as T[]);
+    }
+
+    if (sql.startsWith("select coalesce(mp.full_name, u.username::text, u.email::text, 'property manager') as display_name")) {
+      const profile = this.managerProfiles.find((item) => item.user_id === params[0]);
+      const user = this.users.find((item) => item.id === params[0]);
+      return result<T>(user ? [{ display_name: profile?.full_name ?? user.username ?? user.email ?? 'Property Manager' } as T] : []);
     }
 
     if (sql.startsWith('update app_user set two_factor_pending_secret_encrypted=$1')) {
@@ -1461,6 +1473,7 @@ class FakeDb {
         invoice.issued_at = now;
         invoice.approved_by_user_id = params[1];
         invoice.approved_at = now;
+        invoice.branding_snapshot = JSON.parse(String(params[2]));
       }
       return result<T>(invoice ? [invoice as T] : []);
     }

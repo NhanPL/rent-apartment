@@ -36,7 +36,8 @@ export const openApiDocument = {
     { name: 'Utilities', description: 'Utility rates, monthly readings and evidence.' },
     { name: 'Invoices', description: 'Invoice generation, issue, adjustment, void and replacement.' },
     { name: 'Payments', description: 'Bank-transfer requests, proofs and immutable payment ledger reversals.' },
-    { name: 'Imports', description: 'Validated manager CSV imports for buildings, rooms and tenants.' }
+    { name: 'Imports', description: 'Validated manager CSV imports for buildings, rooms and tenants.' },
+    { name: 'Invoice Branding', description: 'Manager-owned invoice identity and immutable issue-time snapshots.' }
   ],
   paths: openApiPaths,
   components: {

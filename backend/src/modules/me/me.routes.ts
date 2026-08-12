@@ -28,6 +28,7 @@ import type {
   TenantStatus,
   UtilityReadingStatus
 } from '../../shared/types/database';
+import { getInvoiceBranding, type InvoiceBranding } from '../invoice-branding/invoice-branding.service';
 
 const router = Router();
 registerUuidParams(router, ['id']);
@@ -116,6 +117,8 @@ interface TenantInvoiceRow {
   paid_at: DatabaseTimestamp | null;
   payment_request_id: string | null;
   payment_request_status: PaymentRequestStatus | null;
+  branding_snapshot: InvoiceBranding | null;
+  manager_user_id: string;
 }
 
 interface UtilityReadingRow {
@@ -158,7 +161,8 @@ interface PaymentRow {
 
 const invoiceColumns = `i.id, i.contract_id, i.room_id, i.utility_reading_id, i.month,
   i.status, i.issued_at, i.due_date, i.note, i.subtotal, i.discount, i.total,
-  i.void_reason, i.voided_at, i.replaces_invoice_id, i.created_at, i.updated_at`;
+  i.void_reason, i.voided_at, i.replaces_invoice_id, i.branding_snapshot,
+  i.created_at, i.updated_at`;
 const tenantDocumentColumns = `id, tenant_id, doc_type, file_name, file_url, mime_type,
   file_size, uploaded_by_user_id, uploaded_at, note, cloudinary_asset_id,
   cloudinary_public_id, cloudinary_resource_type, cloudinary_version, cloudinary_format,
@@ -205,6 +209,7 @@ const getCurrentTenantId = async (userId: string): Promise<string> => {
 
 const tenantInvoiceProjection = `
   ${invoiceColumns},
+  b.manager_user_id,
   COALESCE(room_rent.amount, 0)::float AS rent_amount,
   COALESCE(electricity.amount, 0)::float AS electric_amount,
   COALESCE(water.amount, 0)::float AS water_amount,
@@ -215,6 +220,8 @@ const tenantInvoiceProjection = `
 `;
 
 const tenantInvoiceJoins = `
+  JOIN room invoice_room ON invoice_room.id=i.room_id
+  JOIN building b ON b.id=invoice_room.building_id
   LEFT JOIN LATERAL (
     SELECT amount FROM invoice_item WHERE invoice_id=i.id AND code='ROOM_RENT' ORDER BY created_at DESC LIMIT 1
   ) room_rent ON true
@@ -460,7 +467,8 @@ router.get('/invoices/:id', asyncHandler(async (req, res) => {
     )
   ]);
 
-  res.json({ ...invoice, items: items.rows, payments: payments.rows });
+  const branding = invoice.branding_snapshot ?? await getInvoiceBranding(invoice.manager_user_id);
+  res.json({ ...invoice, branding, items: items.rows, payments: payments.rows });
 }));
 
 export default router;
