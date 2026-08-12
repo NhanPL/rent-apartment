@@ -2152,4 +2152,67 @@ describe('backend API smoke tests', () => {
     expect(fakeDb.paymentProofs.find((item) => item.id === proof.body.id)).toMatchObject({ status: 'PENDING' });
     expect(fakeDb.payments.some((item) => item.payment_proof_id === proof.body.id)).toBe(false);
   });
+
+  it('issues eligible invoices in bulk and reports per-item failures', async () => {
+    const managerSession = await login('manager@example.com');
+    const generated = await request(app)
+      .post('/api/invoices/generate/room')
+      .set(auth(managerSession.accessToken))
+      .send({ month: '2026-06', room_id: ids.roomA })
+      .expect(201);
+    const draftId = generated.body.generated[0].id as string;
+
+    const response = await request(app)
+      .post('/api/invoices/bulk/issue')
+      .set(auth(managerSession.accessToken))
+      .send({
+        invoice_ids: [draftId, ids.invoiceIssued],
+        bank_code: issueBankPayload.bank_code,
+        bank_account_no: issueBankPayload.bank_account_no,
+        bank_account_name: issueBankPayload.bank_account_name
+      })
+      .expect(200);
+
+    expect(response.body).toMatchObject({ action: 'ISSUE', succeeded: [draftId], total: 2 });
+    expect(response.body.failed).toEqual([
+      expect.objectContaining({ id: ids.invoiceIssued, code: 'INVOICE_NOT_DRAFT' })
+    ]);
+    expect(fakeDb.invoices.find((invoice) => invoice.id === draftId)).toMatchObject({ status: 'ISSUED' });
+    expect(fakeDb.paymentRequests.filter((item) => item.invoice_id === draftId)).toHaveLength(1);
+  });
+
+  it('reviews pending payment proofs in bulk without duplicating ledger entries', async () => {
+    const managerSession = await login('manager@example.com');
+    const tenantSession = await login('tenant@example.com');
+    const paymentRequest = await request(app)
+      .post('/api/payments/requests')
+      .set(auth(managerSession.accessToken))
+      .send({ invoice_id: ids.invoiceIssued, ...issueBankPayload })
+      .expect(201);
+    const proof = await request(app)
+      .post(`/api/payments/requests/${paymentRequest.body.id}/proofs`)
+      .set(auth(tenantSession.accessToken))
+      .send({
+        file_name: 'bulk-proof.png',
+        file_url: 'https://example.com/bulk-proof.png',
+        mime_type: 'image/png',
+        file_size: 2048,
+        transfer_amount: 1200
+      })
+      .expect(201);
+    const missingProofId = '00000000-0000-4000-8000-000000009999';
+
+    const response = await request(app)
+      .post('/api/payments/proofs/bulk/review')
+      .set(auth(managerSession.accessToken))
+      .send({ proof_ids: [proof.body.id, missingProofId], action: 'APPROVE' })
+      .expect(200);
+
+    expect(response.body).toMatchObject({ action: 'APPROVE', succeeded: [proof.body.id], total: 2 });
+    expect(response.body.failed).toEqual([
+      expect.objectContaining({ id: missingProofId, code: 'PAYMENT_NOT_FOUND' })
+    ]);
+    expect(fakeDb.payments.filter((item) => item.payment_proof_id === proof.body.id)).toHaveLength(1);
+    expect(fakeDb.invoices.find((invoice) => invoice.id === ids.invoiceIssued)).toMatchObject({ status: 'PAID' });
+  });
 });

@@ -32,6 +32,7 @@ export default defineConfig({
     setupFiles: './src/test/setup.ts',
     globals: false,
     css: true,
+    maxWorkers: 4,
     testTimeout: 20_000,
     coverage: {
       provider: 'v8',

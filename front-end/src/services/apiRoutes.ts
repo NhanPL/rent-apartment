@@ -75,6 +75,7 @@ export const API_ROUTES = {
     generateBuilding: '/invoices/generate/building',
     generateAll: '/invoices/generate/all',
     issue: (id: string) => `/invoices/${id}/issue`,
+    bulkIssue: '/invoices/bulk/issue',
     void: (id: string) => `/invoices/${id}/void`,
     replacement: (id: string) => `/invoices/${id}/replacement`,
     adjustments: (id: string) => `/invoices/${id}/adjustments`,
@@ -88,6 +89,7 @@ export const API_ROUTES = {
     submitProof: (id: string) => `/payments/requests/${id}/proofs`,
     approveProof: (id: string) => `/payments/proofs/${id}/approve`,
     rejectProof: (id: string) => `/payments/proofs/${id}/reject`,
+    bulkReviewProofs: '/payments/proofs/bulk/review',
     reversePayment: (id: string) => `/payments/ledger/${id}/reverse`,
   },
   fixedCharges: {

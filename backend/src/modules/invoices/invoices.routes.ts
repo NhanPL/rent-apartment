@@ -72,6 +72,24 @@ const invoiceVoidSchema = z.object({
   reason: z.string().trim().min(3).max(500)
 });
 
+const invoiceBulkIssueSchema = invoiceIssueSchema.extend({
+  invoice_ids: z.array(z.string().uuid()).min(1).max(50)
+}).superRefine((value, context) => {
+  if (new Set(value.invoice_ids).size !== value.invoice_ids.length) {
+    context.addIssue({ code: 'custom', path: ['invoice_ids'], message: 'Invoice IDs must be unique' });
+  }
+});
+
+interface BulkActionFailure { id: string; code: string; message: string }
+
+const bulkFailure = (id: string, error: unknown): BulkActionFailure => ({
+  id,
+  code: error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
+    ? error.code
+    : 'BULK_ITEM_FAILED',
+  message: error instanceof Error ? error.message : 'Invoice could not be processed.'
+});
+
 const invoiceSortFields = [
   'month', 'createdAt', 'dueDate', 'total', 'status', 'building', 'room', 'tenant'
 ] as const;
@@ -146,6 +164,21 @@ router.post('/generate/building', requireRole('MANAGER'), asyncHandler(async (re
 router.post('/generate/all', requireRole('MANAGER'), asyncHandler(async (req, res) => {
   const body = parseBody(invoiceGenerateSchema.pick({ month: true }), req.body);
   res.status(201).json(await generateInvoicesForScope(body, req.auth!.userId));
+}));
+
+router.post('/bulk/issue', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  const { invoice_ids: invoiceIds, ...payment } = parseBody(invoiceBulkIssueSchema, req.body);
+  const succeeded: string[] = [];
+  const failed: BulkActionFailure[] = [];
+  for (const invoiceId of invoiceIds) {
+    try {
+      await updateInvoiceStatus(invoiceId, req.auth!.userId, 'issue', payment);
+      succeeded.push(invoiceId);
+    } catch (error) {
+      failed.push(bulkFailure(invoiceId, error));
+    }
+  }
+  res.json({ action: 'ISSUE', succeeded, failed, total: invoiceIds.length });
 }));
 
 router.post('/:id/issue', requireRole('MANAGER'), asyncHandler(async (req, res) => {

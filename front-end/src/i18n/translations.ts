@@ -9,6 +9,22 @@ export interface TranslationEntry {
 const entry = (en: string, vi: string, ...aliases: string[]): TranslationEntry => ({ en, vi, aliases })
 
 const navigation = [
+  entry('Issue selected', 'Ph\u00e1t h\u00e0nh \u0111\u00e3 ch\u1ecdn'),
+  entry('Issue selected invoices', 'Ph\u00e1t h\u00e0nh c\u00e1c h\u00f3a \u0111\u01a1n \u0111\u00e3 ch\u1ecdn'),
+  entry('draft invoices selected', 'h\u00f3a \u0111\u01a1n nh\u00e1p \u0111\u00e3 ch\u1ecdn'),
+  entry('Each invoice receives its own transfer note and VietQR payment request.', 'M\u1ed7i h\u00f3a \u0111\u01a1n s\u1ebd c\u00f3 n\u1ed9i dung chuy\u1ec3n kho\u1ea3n v\u00e0 y\u00eau c\u1ea7u VietQR ri\u00eang.'),
+  entry('Bulk issue completed with errors', 'Ph\u00e1t h\u00e0nh h\u00e0ng lo\u1ea1t ho\u00e0n t\u1ea5t v\u1edbi l\u1ed7i'),
+  entry('invoices issued', 'h\u00f3a \u0111\u01a1n \u0111\u00e3 ph\u00e1t h\u00e0nh'),
+  entry('Unable to issue selected invoices.', 'Kh\u00f4ng th\u1ec3 ph\u00e1t h\u00e0nh c\u00e1c h\u00f3a \u0111\u01a1n \u0111\u00e3 ch\u1ecdn.'),
+  entry('Approve selected', 'Duy\u1ec7t \u0111\u00e3 ch\u1ecdn'),
+  entry('Reject selected', 'T\u1eeb ch\u1ed1i \u0111\u00e3 ch\u1ecdn'),
+  entry('Approve selected payment proofs?', 'Duy\u1ec7t c\u00e1c b\u1eb1ng ch\u1ee9ng thanh to\u00e1n \u0111\u00e3 ch\u1ecdn?'),
+  entry('Approved proofs create immutable payment ledger entries.', 'B\u1eb1ng ch\u1ee9ng \u0111\u01b0\u1ee3c duy\u1ec7t s\u1ebd t\u1ea1o b\u00fat to\u00e1n thanh to\u00e1n b\u1ea5t bi\u1ebfn.'),
+  entry('Reject selected payment proofs', 'T\u1eeb ch\u1ed1i c\u00e1c b\u1eb1ng ch\u1ee9ng thanh to\u00e1n \u0111\u00e3 ch\u1ecdn'),
+  entry('pending payment proofs selected', 'b\u1eb1ng ch\u1ee9ng thanh to\u00e1n ch\u1edd duy\u1ec7t \u0111\u00e3 ch\u1ecdn'),
+  entry('Bulk payment review completed with errors', 'Duy\u1ec7t thanh to\u00e1n h\u00e0ng lo\u1ea1t ho\u00e0n t\u1ea5t v\u1edbi l\u1ed7i'),
+  entry('payment proofs reviewed', 'b\u1eb1ng ch\u1ee9ng thanh to\u00e1n \u0111\u00e3 x\u1eed l\u00fd'),
+  entry('Unable to review selected payment proofs.', 'Kh\u00f4ng th\u1ec3 x\u1eed l\u00fd c\u00e1c b\u1eb1ng ch\u1ee9ng thanh to\u00e1n \u0111\u00e3 ch\u1ecdn.'),
   entry('Notifications', 'Th\u00f4ng b\u00e1o'),
   entry('Mark all read', '\u0110\u00e1nh d\u1ea5u t\u1ea5t c\u1ea3 \u0111\u00e3 \u0111\u1ecdc'),
   entry('No notifications', 'Kh\u00f4ng c\u00f3 th\u00f4ng b\u00e1o'),

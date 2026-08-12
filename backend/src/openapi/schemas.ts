@@ -336,6 +336,7 @@ export const openApiSchemas: Record<string, OpenApiSchema> = {
   InvoiceGenerateRequest: { type: 'object', required: ['month'], properties: { month: { type: 'string' }, room_id: uuid, building_id: uuid } },
   InvoiceGenerationResult: { type: 'object', properties: { month: { type: 'string' }, generated: { type: 'array', items: { $ref: '#/components/schemas/Invoice' } }, skipped: { type: 'array', items: { type: 'object', additionalProperties: true } }, total: { type: 'integer' } } },
   InvoiceIssueRequest: { type: 'object', properties: { bank_code: { type: 'string' }, bank_account_no: { type: 'string' }, bank_account_name: { type: 'string' }, transfer_note: { type: 'string', maxLength: 25 } } },
+  InvoiceBulkIssueRequest: { type: 'object', required: ['invoice_ids'], properties: { invoice_ids: { type: 'array', minItems: 1, maxItems: 50, uniqueItems: true, items: uuid }, bank_code: { type: 'string' }, bank_account_no: { type: 'string' }, bank_account_name: { type: 'string' } } },
   InvoiceAdjustmentRequest: { type: 'object', required: ['amount', 'reason'], properties: { amount: { type: 'number', not: { const: 0 } }, reason: { type: 'string', minLength: 1 } } },
   PaymentRequestInput: {
     type: 'object', required: ['invoice_id'], properties: {
@@ -362,5 +363,7 @@ export const openApiSchemas: Record<string, OpenApiSchema> = {
   },
   PaymentProof: { allOf: [{ $ref: '#/components/schemas/PaymentProofInput' }, { type: 'object', properties: { id: uuid, status: { type: 'string', enum: ['PENDING', 'APPROVED', 'REJECTED'] } } }], additionalProperties: true },
   Payment: { type: 'object', properties: { id: uuid, invoice_id: uuid, amount: money, entry_type: { type: 'string', enum: ['PAYMENT', 'REVERSAL'] }, status: { type: 'string' }, paid_at: timestamp }, additionalProperties: true },
-  PaymentProofReviewResult: { type: 'object', properties: { proof: { $ref: '#/components/schemas/PaymentProof' }, payment: { $ref: '#/components/schemas/Payment' }, paid_amount: money, remaining_amount: money, invoice_status: { type: 'string' } } }
+  PaymentProofReviewResult: { type: 'object', properties: { proof: { $ref: '#/components/schemas/PaymentProof' }, payment: { $ref: '#/components/schemas/Payment' }, paid_amount: money, remaining_amount: money, invoice_status: { type: 'string' } } },
+  PaymentBulkReviewRequest: { type: 'object', required: ['proof_ids', 'action'], properties: { proof_ids: { type: 'array', minItems: 1, maxItems: 50, uniqueItems: true, items: uuid }, action: { type: 'string', enum: ['APPROVE', 'REJECT'] }, reason: { type: 'string', maxLength: 500 } } },
+  BulkActionResult: { type: 'object', required: ['action', 'succeeded', 'failed', 'total'], properties: { action: { type: 'string' }, succeeded: { type: 'array', items: uuid }, failed: { type: 'array', items: { type: 'object', required: ['id', 'code', 'message'], properties: { id: uuid, code: { type: 'string' }, message: { type: 'string' } } } }, total: { type: 'integer' } } }
 };

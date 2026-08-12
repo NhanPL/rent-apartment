@@ -62,6 +62,27 @@ const paymentReverseSchema = z.object({
   reason: z.string().trim().min(3).max(500)
 });
 
+const paymentBulkReviewSchema = z.object({
+  proof_ids: z.array(z.string().uuid()).min(1).max(50),
+  action: z.enum(['APPROVE', 'REJECT']),
+  reason: z.string().trim().min(1).max(500).optional()
+}).superRefine((value, context) => {
+  if (new Set(value.proof_ids).size !== value.proof_ids.length) {
+    context.addIssue({ code: 'custom', path: ['proof_ids'], message: 'Payment proof IDs must be unique' });
+  }
+  if (value.action === 'REJECT' && !value.reason) {
+    context.addIssue({ code: 'custom', path: ['reason'], message: 'A reason is required when rejecting payment proofs' });
+  }
+});
+
+const paymentBulkFailure = (id: string, error: unknown) => ({
+  id,
+  code: error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
+    ? error.code
+    : 'BULK_ITEM_FAILED',
+  message: error instanceof Error ? error.message : 'Payment proof could not be processed.'
+});
+
 const idempotencyKeySchema = z.string()
   .trim()
   .min(8)
@@ -161,6 +182,21 @@ router.post('/requests/:id/proofs', paymentProofRateLimit, requireRole('TENANT')
     proof as { id: string },
     req.auth!
   ));
+}));
+
+router.post('/proofs/bulk/review', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  const body = parseBody(paymentBulkReviewSchema, req.body);
+  const succeeded: string[] = [];
+  const failed: Array<{ id: string; code: string; message: string }> = [];
+  for (const proofId of body.proof_ids) {
+    try {
+      await reviewPaymentProof(proofId, body.action === 'APPROVE', req.auth!.userId, body.reason);
+      succeeded.push(proofId);
+    } catch (error) {
+      failed.push(paymentBulkFailure(proofId, error));
+    }
+  }
+  res.json({ action: body.action, succeeded, failed, total: body.proof_ids.length });
 }));
 
 router.post('/proofs/:id/approve', requireRole('MANAGER'), asyncHandler(async (req, res) => {

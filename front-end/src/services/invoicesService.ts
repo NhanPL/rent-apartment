@@ -220,6 +220,20 @@ export async function issueInvoice(id: string, payload?: InvoiceIssuePaymentPayl
   return toInvoiceDetail(row)
 }
 
+export interface BulkActionResult {
+  action: string
+  succeeded: string[]
+  failed: Array<{ id: string; code: string; message: string }>
+  total: number
+}
+
+export function bulkIssueInvoices(invoiceIds: string[], payload: Omit<InvoiceIssuePaymentPayload, 'transfer_note'>): Promise<BulkActionResult> {
+  return apiRequest<BulkActionResult>(API_ROUTES.invoices.bulkIssue, {
+    method: 'POST',
+    body: { invoice_ids: invoiceIds, ...payload },
+  })
+}
+
 export async function addInvoiceAdjustment(id: string, amount: number, reason: string): Promise<InvoiceDetail> {
   const row = await apiRequest<InvoiceDetailApiRow>(API_ROUTES.invoices.adjustments(id), { method: 'POST', body: { amount, reason } })
   return toInvoiceDetail(row)

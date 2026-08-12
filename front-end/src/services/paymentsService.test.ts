@@ -8,7 +8,7 @@ vi.mock('./apiClient', () => ({
   apiRequest: apiMocks.apiRequest,
 }))
 
-import { listPaymentRequests } from './paymentsService'
+import { bulkReviewPaymentProofs, listPaymentRequests } from './paymentsService'
 
 describe('listPaymentRequests', () => {
   beforeEach(() => {
@@ -51,5 +51,14 @@ describe('listPaymentRequests', () => {
   it('keeps the base route when no filters are selected', async () => {
     await listPaymentRequests()
     expect(apiMocks.apiRequest).toHaveBeenCalledWith('/payments/requests')
+  })
+
+  it('sends a controlled bulk proof review payload', async () => {
+    apiMocks.apiRequest.mockResolvedValue({ action: 'REJECT', succeeded: [], failed: [], total: 1 })
+    await bulkReviewPaymentProofs(['proof-1'], 'REJECT', 'Image is unclear')
+    expect(apiMocks.apiRequest).toHaveBeenCalledWith('/payments/proofs/bulk/review', {
+      method: 'POST',
+      body: { proof_ids: ['proof-1'], action: 'REJECT', reason: 'Image is unclear' },
+    })
   })
 })

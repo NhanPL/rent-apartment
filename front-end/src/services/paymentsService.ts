@@ -137,6 +137,13 @@ type PaymentRecordApiRow = Omit<PaymentRecord, 'amount' | 'signed_amount'> & {
   signed_amount: number | string | null
 }
 
+export interface PaymentBulkReviewResult {
+  action: 'APPROVE' | 'REJECT'
+  succeeded: string[]
+  failed: Array<{ id: string; code: string; message: string }>
+  total: number
+}
+
 const toNumber = (value: unknown): number => Number(value ?? 0)
 
 function toPaymentProof(row: PaymentProofApiRow): PaymentProof {
@@ -225,6 +232,17 @@ export function approvePaymentProof(id: string): Promise<PaymentProofReviewResul
 
 export function rejectPaymentProof(id: string, reason: string) {
   return apiRequest(API_ROUTES.payments.rejectProof(id), { method: 'POST', body: { reason } })
+}
+
+export function bulkReviewPaymentProofs(
+  proofIds: string[],
+  action: 'APPROVE' | 'REJECT',
+  reason?: string,
+): Promise<PaymentBulkReviewResult> {
+  return apiRequest<PaymentBulkReviewResult>(API_ROUTES.payments.bulkReviewProofs, {
+    method: 'POST',
+    body: { proof_ids: proofIds, action, reason },
+  })
 }
 
 export function reversePayment(id: string, reason: string) {

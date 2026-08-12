@@ -319,6 +319,9 @@ const invoicePaths = {
   '/invoices/{id}/issue': {
     post: operation('Invoices', 'Issue invoice and payment request', 'MANAGER', { parameters: [id], body: requestBody('InvoiceIssueRequest', false), responses: ok('Invoice'), errorCodes: ['INVOICE_NOT_FOUND', 'INVOICE_NOT_DRAFT', 'BANK_ACCOUNT_REQUIRED'] })
   },
+  '/invoices/bulk/issue': {
+    post: operation('Invoices', 'Issue selected draft invoices', 'MANAGER', { body: requestBody('InvoiceBulkIssueRequest'), responses: ok('BulkActionResult'), errorCodes: ['VALIDATION_ERROR', 'BULK_ITEM_FAILED'] })
+  },
   '/invoices/{id}/void': {
     post: operation('Invoices', 'Void issued invoice', 'MANAGER', { parameters: [id], body: requestBody('VoidReasonRequest'), responses: ok('Invoice'), errorCodes: ['INVOICE_NOT_FOUND', 'INVOICE_DRAFT_REQUIRES_DELETE', 'INVOICE_ALREADY_VOID', 'INVOICE_VOID_REASON_REQUIRED'] })
   },
@@ -365,6 +368,9 @@ const paymentPaths = {
   },
   '/payments/proofs/{id}/approve': {
     post: operation('Payments', 'Approve payment proof', 'MANAGER', { parameters: [id], responses: ok('PaymentProofReviewResult'), errorCodes: ['PAYMENT_NOT_FOUND', 'PAYMENT_PROOF_ALREADY_APPROVED', 'PAYMENT_EXCEEDS_INVOICE_BALANCE', 'CONCURRENT_MODIFICATION'] })
+  },
+  '/payments/proofs/bulk/review': {
+    post: operation('Payments', 'Review selected pending payment proofs', 'MANAGER', { body: requestBody('PaymentBulkReviewRequest'), responses: ok('BulkActionResult'), errorCodes: ['VALIDATION_ERROR', 'BULK_ITEM_FAILED'] })
   },
   '/payments/proofs/{id}/reject': {
     post: operation('Payments', 'Reject payment proof', 'MANAGER', { parameters: [id], body: requestBody('OptionalReasonRequest', false), responses: ok('PaymentProof'), errorCodes: ['PAYMENT_NOT_FOUND', 'PAYMENT_PROOF_ALREADY_APPROVED'] })

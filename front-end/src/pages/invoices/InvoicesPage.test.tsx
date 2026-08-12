@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const invoiceServiceMocks = vi.hoisted(() => ({
+  bulkIssueInvoices: vi.fn(),
   createReplacementInvoice: vi.fn(),
   deleteInvoice: vi.fn(),
   getEffectiveUtilityRate: vi.fn(),
@@ -31,6 +32,7 @@ const paymentServiceMocks = vi.hoisted(() => ({
 vi.mock('../../services/invoicesService', () => ({
   addInvoiceAdjustment: vi.fn(),
   createInvoice: vi.fn(),
+  bulkIssueInvoices: invoiceServiceMocks.bulkIssueInvoices,
   createReplacementInvoice: invoiceServiceMocks.createReplacementInvoice,
   deleteInvoice: invoiceServiceMocks.deleteInvoice,
   generateInvoices: vi.fn(),
@@ -127,6 +129,7 @@ describe('InvoicesPage invoice deletion', () => {
       totalRevenue: 4_000_000,
     })
     invoiceServiceMocks.deleteInvoice.mockResolvedValue(undefined)
+    invoiceServiceMocks.bulkIssueInvoices.mockResolvedValue({ action: 'ISSUE', succeeded: [invoice.id], failed: [], total: 1 })
     invoiceServiceMocks.voidInvoice.mockResolvedValue({
       ...invoice,
       status: 'VOID',
@@ -297,6 +300,34 @@ describe('InvoicesPage invoice deletion', () => {
       transfer_note: `INV ${invoice.id.slice(0, 8)}`,
     }))
     expect(await screen.findByAltText('VietQR bank transfer')).toHaveAttribute('src', paymentRequest.qr_image_url)
+  })
+
+  it('bulk issues only selected draft invoices with shared bank details', async () => {
+    const user = userEvent.setup()
+    invoiceServiceMocks.listInvoices.mockResolvedValue(invoicePage([{
+      ...invoice,
+      status: 'DRAFT',
+      payment_status: null,
+      issued_at: null,
+      paid_at: null,
+      paid_amount: 0,
+    }]))
+    renderInvoicesPage()
+
+    const checkboxes = await screen.findAllByRole('checkbox')
+    await user.click(checkboxes.at(-1)!)
+    await user.click(screen.getByRole('button', { name: /issue selected \(1\)/i }))
+    const dialog = screen.getByRole('dialog', { name: 'Issue selected invoices' })
+    await user.type(within(dialog).getByLabelText('Bank code or BIN'), '970436')
+    await user.type(within(dialog).getByLabelText('Bank account number'), '1234567890')
+    await user.type(within(dialog).getByLabelText('Bank account name'), 'RentMate Manager')
+    await user.click(within(dialog).getByRole('button', { name: 'Issue selected' }))
+
+    await waitFor(() => expect(invoiceServiceMocks.bulkIssueInvoices).toHaveBeenCalledWith([invoice.id], {
+      bank_code: '970436',
+      bank_account_no: '1234567890',
+      bank_account_name: 'RentMate Manager',
+    }))
   })
 
   it('confirms a pending tenant payment proof and completes the invoice', async () => {

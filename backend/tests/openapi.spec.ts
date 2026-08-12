@@ -32,11 +32,13 @@ const documentedOperations: Record<string, string[]> = {
   '/invoices/{id}': ['get', 'put', 'delete'], '/invoices/from-reading/{utilityReadingId}': ['post'],
   '/invoices/generate/room': ['post'], '/invoices/generate/building': ['post'], '/invoices/generate/all': ['post'],
   '/invoices/{id}/issue': ['post'], '/invoices/{id}/void': ['post'],
+  '/invoices/bulk/issue': ['post'],
   '/invoices/{id}/replacement': ['post'], '/invoices/{id}/adjustments': ['post'],
   '/payments/requests': ['get', 'post'], '/payments/requests/{id}': ['get'],
   '/payments/invoices/{invoiceId}/request': ['get'], '/payments/requests/{id}/cancel': ['post'],
   '/payments/requests/{id}/expire': ['post'], '/payments/requests/{id}/proofs': ['post'],
   '/payments/proofs/{id}/approve': ['post'], '/payments/proofs/{id}/reject': ['post'],
+  '/payments/proofs/bulk/review': ['post'],
   '/payments/ledger/{paymentId}/reverse': ['post']
 };
 
