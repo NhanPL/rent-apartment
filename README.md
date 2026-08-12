@@ -252,6 +252,10 @@ Repeatable k6 smoke and ramping read-load profiles are documented in
 GitHub Actions workflow runs against an isolated, seeded PostgreSQL database
 and uploads machine-readable summaries.
 
+Accessibility checks use axe with Playwright and run in the standard E2E CI
+job. Coverage, local commands, and the manual release checklist are documented
+in [`docs/accessibility-testing.md`](docs/accessibility-testing.md).
+
 ## API Documentation
 
 OpenAPI JSON and Swagger UI cover auth, tenants, contracts, utility rates/readings,

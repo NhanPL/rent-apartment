@@ -291,7 +291,7 @@ jobs:
         run: npx playwright install --with-deps chromium
         working-directory: front-end
 
-      - name: Run critical E2E workflows
+      - name: Run critical and accessibility E2E workflows
         run: npm run test:e2e
         working-directory: front-end
 
