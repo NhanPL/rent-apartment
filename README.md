@@ -21,6 +21,10 @@ Start with [`docs/architecture.md`](docs/architecture.md) for the component
 map, authentication/session lifecycle, business state machines, authorization,
 file delivery, and major architectural decisions.
 
+Production operators should use [`docs/runbooks.md`](docs/runbooks.md) for
+deployments, migrations, recovery, integration incidents, reconciliation,
+account containment, and secret rotation.
+
 ## Database Setup
 
 Create a local database, configure `DATABASE_URL` in `backend/.env`, then run the
