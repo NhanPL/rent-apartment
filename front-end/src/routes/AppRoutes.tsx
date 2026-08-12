@@ -17,6 +17,7 @@ import type { AppRole } from '../features/auth/types/auth'
 import { useI18n } from '../i18n'
 import { ForbiddenPage } from '../pages/errors/ForbiddenPage'
 import { NotFoundPage } from '../pages/errors/NotFoundPage'
+import { NotificationBell } from '../features/notifications/NotificationBell'
 
 const LoginPage = lazy(() => import('../features/auth/pages/LoginPage').then((module) => ({ default: module.LoginPage })))
 const ActivateAccountPage = lazy(() => import('../features/auth/pages/ActivateAccountPage').then((module) => ({ default: module.ActivateAccountPage })))
@@ -124,6 +125,7 @@ function AuthenticatedLayout() {
       onLogout={handleLogout}
       onChangePassword={async (payload) => { await changePassword(payload); await handleLogout() }}
       onRevokeAllSessions={async () => { await revokeAllSessions(); await handleLogout() }}
+      notifications={user.role === 'TENANT' ? <NotificationBell /> : undefined}
     />
   )
 }

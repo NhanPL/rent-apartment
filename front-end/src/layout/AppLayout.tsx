@@ -23,6 +23,7 @@ interface AppLayoutProps {
   onLogout: () => Promise<void>
   onChangePassword: (payload: ChangePasswordPayload) => Promise<void>
   onRevokeAllSessions: () => Promise<void>
+  notifications?: ReactNode
 }
 
 export function AppLayout({
@@ -35,6 +36,7 @@ export function AppLayout({
   onLogout,
   onChangePassword,
   onRevokeAllSessions,
+  notifications,
 }: AppLayoutProps) {
   const { t } = useI18n()
   const screens = Grid.useBreakpoint()
@@ -132,6 +134,7 @@ export function AppLayout({
               </Typography.Text>
             </div>
           </div>
+          {notifications}
           <LanguageSwitcher compact />
           <Dropdown
             trigger={['click']}

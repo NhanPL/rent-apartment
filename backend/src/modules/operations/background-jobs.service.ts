@@ -109,65 +109,83 @@ export const expirePaymentRequests = async (): Promise<number> => {
 };
 
 export const enqueuePaymentReminders = async (): Promise<number> => {
-  if (env.EMAIL_NOTIFICATIONS_ENABLED !== 'true' || !env.SMTP_ENABLED) return 0;
-  const inserted = await query<{ id: string }>(
-    `INSERT INTO email_outbox(
-       recipient_email, template_code, payload, deduplication_key, max_attempts
+  const inserted = await query<{ in_app_count: number; email_count: number }>(
+    `WITH candidates AS MATERIALIZED (
+       SELECT invoice.id AS invoice_id,
+              tenant.user_id,
+              tenant.email,
+              jsonb_build_object(
+                'tenantName', tenant.full_name,
+                'roomCode', room.code,
+                'month', to_char(invoice.month, 'YYYY-MM'),
+                'dueDate', to_char(invoice.due_date, 'YYYY-MM-DD'),
+                'outstandingAmount', balance.outstanding_amount,
+                'timing', reminder.timing
+              ) AS payload,
+              concat('invoice:', invoice.id, ':', reminder.timing, ':', invoice.due_date) AS deduplication_key
+       FROM invoice
+       JOIN room ON room.id=invoice.room_id
+       JOIN LATERAL (
+         SELECT app_user.id AS user_id, app_user.email::text AS email, profile.full_name
+         FROM contract_tenant assignment
+         JOIN tenant profile ON profile.id=assignment.tenant_id
+         JOIN app_user ON app_user.id=profile.user_id
+         WHERE assignment.contract_id=invoice.contract_id
+           AND assignment.joined_at <= (now() AT TIME ZONE 'UTC')::date
+           AND (assignment.left_at IS NULL OR assignment.left_at >= (now() AT TIME ZONE 'UTC')::date)
+           AND app_user.is_active=true
+           AND app_user.account_status='ACTIVE'
+         ORDER BY assignment.is_primary DESC, assignment.joined_at
+         LIMIT 1
+       ) tenant ON true
+       JOIN LATERAL (
+         SELECT GREATEST(
+           invoice.total - COALESCE(SUM(
+             CASE WHEN payment.entry_type='REVERSAL' THEN -payment.amount ELSE payment.amount END
+           ) FILTER (WHERE payment.status='SUCCEEDED'), 0),
+           0
+         ) AS outstanding_amount
+         FROM payment
+         WHERE payment.invoice_id=invoice.id
+       ) balance ON true
+       CROSS JOIN (VALUES
+         ('BEFORE_DUE'::text, $1::int),
+         ('AFTER_DUE'::text, -$2::int)
+       ) reminder(timing, day_offset)
+       WHERE invoice.status IN ('ISSUED', 'PARTIALLY_PAID')
+         AND invoice.due_date IS NOT NULL
+         AND balance.outstanding_amount > 0
+         AND invoice.due_date=(now() AT TIME ZONE 'UTC')::date + reminder.day_offset
+     ), in_app AS (
+       INSERT INTO in_app_notification(
+         recipient_user_id, template_code, payload, entity_type, entity_id, deduplication_key
+       )
+       SELECT user_id, 'PAYMENT_REMINDER', payload, 'INVOICE', invoice_id,
+              concat('in-app:', deduplication_key)
+       FROM candidates
+       ON CONFLICT (deduplication_key) DO NOTHING
+       RETURNING id
+     ), email AS (
+       INSERT INTO email_outbox(
+         recipient_email, template_code, payload, deduplication_key, max_attempts
+       )
+       SELECT email, 'PAYMENT_REMINDER', payload, deduplication_key, $3
+       FROM candidates
+       WHERE $4::boolean
+       ON CONFLICT (deduplication_key) DO NOTHING
+       RETURNING id
      )
-     SELECT tenant.email,
-            'PAYMENT_REMINDER',
-            jsonb_build_object(
-              'tenantName', tenant.full_name,
-              'roomCode', room.code,
-              'month', to_char(invoice.month, 'YYYY-MM'),
-              'dueDate', to_char(invoice.due_date, 'YYYY-MM-DD'),
-              'outstandingAmount', balance.outstanding_amount,
-              'timing', reminder.timing
-            ),
-            concat('invoice:', invoice.id, ':', reminder.timing, ':', invoice.due_date),
-            $3
-     FROM invoice
-     JOIN room ON room.id=invoice.room_id
-     JOIN LATERAL (
-       SELECT app_user.email::text AS email, profile.full_name
-       FROM contract_tenant assignment
-       JOIN tenant profile ON profile.id=assignment.tenant_id
-       JOIN app_user ON app_user.id=profile.user_id
-       WHERE assignment.contract_id=invoice.contract_id
-         AND assignment.joined_at <= (now() AT TIME ZONE 'UTC')::date
-         AND (assignment.left_at IS NULL OR assignment.left_at >= (now() AT TIME ZONE 'UTC')::date)
-         AND app_user.is_active=true
-         AND app_user.account_status='ACTIVE'
-       ORDER BY assignment.is_primary DESC, assignment.joined_at
-       LIMIT 1
-     ) tenant ON true
-     JOIN LATERAL (
-       SELECT GREATEST(
-         invoice.total - COALESCE(SUM(
-           CASE WHEN payment.entry_type='REVERSAL' THEN -payment.amount ELSE payment.amount END
-         ) FILTER (WHERE payment.status='SUCCEEDED'), 0),
-         0
-       ) AS outstanding_amount
-       FROM payment
-       WHERE payment.invoice_id=invoice.id
-     ) balance ON true
-     CROSS JOIN (VALUES
-       ('BEFORE_DUE'::text, $1::int),
-       ('AFTER_DUE'::text, -$2::int)
-     ) reminder(timing, day_offset)
-     WHERE invoice.status IN ('ISSUED', 'PARTIALLY_PAID')
-       AND invoice.due_date IS NOT NULL
-       AND balance.outstanding_amount > 0
-       AND invoice.due_date=(now() AT TIME ZONE 'UTC')::date + reminder.day_offset
-     ON CONFLICT (deduplication_key) DO NOTHING
-     RETURNING id`,
+     SELECT (SELECT COUNT(*)::int FROM in_app) AS in_app_count,
+            (SELECT COUNT(*)::int FROM email) AS email_count`,
     [
       env.PAYMENT_REMINDER_BEFORE_DAYS,
       env.PAYMENT_REMINDER_AFTER_DAYS,
-      env.EMAIL_OUTBOX_MAX_ATTEMPTS
+      env.EMAIL_OUTBOX_MAX_ATTEMPTS,
+      env.EMAIL_NOTIFICATIONS_ENABLED === 'true' && env.SMTP_ENABLED
     ]
   );
-  return inserted.rows.length;
+  const counts = inserted.rows[0];
+  return Math.max(Number(counts?.in_app_count ?? 0), Number(counts?.email_count ?? 0));
 };
 
 const claimEmailOutbox = async (): Promise<EmailOutboxRow[]> => withTransaction(async (client) => {

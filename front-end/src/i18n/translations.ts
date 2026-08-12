@@ -9,6 +9,16 @@ export interface TranslationEntry {
 const entry = (en: string, vi: string, ...aliases: string[]): TranslationEntry => ({ en, vi, aliases })
 
 const navigation = [
+  entry('Notifications', 'Th\u00f4ng b\u00e1o'),
+  entry('Mark all read', '\u0110\u00e1nh d\u1ea5u t\u1ea5t c\u1ea3 \u0111\u00e3 \u0111\u1ecdc'),
+  entry('No notifications', 'Kh\u00f4ng c\u00f3 th\u00f4ng b\u00e1o'),
+  entry('Unable to update notification.', 'Kh\u00f4ng th\u1ec3 c\u1eadp nh\u1eadt th\u00f4ng b\u00e1o.'),
+  entry('Unable to update notifications.', 'Kh\u00f4ng th\u1ec3 c\u1eadp nh\u1eadt c\u00e1c th\u00f4ng b\u00e1o.'),
+  entry('Utility reading rejected for room {{room}} in {{month}}.', 'Ch\u1ec9 s\u1ed1 \u0111i\u1ec7n n\u01b0\u1edbc c\u1ee7a ph\u00f2ng {{room}} th\u00e1ng {{month}} b\u1ecb t\u1eeb ch\u1ed1i.'),
+  entry('Invoice issued for room {{room}} in {{month}}.', 'H\u00f3a \u0111\u01a1n ph\u00f2ng {{room}} th\u00e1ng {{month}} \u0111\u00e3 ph\u00e1t h\u00e0nh.'),
+  entry('Payment proof rejected for room {{room}} in {{month}}.', 'B\u1eb1ng ch\u1ee9ng thanh to\u00e1n ph\u00f2ng {{room}} th\u00e1ng {{month}} b\u1ecb t\u1eeb ch\u1ed1i.'),
+  entry('Payment approved for room {{room}} in {{month}}.', 'Thanh to\u00e1n ph\u00f2ng {{room}} th\u00e1ng {{month}} \u0111\u00e3 \u0111\u01b0\u1ee3c duy\u1ec7t.'),
+  entry('Payment reminder for room {{room}} in {{month}}.', 'Nh\u1eafc thanh to\u00e1n ph\u00f2ng {{room}} th\u00e1ng {{month}}.'),
   entry('English', 'Tiếng Anh'),
   entry('Vietnamese', 'Tiếng Việt'),
   entry('Language', 'Ngôn ngữ'),

@@ -1,0 +1,31 @@
+.notification-panel {
+  width: min(360px, calc(100vw - 32px));
+  max-height: min(520px, calc(100vh - 96px));
+  overflow-y: auto;
+}
+
+.notification-panel__header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  background: #fff;
+}
+
+.notification-panel__loading {
+  display: block;
+  margin: 28px auto;
+}
+
+.notification-panel .ant-list-item {
+  cursor: pointer;
+  padding-inline: 8px;
+}
+
+.notification-panel .notification-item--unread {
+  border-left: 3px solid #1677ff;
+  background: #f0f7ff;
+}

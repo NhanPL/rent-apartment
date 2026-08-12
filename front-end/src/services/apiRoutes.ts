@@ -44,6 +44,11 @@ export const API_ROUTES = {
   auditLogs: {
     list: '/audit-logs',
   },
+  notifications: {
+    list: '/notifications',
+    read: (id: string) => `/notifications/${id}/read`,
+    readAll: '/notifications/read-all',
+  },
   contracts: {
     list: '/contracts',
     detail: (id: string) => `/contracts/${id}`,
