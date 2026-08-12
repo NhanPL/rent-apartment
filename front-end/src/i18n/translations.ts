@@ -9,6 +9,10 @@ export interface TranslationEntry {
 const entry = (en: string, vi: string, ...aliases: string[]): TranslationEntry => ({ en, vi, aliases })
 
 const navigation = [
+  entry('Live', 'Tr\u1ef1c ti\u1ebfp'),
+  entry('Last updated', 'C\u1eadp nh\u1eadt l\u00fac'),
+  entry('Connecting live updates...', '\u0110ang k\u1ebft n\u1ed1i c\u1eadp nh\u1eadt tr\u1ef1c ti\u1ebfp...'),
+  entry('Live update paused. Retrying automatically.', 'C\u1eadp nh\u1eadt tr\u1ef1c ti\u1ebfp t\u1ea1m d\u1eebng. H\u1ec7 th\u1ed1ng \u0111ang t\u1ef1 th\u1eed l\u1ea1i.'),
   entry('Invoice Branding', 'Nh\u1eadn di\u1ec7n h\u00f3a \u0111\u01a1n'),
   entry('Customize the identity shown on invoices issued to your tenants.', 'T\u00f9y ch\u1ec9nh th\u00f4ng tin nh\u1eadn di\u1ec7n tr\u00ean h\u00f3a \u0111\u01a1n g\u1eedi cho ng\u01b0\u1eddi thu\u00ea.'),
   entry('Brand settings', 'C\u00e0i \u0111\u1eb7t nh\u1eadn di\u1ec7n'),
