@@ -245,6 +245,13 @@ are supported. Activation links are single-use and expire after
 environment matrix and container workflow are documented in
 [`docs/environments.md`](docs/environments.md).
 
+## Performance Testing
+
+Repeatable k6 smoke and ramping read-load profiles are documented in
+[`docs/performance-testing.md`](docs/performance-testing.md). The dedicated
+GitHub Actions workflow runs against an isolated, seeded PostgreSQL database
+and uploads machine-readable summaries.
+
 ## API Documentation
 
 OpenAPI JSON and Swagger UI cover auth, tenants, contracts, utility rates/readings,
