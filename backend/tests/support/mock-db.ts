@@ -41,6 +41,7 @@ class FakeDb {
   users: Row[] = [];
   managerProfiles: Row[] = [];
   invoiceBrandings: Row[] = [];
+  managerFeatureFlags: Row[] = [];
   tenants: Row[] = [];
   buildings: Row[] = [];
   rooms: Row[] = [];
@@ -94,6 +95,7 @@ class FakeDb {
       { user_id: ids.managerBUser, full_name: 'Manager B' }
     ];
     this.invoiceBrandings = [];
+    this.managerFeatureFlags = [];
     this.buildings = [
       { id: ids.buildingA, name: 'Alpha Building', address: 'A Street', manager_user_id: ids.managerAUser },
       { id: ids.buildingB, name: 'Beta Building', address: 'B Street', manager_user_id: ids.managerBUser }
@@ -431,6 +433,14 @@ class FakeDb {
 
     if (sql.startsWith('select display_name, business_address, tax_code, logo_url, accent_color, invoice_title, default_note from invoice_branding')) {
       return result<T>(this.invoiceBrandings.filter((branding) => branding.manager_user_id === params[0]) as T[]);
+    }
+
+    if (sql.startsWith('select enabled from manager_feature_flag where manager_user_id=$1 and feature_key=$2')) {
+      return result<T>(this.managerFeatureFlags.filter((flag) => flag.manager_user_id === params[0] && flag.feature_key === params[1]) as T[]);
+    }
+
+    if (sql.startsWith('select feature_key, enabled from manager_feature_flag where manager_user_id=$1')) {
+      return result<T>(this.managerFeatureFlags.filter((flag) => flag.manager_user_id === params[0]) as T[]);
     }
 
     if (sql.startsWith("select coalesce(mp.full_name, u.username::text, u.email::text, 'property manager') as display_name")) {

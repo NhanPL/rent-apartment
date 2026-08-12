@@ -37,7 +37,8 @@ export const openApiDocument = {
     { name: 'Invoices', description: 'Invoice generation, issue, adjustment, void and replacement.' },
     { name: 'Payments', description: 'Bank-transfer requests, proofs and immutable payment ledger reversals.' },
     { name: 'Imports', description: 'Validated manager CSV imports for buildings, rooms and tenants.' },
-    { name: 'Invoice Branding', description: 'Manager-owned invoice identity and immutable issue-time snapshots.' }
+    { name: 'Invoice Branding', description: 'Manager-owned invoice identity and immutable issue-time snapshots.' },
+    { name: 'Feature Flags', description: 'Manager-scoped controlled rollout configuration.' }
   ],
   paths: openApiPaths,
   components: {

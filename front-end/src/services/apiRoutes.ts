@@ -54,6 +54,7 @@ export const API_ROUTES = {
     commit: '/imports/commit',
   },
   invoiceBranding: '/invoice-branding',
+  featureFlags: '/feature-flags',
   contracts: {
     list: '/contracts',
     detail: (id: string) => `/contracts/${id}`,

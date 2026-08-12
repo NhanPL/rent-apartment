@@ -381,5 +381,18 @@ export const openApiSchemas: Record<string, OpenApiSchema> = {
       invoice_title: { type: 'string', minLength: 1, maxLength: 100 },
       default_note: { type: ['string', 'null'], maxLength: 1000 }
     }
+  },
+  FeatureFlags: {
+    type: 'object', required: ['CSV_IMPORTS', 'BULK_BILLING_ACTIONS', 'LIVE_DASHBOARD', 'INVOICE_BRANDING'],
+    properties: {
+      CSV_IMPORTS: { type: 'boolean' }, BULK_BILLING_ACTIONS: { type: 'boolean' },
+      LIVE_DASHBOARD: { type: 'boolean' }, INVOICE_BRANDING: { type: 'boolean' }
+    }
+  },
+  FeatureFlagUpdate: {
+    type: 'object', required: ['key', 'enabled'], properties: {
+      key: { type: 'string', enum: ['CSV_IMPORTS', 'BULK_BILLING_ACTIONS', 'LIVE_DASHBOARD', 'INVOICE_BRANDING'] },
+      enabled: { type: 'boolean' }
+    }
   }
 };

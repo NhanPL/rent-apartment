@@ -6,6 +6,7 @@ import { parseBody, parseEmptyBody, parseQuery, registerUuidParams } from '../..
 import { paymentProofRateLimit } from '../../config/rate-limit';
 import { PAYMENT_PROOF_STATUSES, PAYMENT_REQUEST_STATUSES } from '../../shared/types/database';
 import { createPaginationQuerySchema } from '../../shared/utils/pagination';
+import { requireFeatureFlag } from '../../shared/middleware/feature-flag';
 import {
   cloudinaryDeliveryTypeValues,
   normalizeStoredUpload,
@@ -184,7 +185,7 @@ router.post('/requests/:id/proofs', paymentProofRateLimit, requireRole('TENANT')
   ));
 }));
 
-router.post('/proofs/bulk/review', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+router.post('/proofs/bulk/review', requireRole('MANAGER'), requireFeatureFlag('BULK_BILLING_ACTIONS'), asyncHandler(async (req, res) => {
   const body = parseBody(paymentBulkReviewSchema, req.body);
   const succeeded: string[] = [];
   const failed: Array<{ id: string; code: string; message: string }> = [];

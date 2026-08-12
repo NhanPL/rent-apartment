@@ -10,6 +10,7 @@ import { DashboardRecentActivity } from './components/DashboardRecentActivity'
 import { DashboardSummaryCards } from './components/DashboardSummaryCards'
 import type { DashboardBuildingOption, DashboardData } from './types'
 import './DashboardPage.css'
+import { useFeatureFlags } from '../../features/feature-flags/useFeatureFlags'
 
 interface DashboardPageProps {
   onNavigate: (path: string) => void
@@ -19,6 +20,8 @@ export const DASHBOARD_REFRESH_INTERVAL_MS = 15_000
 
 export function DashboardPage({ onNavigate }: DashboardPageProps) {
   const { t } = useI18n()
+  const { isEnabled } = useFeatureFlags()
+  const liveDashboardEnabled = isEnabled('LIVE_DASHBOARD')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<DashboardData | null>(null)
@@ -55,6 +58,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
   }, [loadDashboard])
 
   useEffect(() => {
+    if (!liveDashboardEnabled) return
     const refreshIfVisible = () => {
       if (document.visibilityState === 'visible') void loadDashboard(true)
     }
@@ -64,7 +68,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
       window.clearInterval(intervalId)
       document.removeEventListener('visibilitychange', refreshIfVisible)
     }
-  }, [loadDashboard])
+  }, [liveDashboardEnabled, loadDashboard])
 
   useEffect(() => {
     let active = true
@@ -93,7 +97,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
           <Typography.Text type="secondary">
             {t("Metrics are derived from building, room, contract, tenant, invoice, and payment entities.")}
           </Typography.Text>
-          <Space size={8} className="dashboard-live-status">
+          {liveDashboardEnabled ? <Space size={8} className="dashboard-live-status">
             <Badge status={liveRefreshFailed ? 'warning' : 'processing'} />
             <Typography.Text type="secondary">
               {liveRefreshFailed
@@ -102,7 +106,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
                   ? `${t('Live')} | ${t('Last updated')} ${lastUpdatedAt.toLocaleTimeString()}`
                   : t('Connecting live updates...')}
             </Typography.Text>
-          </Space>
+          </Space> : null}
         </div>
         <Space wrap className="dashboard-page-actions">
           <DatePicker

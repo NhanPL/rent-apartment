@@ -19,6 +19,7 @@ import {
 } from '../../services/paymentsService'
 import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
 import { vndCurrency } from '../../i18n'
+import { useFeatureFlags } from '../../features/feature-flags/useFeatureFlags'
 
 const currency = vndCurrency
 
@@ -85,6 +86,8 @@ const initialPaymentFilters = (): PaymentRequestListFilters => {
 
 export function PaymentsPage() {
   const { t } = useI18n()
+  const { isEnabled } = useFeatureFlags()
+  const bulkActionsEnabled = isEnabled('BULK_BILLING_ACTIONS')
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
   const [rejectForm] = Form.useForm<RejectFormValues>()
@@ -442,7 +445,7 @@ export function PaymentsPage() {
 
       <Card
         title={t("Payment requests")}
-        extra={selectedProofIds.length ? (
+        extra={bulkActionsEnabled && selectedProofIds.length ? (
           <Space>
             <Button
               type="primary"
@@ -470,14 +473,14 @@ export function PaymentsPage() {
             rowKey="id"
             columns={columns}
             dataSource={items}
-            rowSelection={{
+            rowSelection={bulkActionsEnabled ? {
               selectedRowKeys: selectedRequestIds,
               onChange: (keys) => setSelectedRequestIds(keys.map(String)),
               getCheckboxProps: (record) => ({
                 disabled: record.latest_proof_status !== 'PENDING' || !record.latest_proof_id,
                 name: `payment-request-${record.id}`,
               }),
-            }}
+            } : undefined}
             scroll={{ x: 1450 }}
             pagination={{
               current: filters.page,
@@ -610,7 +613,7 @@ export function PaymentsPage() {
         </Form>
       </Modal>
 
-      <Modal
+      {bulkActionsEnabled ? <Modal
         open={bulkRejectOpen}
         title={t('Reject selected payment proofs')}
         okText={t('Reject selected')}
@@ -634,7 +637,7 @@ export function PaymentsPage() {
             <Input.TextArea rows={3} maxLength={500} showCount />
           </Form.Item>
         </Form>
-      </Modal>
+      </Modal> : null}
 
       <Modal
         open={Boolean(reversePaymentId)}

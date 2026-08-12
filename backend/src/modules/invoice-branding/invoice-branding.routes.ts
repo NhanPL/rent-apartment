@@ -4,9 +4,10 @@ import { requireRole } from '../../shared/middleware/auth';
 import { asyncHandler } from '../../shared/middleware/async-handler';
 import { parseBody } from '../../shared/utils/validation';
 import { getInvoiceBranding, updateInvoiceBranding } from './invoice-branding.service';
+import { requireFeatureFlag } from '../../shared/middleware/feature-flag';
 
 const router = Router();
-router.use(requireRole('MANAGER'));
+router.use(requireRole('MANAGER'), requireFeatureFlag('INVOICE_BRANDING'));
 
 const nullableText = (max: number) => z.string().trim().max(max).nullable();
 const brandingSchema = z.object({

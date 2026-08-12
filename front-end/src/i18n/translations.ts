@@ -9,6 +9,19 @@ export interface TranslationEntry {
 const entry = (en: string, vi: string, ...aliases: string[]): TranslationEntry => ({ en, vi, aliases })
 
 const navigation = [
+  entry('Feature Flags', 'C\u1edd t\u00ednh n\u0103ng'),
+  entry('Release optional capabilities independently for your portfolio.', 'Ph\u00e1t h\u00e0nh c\u00e1c ch\u1ee9c n\u0103ng t\u00f9y ch\u1ecdn \u0111\u1ed9c l\u1eadp cho danh m\u1ee5c c\u1ee7a b\u1ea1n.'),
+  entry('CSV data import', 'Nh\u1eadp d\u1eef li\u1ec7u CSV'),
+  entry('Allow validated building, room, and tenant imports.', 'Cho ph\u00e9p nh\u1eadp t\u00f2a nh\u00e0, ph\u00f2ng v\u00e0 ng\u01b0\u1eddi thu\u00ea \u0111\u00e3 ki\u1ec3m tra.'),
+  entry('Bulk billing actions', 'Thao t\u00e1c thanh to\u00e1n h\u00e0ng lo\u1ea1t'),
+  entry('Allow bulk invoice issue and payment proof review.', 'Cho ph\u00e9p ph\u00e1t h\u00e0nh h\u00f3a \u0111\u01a1n v\u00e0 duy\u1ec7t b\u1eb1ng ch\u1ee9ng thanh to\u00e1n h\u00e0ng lo\u1ea1t.'),
+  entry('Live dashboard updates', 'C\u1eadp nh\u1eadt dashboard tr\u1ef1c ti\u1ebfp'),
+  entry('Refresh operational dashboard data automatically.', 'T\u1ef1 \u0111\u1ed9ng l\u00e0m m\u1edbi d\u1eef li\u1ec7u dashboard v\u1eadn h\u00e0nh.'),
+  entry('Invoice branding', 'Nh\u1eadn di\u1ec7n h\u00f3a \u0111\u01a1n'),
+  entry('Allow custom manager branding on issued invoices.', 'Cho ph\u00e9p nh\u1eadn di\u1ec7n ri\u00eang c\u1ee7a manager tr\u00ean h\u00f3a \u0111\u01a1n.'),
+  entry('Feature flag updated.', '\u0110\u00e3 c\u1eadp nh\u1eadt c\u1edd t\u00ednh n\u0103ng.'),
+  entry('Unable to load feature flags.', 'Kh\u00f4ng th\u1ec3 t\u1ea3i c\u1edd t\u00ednh n\u0103ng.'),
+  entry('Unable to update feature flag.', 'Kh\u00f4ng th\u1ec3 c\u1eadp nh\u1eadt c\u1edd t\u00ednh n\u0103ng.'),
   entry('Live', 'Tr\u1ef1c ti\u1ebfp'),
   entry('Last updated', 'C\u1eadp nh\u1eadt l\u00fac'),
   entry('Connecting live updates...', '\u0110ang k\u1ebft n\u1ed1i c\u1eadp nh\u1eadt tr\u1ef1c ti\u1ebfp...'),

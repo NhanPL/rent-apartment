@@ -73,6 +73,7 @@ import type {
   PaymentStatus,
 } from './types'
 import './InvoicesPage.css'
+import { useFeatureFlags } from '../../features/feature-flags/useFeatureFlags'
 
 const invoiceStatusOptions: { label: string; value: InvoiceStatus; color: string }[] = [
   { label: 'Draft', value: 'DRAFT', color: 'default' },
@@ -182,6 +183,8 @@ function VietQrBankFields({ includeTransferNote = true }: { includeTransferNote?
 }
 
 export function InvoicesPage() {
+  const { isEnabled } = useFeatureFlags()
+  const bulkActionsEnabled = isEnabled('BULK_BILLING_ACTIONS')
   const { t } = useI18n()
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
@@ -846,7 +849,7 @@ export function InvoicesPage() {
 
       <Card
         title={t("Monthly invoices")}
-        extra={selectedInvoiceIds.length ? (
+        extra={bulkActionsEnabled && selectedInvoiceIds.length ? (
           <Button type="primary" icon={<SendOutlined />} onClick={() => setBulkIssueOpen(true)}>
             {t('Issue selected')} ({selectedInvoiceIds.length})
           </Button>
@@ -861,7 +864,7 @@ export function InvoicesPage() {
           pageSize={pageSize}
           total={total}
           selectedIds={selectedInvoiceIds}
-          onSelectionChange={setSelectedInvoiceIds}
+          onSelectionChange={bulkActionsEnabled ? setSelectedInvoiceIds : undefined}
           onRetry={() => void loadData()}
           onPageChange={(nextPage, nextPageSize) => {
             setPage(nextPageSize === pageSize ? nextPage : 1)
@@ -1119,7 +1122,7 @@ export function InvoicesPage() {
         </Form>
       </Modal>
 
-      <Modal
+      {bulkActionsEnabled ? <Modal
         open={bulkIssueOpen}
         title={t('Issue selected invoices')}
         okText={t('Issue selected')}
@@ -1140,7 +1143,7 @@ export function InvoicesPage() {
         <Form form={bulkIssueForm} layout="vertical">
           <VietQrBankFields includeTransferNote={false} />
         </Form>
-      </Modal>
+      </Modal> : null}
 
       <Modal
         open={adjustmentOpen}

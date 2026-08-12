@@ -396,6 +396,13 @@ const invoiceBrandingPaths = {
   }
 };
 
+const featureFlagPaths = {
+  '/feature-flags': {
+    get: operation('Feature Flags', 'List manager feature flags', 'MANAGER', { responses: ok('FeatureFlags'), errorCodes: ['FORBIDDEN'] }),
+    patch: operation('Feature Flags', 'Update manager feature flag', 'MANAGER', { body: requestBody('FeatureFlagUpdate'), responses: ok('FeatureFlags'), errorCodes: ['VALIDATION_ERROR', 'FORBIDDEN'] })
+  }
+};
+
 export const openApiPaths = {
   ...authPaths,
   ...tenantPaths,
@@ -404,5 +411,6 @@ export const openApiPaths = {
   ...invoicePaths,
   ...paymentPaths,
   ...importPaths,
-  ...invoiceBrandingPaths
+  ...invoiceBrandingPaths,
+  ...featureFlagPaths
 };

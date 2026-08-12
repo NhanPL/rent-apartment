@@ -19,6 +19,7 @@ import {
 import { parseBody, parseEmptyBody, parseQuery, registerUuidParams } from '../../shared/utils/validation';
 import { createPaginationQuerySchema } from '../../shared/utils/pagination';
 import { INVOICE_STATUSES, PAYMENT_STATUSES } from '../../shared/types/database';
+import { requireFeatureFlag } from '../../shared/middleware/feature-flag';
 
 const router = Router();
 registerUuidParams(router, ['id', 'utilityReadingId']);
@@ -166,7 +167,7 @@ router.post('/generate/all', requireRole('MANAGER'), asyncHandler(async (req, re
   res.status(201).json(await generateInvoicesForScope(body, req.auth!.userId));
 }));
 
-router.post('/bulk/issue', requireRole('MANAGER'), asyncHandler(async (req, res) => {
+router.post('/bulk/issue', requireRole('MANAGER'), requireFeatureFlag('BULK_BILLING_ACTIONS'), asyncHandler(async (req, res) => {
   const { invoice_ids: invoiceIds, ...payment } = parseBody(invoiceBulkIssueSchema, req.body);
   const succeeded: string[] = [];
   const failed: BulkActionFailure[] = [];
