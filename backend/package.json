@@ -2,6 +2,10 @@
   "name": "rent-apartment-backend",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=22 <23",
+    "npm": ">=10"
+  },
   "type": "commonjs",
   "scripts": {
     "dev": "tsx watch src/server.ts",

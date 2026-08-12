@@ -38,9 +38,17 @@ const main = async () => {
   try {
     await adminPool.query(`CREATE DATABASE ${databaseName}`);
     if (!run(process.execPath, ['scripts/migrate.js'], testEnv)) return;
+    const vitestArgs = ['vitest', 'run', '--config', 'vitest.integration.config.ts'];
+    if (process.env.VITEST_JUNIT_OUTPUT_FILE) {
+      vitestArgs.push(
+        '--reporter=default',
+        '--reporter=junit',
+        `--outputFile.junit=${process.env.VITEST_JUNIT_OUTPUT_FILE}`
+      );
+    }
     run(
       process.platform === 'win32' ? 'npx.cmd' : 'npx',
-      ['vitest', 'run', '--config', 'vitest.integration.config.ts'],
+      vitestArgs,
       testEnv
     );
   } finally {
