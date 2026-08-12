@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "check": "tsc --noEmit",
     "test": "vitest run --config vitest.config.ts",
+    "test:integration": "node scripts/test-integration.js",
     "audit": "npm audit --audit-level=high",
     "db:migrate": "node scripts/migrate.js",
     "db:migrate:verify": "node scripts/migrate.js --verify",
