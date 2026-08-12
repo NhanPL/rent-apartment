@@ -70,4 +70,16 @@ describe('database migration source of truth', () => {
     expect(runner).toContain("set_config('statement_timeout'");
     expect(packageJson.scripts['db:migrate:verify']).toBe('node scripts/migrate.js --verify');
   });
+
+  it('provides UUID minimum compatibility before the tenant ownership backfill', () => {
+    const files = readSqlFiles(migrationsDirectory);
+    const names = files.map((file: { name: string }) => file.name);
+    const compatibilityIndex = names.indexOf('20260529_uuid_min_compatibility.sql');
+    const ownershipIndex = names.indexOf('20260530_add_tenant_manager_ownership.sql');
+    const compatibility = files[compatibilityIndex]?.sql ?? '';
+
+    expect(compatibilityIndex).toBeGreaterThanOrEqual(0);
+    expect(compatibilityIndex).toBeLessThan(ownershipIndex);
+    expect(compatibility).toContain('CREATE AGGREGATE min(uuid)');
+  });
 });
