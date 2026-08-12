@@ -1,5 +1,5 @@
 import { Alert, Button, Card, Checkbox, Form, Input, Typography } from 'antd'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useAuth } from '../useAuth'
 import type { LoginFormValues } from '../types/auth'
 import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../../../services/errorMessage'
@@ -24,9 +24,12 @@ export function LoginForm() {
   const [form] = Form.useForm<LoginFormValues>()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>('')
+  const submittingRef = useRef(false)
   const { login } = useAuth()
 
   const onFinish = async (values: LoginFormValues) => {
+    if (submittingRef.current) return
+    submittingRef.current = true
     setLoading(true)
     setError('')
 
@@ -43,13 +46,14 @@ export function LoginForm() {
       applyApiFieldErrors(form, loginError)
       setError(getUserErrorMessage(loginError, t('Unable to sign in. Please check your account details.')))
     } finally {
+      submittingRef.current = false
       setLoading(false)
     }
   }
 
   return (
     <>
-    <Card className="login-card" bordered={false}>
+    <Card className="login-card" variant="borderless">
       <div className="login-topbar">
         <Text className="login-eyebrow">{t("Rent Apartment Management")}</Text>
         <div className="login-language-switcher">

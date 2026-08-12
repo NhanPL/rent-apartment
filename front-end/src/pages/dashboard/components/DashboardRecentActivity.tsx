@@ -68,7 +68,7 @@ export function DashboardRecentActivity({
   return (
     <>
     <Space direction="vertical" size={16} className="dashboard-recent-wrap">
-      <Card bordered={false} className="dashboard-card">
+      <Card variant="borderless" className="dashboard-card">
         <Row justify="space-between" align="middle" gutter={[12, 12]}>
           <Col>
             <Typography.Title level={5} style={{ margin: 0 }}>
@@ -102,7 +102,7 @@ export function DashboardRecentActivity({
 
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={14}>
-          <Card title={t("Recent tenants")} className="dashboard-card" bordered={false}>
+          <Card title={t("Recent tenants")} className="dashboard-card" variant="borderless">
             {loading ? (
               <Skeleton active paragraph={{ rows: 6 }} title={false} />
             ) : tenants.length === 0 ? (
@@ -114,7 +114,7 @@ export function DashboardRecentActivity({
         </Col>
 
         <Col xs={24} xl={10}>
-          <Card title={t("Recent unpaid bills")} className="dashboard-card" bordered={false}>
+          <Card title={t("Recent unpaid bills")} className="dashboard-card" variant="borderless">
             {loading ? (
               <Skeleton active paragraph={{ rows: 6 }} title={false} />
             ) : unpaidInvoices.length === 0 ? (

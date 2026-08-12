@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -148,5 +148,32 @@ describe('RentalRegistrationPage', () => {
       file_name: 'identity.pdf',
       file_url: 'https://example.com/identity.pdf',
     }))
-  }, 20_000)
+  })
+
+  it('keeps failed uploads selected so the user can retry remaining changes', async () => {
+    const user = userEvent.setup()
+    serviceMocks.uploadFileToCloudinary
+      .mockImplementationOnce(async (file: File) => ({
+        file_name: file.name,
+        file_url: `https://example.com/${file.name}`,
+        mime_type: 'application/pdf',
+        file_size: file.size,
+        resource_type: 'raw',
+        public_id: `contract/${file.name}`,
+      }))
+      .mockRejectedValueOnce(new Error('Cloudinary is temporarily unavailable'))
+    render(<RentalRegistrationPage />)
+
+    await user.click(await screen.findByRole('tab', { name: /Add documents/ }))
+    const documentRow = await screen.findByRole('row', { name: /CONTRACT-001/ })
+    await user.click(within(documentRow).getByRole('button', { name: /Add documents/ }))
+    const modal = await screen.findByRole('dialog', { name: /Add documents/ })
+    await user.click(within(modal).getByRole('button', { name: 'Select files' }))
+    await user.click(within(modal).getByRole('button', { name: 'Save documents' }))
+
+    await waitFor(() => expect(serviceMocks.addContractDocument).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(within(modal).queryByText('signed-contract.pdf')).not.toBeInTheDocument())
+    expect(within(modal).getByText('identity.pdf')).toBeInTheDocument()
+    expect(modal).toBeInTheDocument()
+  })
 })

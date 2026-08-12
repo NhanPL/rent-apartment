@@ -108,7 +108,15 @@ jobs:
         run: npm ci
 
       - name: Run tests
-        run: npm test
+        run: npm run test:coverage
+
+      - name: Upload frontend coverage
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: frontend-coverage
+          path: front-end/coverage
+          retention-days: 7
 
   backend-integration:
     name: Backend PostgreSQL Integration Tests
