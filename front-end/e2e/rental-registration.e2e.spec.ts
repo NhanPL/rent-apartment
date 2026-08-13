@@ -49,10 +49,12 @@ test('manager completes rental registration from vacancy through handover', asyn
   expect(uploadCount()).toBe(0);
 
   await modal.getByRole('button', { name: 'Save documents' }).click();
-  await expect(page.getByText('Added 2 and removed 0 document(s).')).toBeVisible();
+  await expect(modal).toBeHidden();
   expect(uploadCount()).toBe(2);
 
-  await page.getByRole('tab', { name: /Room handover/ }).click();
+  const handoverTab = page.getByRole('tab', { name: 'Room handover (1)' });
+  await expect(handoverTab).toBeVisible();
+  await handoverTab.click();
   const handoverRow = page.getByRole('row', { name: /E2E Available Tenant/ });
   await expect(handoverRow).toContainText('Awaiting handover');
   await handoverRow.getByRole('button', { name: 'Handover' }).click();

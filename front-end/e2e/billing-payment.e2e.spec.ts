@@ -48,8 +48,8 @@ test('utility approval produces payable invoices and an immutable payment histor
   await expect(readingRow).toContainText('Submitted');
   await readingRow.getByRole('button', { name: 'View utility reading' }).click();
   const detail = managerPage.getByRole('dialog', { name: 'Utility Reading Detail' });
-  await expect(detail.getByText(/electricity-meter|ELECTRIC/i)).toBeVisible();
-  await expect(detail.getByText(/water-meter|WATER/i)).toBeVisible();
+  await expect(detail.getByRole('link', { name: 'electricity-meter.png' })).toBeVisible();
+  await expect(detail.getByRole('link', { name: 'water-meter.png' })).toBeVisible();
   await detail.getByRole('button', { name: 'Reject' }).click();
   const rejectDialog = managerPage.getByRole('dialog', { name: 'Reject utility reading' });
   await rejectDialog.getByLabel('Reject reason').fill('Please retake both meter photos');
