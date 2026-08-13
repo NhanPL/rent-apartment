@@ -132,6 +132,7 @@ const managerUser: AuthUser = {
   fullName: 'Manager One',
   role: 'MANAGER',
   tenantId: null,
+  preferredLanguage: 'en',
 }
 
 const tenantUser: AuthUser = {
@@ -141,6 +142,7 @@ const tenantUser: AuthUser = {
   fullName: 'Tenant One',
   role: 'TENANT',
   tenantId: 'tenant-profile-1',
+  preferredLanguage: 'en',
 }
 
 function setAuth(user: AuthUser | null) {
@@ -151,6 +153,7 @@ function setAuth(user: AuthUser | null) {
     login: vi.fn(),
     logout: vi.fn(),
     refreshCurrentUser: vi.fn(),
+    setPreferredLanguage: vi.fn(),
   }
 }
 

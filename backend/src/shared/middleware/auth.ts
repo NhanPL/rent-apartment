@@ -12,6 +12,7 @@ declare global {
       auth?: {
         userId: string;
         role: AppRole;
+        sessionId: string;
       };
     }
   }
@@ -77,7 +78,7 @@ export const requireAuth = (req: Request, _res: Response, next: NextFunction): v
       throw new AppError(401, 'Invalid or expired token');
     }
 
-    req.auth = { userId: payload.userId, role: payload.role };
+    req.auth = { userId: payload.userId, role: payload.role, sessionId: payload.sessionId };
     setAuditActorRole(payload.role);
     next();
   };

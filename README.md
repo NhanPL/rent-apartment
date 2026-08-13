@@ -17,6 +17,14 @@ Fullstack apartment rental management app built with React, TypeScript, Ant Desi
 - `seeds`: optional data for disposable local databases
 - `.env.example`: combined environment reference
 
+Start with [`docs/architecture.md`](docs/architecture.md) for the component
+map, authentication/session lifecycle, business state machines, authorization,
+file delivery, and major architectural decisions.
+
+Production operators should use [`docs/runbooks.md`](docs/runbooks.md) for
+deployments, migrations, recovery, integration incidents, reconciliation,
+account containment, and secret rotation.
+
 ## Database Setup
 
 Create a local database, configure `DATABASE_URL` in `backend/.env`, then run the
@@ -58,6 +66,7 @@ Set strong values for:
 ```env
 JWT_ACCESS_SECRET=<random_access_secret_at_least_32_characters>
 JWT_REFRESH_SECRET=<different_random_refresh_secret_at_least_32_characters>
+MFA_ENCRYPTION_SECRET=<random_mfa_encryption_secret_at_least_32_characters>
 JWT_ACCESS_EXPIRES_IN=15m
 REFRESH_TOKEN_EXPIRES_DAYS=7
 ```
@@ -68,6 +77,7 @@ are:
 | Group | Required | Optional / feature-gated |
 | --- | --- | --- |
 | Core | `APP_ENV`, `DATABASE_URL`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | `PORT`, pool sizing, log level |
+| Manager 2FA | `MFA_ENCRYPTION_SECRET` in staging/production | Falls back to the refresh secret only in local development/test |
 | Browser security | `CORS_ALLOWED_ORIGINS`, `FRONTEND_URL`, exact `TRUST_PROXY_HOPS` in staging/production | Refresh-cookie name/domain/SameSite |
 | Database TLS | `DB_SSL=true` and verified certificates in staging/production | `DB_SSL_CA` when the provider CA is not publicly trusted |
 | Private documents | `DOCUMENT_ACCESS_SECRET`, Cloudinary cloud/key/secret in shared environments | Retention/job intervals and upload-size limits |
@@ -234,6 +244,17 @@ are supported. Activation links are single-use and expire after
 `ACCOUNT_ACTIVATION_EXPIRES_HOURS` (48 hours by default). The complete
 environment matrix and container workflow are documented in
 [`docs/environments.md`](docs/environments.md).
+
+## Performance Testing
+
+Repeatable k6 smoke and ramping read-load profiles are documented in
+[`docs/performance-testing.md`](docs/performance-testing.md). The dedicated
+GitHub Actions workflow runs against an isolated, seeded PostgreSQL database
+and uploads machine-readable summaries.
+
+Accessibility checks use axe with Playwright and run in the standard E2E CI
+job. Coverage, local commands, and the manual release checklist are documented
+in [`docs/accessibility-testing.md`](docs/accessibility-testing.md).
 
 ## API Documentation
 

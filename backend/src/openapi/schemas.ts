@@ -31,19 +31,24 @@ export const openApiSchemas: Record<string, OpenApiSchema> = {
   },
   User: {
     type: 'object',
-    required: ['id', 'username', 'role'],
+    required: ['id', 'username', 'role', 'preferredLanguage'],
     properties: {
       id: uuid,
       username: { type: 'string' },
       email: nullableString,
       role: { type: 'string', enum: ['MANAGER', 'TENANT'] },
+      preferredLanguage: { type: 'string', enum: ['en', 'vi'] },
       account_status: { type: 'string', enum: ['PENDING_ACTIVATION', 'ACTIVE', 'SUSPENDED', 'DELETED'] }
     },
     additionalProperties: true
   },
   LoginRequest: {
     type: 'object', required: ['identifier', 'password'],
-    properties: { identifier: { type: 'string', minLength: 1 }, password: { type: 'string', format: 'password', minLength: 1, maxLength: 128 } }
+    properties: {
+      identifier: { type: 'string', minLength: 1 },
+      password: { type: 'string', format: 'password', minLength: 1, maxLength: 128 },
+      twoFactorCode: { type: 'string', pattern: '^\\d{6}$' }
+    }
   },
   LoginResponse: {
     type: 'object', required: ['accessToken', 'user'],
@@ -51,6 +56,44 @@ export const openApiSchemas: Record<string, OpenApiSchema> = {
   },
   AccessTokenResponse: {
     type: 'object', required: ['accessToken'], properties: { accessToken: { type: 'string' } }
+  },
+  AuthSession: {
+    type: 'object',
+    required: ['id', 'createdAt', 'lastUsedAt', 'expiresAt', 'current'],
+    properties: {
+      id: uuid,
+      userAgent: nullableString,
+      createdAt: { type: 'string', format: 'date-time' },
+      lastUsedAt: { type: 'string', format: 'date-time' },
+      expiresAt: { type: 'string', format: 'date-time' },
+      current: { type: 'boolean' }
+    }
+  },
+  AuthSessionList: {
+    type: 'object', required: ['items'], properties: {
+      items: { type: 'array', items: { $ref: '#/components/schemas/AuthSession' } }
+    }
+  },
+  AuthSessionRevokeResponse: {
+    type: 'object', required: ['revokedCurrent'], properties: { revokedCurrent: { type: 'boolean' } }
+  },
+  TwoFactorStatus: {
+    type: 'object', required: ['enabled'], properties: { enabled: { type: 'boolean' } }
+  },
+  TwoFactorSetup: {
+    type: 'object', required: ['secret', 'otpauthUri'], properties: {
+      secret: { type: 'string', minLength: 16 },
+      otpauthUri: { type: 'string', pattern: '^otpauth://totp/' }
+    }
+  },
+  TwoFactorCodeRequest: {
+    type: 'object', required: ['code'], properties: { code: { type: 'string', pattern: '^\\d{6}$' } }
+  },
+  TwoFactorDisableRequest: {
+    type: 'object', required: ['currentPassword', 'code'], properties: {
+      currentPassword: { type: 'string', format: 'password', minLength: 1, maxLength: 128 },
+      code: { type: 'string', pattern: '^\\d{6}$' }
+    }
   },
   PasswordPair: {
     type: 'object', required: ['newPassword', 'confirmPassword'],
@@ -294,6 +337,7 @@ export const openApiSchemas: Record<string, OpenApiSchema> = {
   InvoiceGenerateRequest: { type: 'object', required: ['month'], properties: { month: { type: 'string' }, room_id: uuid, building_id: uuid } },
   InvoiceGenerationResult: { type: 'object', properties: { month: { type: 'string' }, generated: { type: 'array', items: { $ref: '#/components/schemas/Invoice' } }, skipped: { type: 'array', items: { type: 'object', additionalProperties: true } }, total: { type: 'integer' } } },
   InvoiceIssueRequest: { type: 'object', properties: { bank_code: { type: 'string' }, bank_account_no: { type: 'string' }, bank_account_name: { type: 'string' }, transfer_note: { type: 'string', maxLength: 25 } } },
+  InvoiceBulkIssueRequest: { type: 'object', required: ['invoice_ids'], properties: { invoice_ids: { type: 'array', minItems: 1, maxItems: 50, uniqueItems: true, items: uuid }, bank_code: { type: 'string' }, bank_account_no: { type: 'string' }, bank_account_name: { type: 'string' } } },
   InvoiceAdjustmentRequest: { type: 'object', required: ['amount', 'reason'], properties: { amount: { type: 'number', not: { const: 0 } }, reason: { type: 'string', minLength: 1 } } },
   PaymentRequestInput: {
     type: 'object', required: ['invoice_id'], properties: {
@@ -320,5 +364,46 @@ export const openApiSchemas: Record<string, OpenApiSchema> = {
   },
   PaymentProof: { allOf: [{ $ref: '#/components/schemas/PaymentProofInput' }, { type: 'object', properties: { id: uuid, status: { type: 'string', enum: ['PENDING', 'APPROVED', 'REJECTED'] } } }], additionalProperties: true },
   Payment: { type: 'object', properties: { id: uuid, invoice_id: uuid, amount: money, entry_type: { type: 'string', enum: ['PAYMENT', 'REVERSAL'] }, status: { type: 'string' }, paid_at: timestamp }, additionalProperties: true },
-  PaymentProofReviewResult: { type: 'object', properties: { proof: { $ref: '#/components/schemas/PaymentProof' }, payment: { $ref: '#/components/schemas/Payment' }, paid_amount: money, remaining_amount: money, invoice_status: { type: 'string' } } }
+  PaymentProofReviewResult: { type: 'object', properties: { proof: { $ref: '#/components/schemas/PaymentProof' }, payment: { $ref: '#/components/schemas/Payment' }, paid_amount: money, remaining_amount: money, invoice_status: { type: 'string' } } },
+  PaymentBulkReviewRequest: { type: 'object', required: ['proof_ids', 'action'], properties: { proof_ids: { type: 'array', minItems: 1, maxItems: 50, uniqueItems: true, items: uuid }, action: { type: 'string', enum: ['APPROVE', 'REJECT'] }, reason: { type: 'string', maxLength: 500 } } },
+  BulkActionResult: { type: 'object', required: ['action', 'succeeded', 'failed', 'total'], properties: { action: { type: 'string' }, succeeded: { type: 'array', items: uuid }, failed: { type: 'array', items: { type: 'object', required: ['id', 'code', 'message'], properties: { id: uuid, code: { type: 'string' }, message: { type: 'string' } } } }, total: { type: 'integer' } } },
+  ImportRequest: { type: 'object', required: ['entity', 'rows'], properties: { entity: { type: 'string', enum: ['BUILDING', 'ROOM', 'TENANT'] }, rows: { type: 'array', minItems: 1, maxItems: 500, items: { type: 'object', additionalProperties: true } } } },
+  ImportPreview: { type: 'object', required: ['entity', 'valid', 'total', 'rows', 'errors'], properties: { entity: { type: 'string' }, valid: { type: 'boolean' }, total: { type: 'integer' }, rows: { type: 'array', items: { type: 'object', additionalProperties: true } }, errors: { type: 'array', items: { type: 'object', additionalProperties: true } } } },
+  ImportResult: { type: 'object', required: ['entity', 'imported', 'ids', 'failed'], properties: { entity: { type: 'string' }, imported: { type: 'integer' }, ids: { type: 'array', items: uuid }, failed: { type: 'array', items: { type: 'object', additionalProperties: true } } } },
+  InvoiceBranding: {
+    type: 'object',
+    required: ['display_name', 'business_address', 'tax_code', 'logo_url', 'accent_color', 'invoice_title', 'default_note'],
+    properties: {
+      display_name: { type: 'string', minLength: 1, maxLength: 120 },
+      business_address: { type: ['string', 'null'], maxLength: 500 },
+      tax_code: { type: ['string', 'null'], maxLength: 50 },
+      logo_url: { type: ['string', 'null'], format: 'uri', pattern: '^https://' },
+      accent_color: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' },
+      invoice_title: { type: 'string', minLength: 1, maxLength: 100 },
+      default_note: { type: ['string', 'null'], maxLength: 1000 }
+    }
+  },
+  FeatureFlags: {
+    type: 'object', required: ['CSV_IMPORTS', 'BULK_BILLING_ACTIONS', 'LIVE_DASHBOARD', 'INVOICE_BRANDING'],
+    properties: {
+      CSV_IMPORTS: { type: 'boolean' }, BULK_BILLING_ACTIONS: { type: 'boolean' },
+      LIVE_DASHBOARD: { type: 'boolean' }, INVOICE_BRANDING: { type: 'boolean' }
+    }
+  },
+  FeatureFlagUpdate: {
+    type: 'object', required: ['key', 'enabled'], properties: {
+      key: { type: 'string', enum: ['CSV_IMPORTS', 'BULK_BILLING_ACTIONS', 'LIVE_DASHBOARD', 'INVOICE_BRANDING'] },
+      enabled: { type: 'boolean' }
+    }
+  },
+  LanguagePreference: {
+    type: 'object', required: ['language'], properties: {
+      language: { type: 'string', enum: ['en', 'vi'] }
+    }
+  },
+  LanguagePreferenceResult: {
+    type: 'object', required: ['preferredLanguage'], properties: {
+      preferredLanguage: { type: 'string', enum: ['en', 'vi'] }
+    }
+  }
 };

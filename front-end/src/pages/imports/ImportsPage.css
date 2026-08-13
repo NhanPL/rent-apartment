@@ -1,0 +1,10 @@
+.imports-page {
+  width: 100%;
+}
+
+.imports-errors {
+  max-height: 220px;
+  margin-bottom: 16px;
+  overflow-y: auto;
+  border: 1px solid #ffccc7;
+}

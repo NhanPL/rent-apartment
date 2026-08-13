@@ -5,6 +5,7 @@ import {
   EditOutlined,
   EyeOutlined,
   PlusOutlined,
+  SendOutlined,
   StopOutlined,
 } from '@ant-design/icons'
 import {
@@ -40,6 +41,7 @@ import {
   getInvoice,
   getInvoicePrefill,
   issueInvoice,
+  bulkIssueInvoices,
   updateInvoice,
   voidInvoice,
 } from '../../services/invoicesService'
@@ -71,6 +73,7 @@ import type {
   PaymentStatus,
 } from './types'
 import './InvoicesPage.css'
+import { useFeatureFlags } from '../../features/feature-flags/useFeatureFlags'
 
 const invoiceStatusOptions: { label: string; value: InvoiceStatus; color: string }[] = [
   { label: 'Draft', value: 'DRAFT', color: 'default' },
@@ -132,10 +135,11 @@ interface IssueInvoiceFormValues {
   transfer_note: string
 }
 
-function VietQrBankFields() {
+type BulkIssueInvoiceFormValues = Omit<IssueInvoiceFormValues, 'transfer_note'>
+
+function VietQrBankFields({ includeTransferNote = true }: { includeTransferNote?: boolean }) {
   const { t } = useI18n()
   return (
-    <>
     <>
       <Form.Item
         name="bank_code"
@@ -164,7 +168,7 @@ function VietQrBankFields() {
       >
         <Input maxLength={100} />
       </Form.Item>
-      <Form.Item
+      {includeTransferNote ? <Form.Item
         name="transfer_note"
         label={t("Transfer note")}
         rules={[
@@ -173,13 +177,14 @@ function VietQrBankFields() {
         ]}
       >
         <Input maxLength={25} showCount />
-      </Form.Item>
-    </>
+      </Form.Item> : null}
     </>
   )
 }
 
 export function InvoicesPage() {
+  const { isEnabled } = useFeatureFlags()
+  const bulkActionsEnabled = isEnabled('BULK_BILLING_ACTIONS')
   const { t } = useI18n()
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
@@ -187,6 +192,7 @@ export function InvoicesPage() {
   const [paymentRequestForm] = Form.useForm<PaymentRequestFormValues>()
   const [adjustmentForm] = Form.useForm<AdjustmentFormValues>()
   const [issueForm] = Form.useForm<IssueInvoiceFormValues>()
+  const [bulkIssueForm] = Form.useForm<BulkIssueInvoiceFormValues>()
   const [voidForm] = Form.useForm<VoidInvoiceFormValues>()
 
   const [page, setPage] = useState(1)
@@ -227,6 +233,9 @@ export function InvoicesPage() {
   const [adjustmentLoading, setAdjustmentLoading] = useState(false)
   const [issueOpen, setIssueOpen] = useState(false)
   const [issueLoading, setIssueLoading] = useState(false)
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([])
+  const [bulkIssueOpen, setBulkIssueOpen] = useState(false)
+  const [bulkIssueLoading, setBulkIssueLoading] = useState(false)
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -620,6 +629,35 @@ export function InvoicesPage() {
     }
   }, [detailItem, issueForm, loadData])
 
+  const onBulkIssueInvoices = useCallback(async () => {
+    try {
+      const values = await bulkIssueForm.validateFields()
+      setBulkIssueLoading(true)
+      const result = await bulkIssueInvoices(selectedInvoiceIds, {
+        bank_code: values.bank_code.trim(),
+        bank_account_no: values.bank_account_no.trim(),
+        bank_account_name: values.bank_account_name.trim(),
+      })
+      setBulkIssueOpen(false)
+      bulkIssueForm.resetFields()
+      setSelectedInvoiceIds([])
+      await loadData()
+      if (result.failed.length) {
+        Modal.warning({
+          title: t('Bulk issue completed with errors'),
+          content: `${result.succeeded.length}/${result.total} ${t('invoices issued')}. ${result.failed.slice(0, 3).map((item) => item.message).join(' ')}`,
+        })
+      } else {
+        message.success(`${result.succeeded.length} ${t('invoices issued')}.`)
+      }
+    } catch (error) {
+      applyApiFieldErrors(bulkIssueForm, error)
+      message.error(getFormErrorMessage(error, t('Unable to issue selected invoices.')))
+    } finally {
+      setBulkIssueLoading(false)
+    }
+  }, [bulkIssueForm, loadData, selectedInvoiceIds, t])
+
   const paymentRequestIsClosed = !detailPaymentRequest || ['CANCELLED', 'EXPIRED'].includes(detailPaymentRequest.status)
 
   const openPaymentRequestModal = useCallback(() => {
@@ -809,7 +847,14 @@ export function InvoicesPage() {
         <Card><Statistic title={t("Revenue (paid)")} value={summary.totalRevenue} formatter={(value) => currency.format(Number(value))} /></Card>
       </div>
 
-      <Card title={t("Monthly invoices")}>
+      <Card
+        title={t("Monthly invoices")}
+        extra={bulkActionsEnabled && selectedInvoiceIds.length ? (
+          <Button type="primary" icon={<SendOutlined />} onClick={() => setBulkIssueOpen(true)}>
+            {t('Issue selected')} ({selectedInvoiceIds.length})
+          </Button>
+        ) : null}
+      >
         <InvoiceList
           loading={loading}
           error={error}
@@ -818,6 +863,8 @@ export function InvoicesPage() {
           page={page}
           pageSize={pageSize}
           total={total}
+          selectedIds={selectedInvoiceIds}
+          onSelectionChange={bulkActionsEnabled ? setSelectedInvoiceIds : undefined}
           onRetry={() => void loadData()}
           onPageChange={(nextPage, nextPageSize) => {
             setPage(nextPageSize === pageSize ? nextPage : 1)
@@ -1074,6 +1121,29 @@ export function InvoicesPage() {
           <VietQrBankFields />
         </Form>
       </Modal>
+
+      {bulkActionsEnabled ? <Modal
+        open={bulkIssueOpen}
+        title={t('Issue selected invoices')}
+        okText={t('Issue selected')}
+        confirmLoading={bulkIssueLoading}
+        closable={!bulkIssueLoading}
+        maskClosable={!bulkIssueLoading}
+        onOk={() => void onBulkIssueInvoices()}
+        onCancel={() => setBulkIssueOpen(false)}
+        destroyOnHidden
+      >
+        <Alert
+          showIcon
+          type="info"
+          message={`${selectedInvoiceIds.length} ${t('draft invoices selected')}`}
+          description={t('Each invoice receives its own transfer note and VietQR payment request.')}
+          style={{ marginBottom: 16 }}
+        />
+        <Form form={bulkIssueForm} layout="vertical">
+          <VietQrBankFields includeTransferNote={false} />
+        </Form>
+      </Modal> : null}
 
       <Modal
         open={adjustmentOpen}

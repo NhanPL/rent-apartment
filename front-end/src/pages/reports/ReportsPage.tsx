@@ -75,7 +75,7 @@ const defaultRange = (): [Dayjs, Dayjs] => [
 ]
 
 export function ReportsPage() {
-  const { t } = useI18n()
+  const { t, language } = useI18n()
   const [range, setRange] = useState<[Dayjs, Dayjs]>(() => defaultRange())
   const [buildingId, setBuildingId] = useState<string | undefined>()
   const [roomId, setRoomId] = useState<string | undefined>()
@@ -175,12 +175,13 @@ export function ReportsPage() {
     setExporting(true)
 
     try {
-      const content = await exportReportsCsv(filters, activeSection)
+      const content = await exportReportsCsv(filters, activeSection, language)
       const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `reports-${activeSection}-${filters.monthFrom}-${filters.monthTo}.csv`
+      const prefix = language === 'vi' ? 'bao-cao' : 'reports'
+      link.download = `${prefix}-${activeSection}-${filters.monthFrom}-${filters.monthTo}.csv`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -190,7 +191,7 @@ export function ReportsPage() {
     } finally {
       setExporting(false)
     }
-  }, [activeSection, filters])
+  }, [activeSection, filters, language])
 
   const monthlyRevenueColumns: ColumnsType<RevenueMonthRow> = [
     { title: t("Month"), dataIndex: 'month', width: 120, render: (value: string) => formatMonth(value) },

@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg';
 import { env } from '../../config/env';
+import type { EmailLocale } from './email.service';
 
 export type NotificationTemplateCode =
   | 'UTILITY_READING_REJECTED'
@@ -8,10 +9,12 @@ export type NotificationTemplateCode =
   | 'PAYMENT_APPROVED';
 
 interface NotificationRecipient {
+  user_id: string | null;
   email: string | null;
   tenant_name: string;
   room_code: string;
   month: string;
+  locale: EmailLocale;
 }
 
 const enqueue = async (
@@ -21,7 +24,38 @@ const enqueue = async (
   payload: Record<string, unknown>,
   deduplicationKey: string
 ): Promise<boolean> => {
-  if (env.EMAIL_NOTIFICATIONS_ENABLED !== 'true' || !recipient?.email) return false;
+  if (!recipient) return false;
+
+  const entityId = typeof payload.invoiceId === 'string'
+    ? payload.invoiceId
+    : deduplicationKey.split(':')[1] ?? null;
+  let inAppInserted = false;
+  if (recipient.user_id) {
+    const inserted = await client.query<{ id: string }>(
+      `INSERT INTO in_app_notification(
+         recipient_user_id, template_code, payload, entity_type, entity_id, deduplication_key
+       ) VALUES($1,$2,$3::jsonb,$4,$5,$6)
+       ON CONFLICT (deduplication_key) DO NOTHING
+       RETURNING id`,
+      [
+        recipient.user_id,
+        templateCode,
+        JSON.stringify({
+          tenantName: recipient.tenant_name,
+          roomCode: recipient.room_code,
+          month: recipient.month,
+          locale: recipient.locale,
+          ...payload
+        }),
+        templateCode.startsWith('PAYMENT_') ? 'PAYMENT' : templateCode.startsWith('INVOICE_') ? 'INVOICE' : 'UTILITY_READING',
+        entityId,
+        `in-app:${deduplicationKey}`
+      ]
+    );
+    inAppInserted = Boolean(inserted.rows[0]);
+  }
+
+  if (env.EMAIL_NOTIFICATIONS_ENABLED !== 'true' || !recipient.email) return inAppInserted;
   const inserted = await client.query<{ id: string }>(
     `INSERT INTO email_outbox(
        recipient_email, template_code, payload, deduplication_key, max_attempts
@@ -35,25 +69,39 @@ const enqueue = async (
         tenantName: recipient.tenant_name,
         roomCode: recipient.room_code,
         month: recipient.month,
+        locale: recipient.locale,
         ...payload
       }),
       deduplicationKey,
       env.EMAIL_OUTBOX_MAX_ATTEMPTS
     ]
   );
-  return Boolean(inserted.rows[0]);
+  return inAppInserted || Boolean(inserted.rows[0]);
 };
 
 const readingRecipient = async (client: PoolClient, readingId: string): Promise<NotificationRecipient | undefined> => (
   await client.query<NotificationRecipient>(
-    `SELECT COALESCE(app_user.email::text, tenant.email::text) AS email,
+    `SELECT app_user.id AS user_id,
+            COALESCE(app_user.email::text, tenant.email::text) AS email,
             tenant.full_name AS tenant_name,
             room.code AS room_code,
-            to_char(reading.month, 'YYYY-MM') AS month
+            to_char(reading.month, 'YYYY-MM') AS month,
+            COALESCE(app_user.preferred_language, 'en') AS locale
      FROM utility_reading reading
      JOIN room ON room.id=reading.room_id
-     JOIN contract_tenant assignment ON assignment.contract_id=reading.contract_id
-       AND assignment.is_primary=true
+     JOIN LATERAL (
+       SELECT contract_tenant.tenant_id, contract_tenant.joined_at
+       FROM contract
+       JOIN contract_tenant ON contract_tenant.contract_id=contract.id
+         AND contract_tenant.is_primary=true
+       WHERE contract.room_id=reading.room_id
+         AND contract.start_date < reading.month + INTERVAL '1 month'
+         AND COALESCE(contract.move_out_date, contract.end_date, 'infinity'::date) >= reading.month
+         AND contract_tenant.joined_at < reading.month + INTERVAL '1 month'
+         AND COALESCE(contract_tenant.left_at, 'infinity'::date) >= reading.month
+       ORDER BY (contract.status='ACTIVE') DESC, contract.start_date DESC, contract_tenant.joined_at DESC
+       LIMIT 1
+     ) assignment ON true
      JOIN tenant ON tenant.id=assignment.tenant_id
      LEFT JOIN app_user ON app_user.id=tenant.user_id
      WHERE reading.id=$1
@@ -65,10 +113,12 @@ const readingRecipient = async (client: PoolClient, readingId: string): Promise<
 
 const invoiceRecipient = async (client: PoolClient, invoiceId: string): Promise<NotificationRecipient | undefined> => (
   await client.query<NotificationRecipient>(
-    `SELECT COALESCE(app_user.email::text, tenant.email::text) AS email,
+    `SELECT app_user.id AS user_id,
+            COALESCE(app_user.email::text, tenant.email::text) AS email,
             tenant.full_name AS tenant_name,
             room.code AS room_code,
-            to_char(invoice.month, 'YYYY-MM') AS month
+            to_char(invoice.month, 'YYYY-MM') AS month,
+            COALESCE(app_user.preferred_language, 'en') AS locale
      FROM invoice
      JOIN room ON room.id=invoice.room_id
      JOIN contract_tenant assignment ON assignment.contract_id=invoice.contract_id
@@ -84,10 +134,12 @@ const invoiceRecipient = async (client: PoolClient, invoiceId: string): Promise<
 
 const proofRecipient = async (client: PoolClient, proofId: string): Promise<NotificationRecipient | undefined> => (
   await client.query<NotificationRecipient>(
-    `SELECT COALESCE(app_user.email::text, tenant.email::text) AS email,
+    `SELECT app_user.id AS user_id,
+            COALESCE(app_user.email::text, tenant.email::text) AS email,
             tenant.full_name AS tenant_name,
             room.code AS room_code,
-            to_char(invoice.month, 'YYYY-MM') AS month
+            to_char(invoice.month, 'YYYY-MM') AS month,
+            COALESCE(app_user.preferred_language, 'en') AS locale
      FROM payment_proof proof
      JOIN payment_request request ON request.id=proof.payment_request_id
      JOIN invoice ON invoice.id=request.invoice_id

@@ -1,0 +1,70 @@
+.sessions-page {
+  width: 100%;
+}
+
+.sessions-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sessions-header h3 {
+  margin: 0 0 4px;
+}
+
+.session-row {
+  padding-inline: 12px;
+}
+
+.session-device-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  color: #1677ff;
+  font-size: 20px;
+}
+
+.sessions-security-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.sessions-security-heading h4 {
+  margin: 0 0 4px;
+}
+
+.sessions-security-error {
+  margin-bottom: 16px;
+}
+
+.two-factor-setup,
+.two-factor-form {
+  width: 100%;
+}
+
+.two-factor-setup .ant-qrcode {
+  align-self: center;
+}
+
+@media (max-width: 575px) {
+  .sessions-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .session-row {
+    align-items: flex-start;
+  }
+
+  .session-row .ant-list-item-action {
+    margin-inline-start: 8px;
+  }
+}

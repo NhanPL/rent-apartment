@@ -5,7 +5,7 @@ import { query, withTransaction } from '../../db';
 import { AppError } from '../../shared/errors/app-error';
 import { writeAuditLog } from '../../shared/services/audit-log.service';
 import { assertPasswordPolicy, hashPassword } from '../../shared/utils/password';
-import { sendTenantActivationEmail } from '../../shared/services/email.service';
+import { sendTenantActivationEmail, type EmailLocale } from '../../shared/services/email.service';
 import { logger } from '../../shared/services/logger.service';
 
 type ActivationClient = Pick<PoolClient, 'query'>;
@@ -28,6 +28,7 @@ interface PendingTenantAccountRow {
   email: string;
   username: string;
   account_status: 'PENDING_ACTIVATION' | 'ACTIVE' | 'DISABLED';
+  preferred_language: EmailLocale;
 }
 
 export interface ActivationInvitation {
@@ -113,6 +114,7 @@ export const deliverActivationInvitation = async (payload: {
   username: string;
   invitation: ActivationInvitation;
   source: 'TENANT_CREATED' | 'MANAGER_RESEND';
+  locale?: EmailLocale;
 }): Promise<boolean> => {
   let deliveryStatus: 'SENT' | 'SKIPPED' | 'FAILED' = 'FAILED';
   let deliveryError: unknown;
@@ -123,7 +125,8 @@ export const deliverActivationInvitation = async (payload: {
       tenantName: payload.tenantName,
       activationUrl: buildActivationUrl(payload.invitation.token),
       username: payload.username,
-      expiresAt: payload.invitation.expiresAt
+      expiresAt: payload.invitation.expiresAt,
+      locale: payload.locale
     });
     deliveryStatus = sent ? 'SENT' : 'SKIPPED';
   } catch (error) {
@@ -241,7 +244,8 @@ export const resendTenantActivation = async (
     const result = await client.query<PendingTenantAccountRow>(
       `SELECT tenant.id AS tenant_id, tenant.full_name AS tenant_name,
               app_user.id AS user_id, app_user.email::text AS email,
-              app_user.username::text AS username, app_user.account_status
+              app_user.username::text AS username, app_user.account_status,
+              app_user.preferred_language
        FROM tenant
        JOIN app_user ON app_user.id=tenant.user_id
        WHERE tenant.id=$1
@@ -279,7 +283,8 @@ export const resendTenantActivation = async (
       email: account.email,
       username: account.username,
       invitation,
-      source: 'MANAGER_RESEND'
+      source: 'MANAGER_RESEND',
+      locale: account.preferred_language
     });
   } catch (error) {
     logger.error({

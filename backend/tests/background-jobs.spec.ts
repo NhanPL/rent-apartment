@@ -40,13 +40,15 @@ describe('background jobs', () => {
   });
 
   it('deduplicates UTC invoice reminders and respects the immutable payment ledger', async () => {
-    dbMocks.query.mockResolvedValueOnce({ rows: [{ id: 'outbox-1' }] });
+    dbMocks.query.mockResolvedValueOnce({ rows: [{ in_app_count: 1, email_count: 1 }] });
     await expect(enqueuePaymentReminders()).resolves.toBe(1);
     const sql = dbMocks.query.mock.calls[0][0] as string;
     expect(sql).toContain('ON CONFLICT (deduplication_key) DO NOTHING');
     expect(sql).toContain("payment.entry_type='REVERSAL'");
     expect(sql).toContain("payment.status='SUCCEEDED'");
     expect(sql).toContain("now() AT TIME ZONE 'UTC'");
+    expect(sql).toContain('INSERT INTO in_app_notification');
+    expect(sql).toContain("concat('in-app:', deduplication_key)");
   });
 
   it('defines durable unique job runs and a bounded email outbox', () => {
@@ -69,5 +71,11 @@ describe('background jobs', () => {
     expect(migration).toContain("'INVOICE_ISSUED'");
     expect(migration).toContain("'PAYMENT_PROOF_REJECTED'");
     expect(migration).toContain("'PAYMENT_APPROVED'");
+    const inAppMigration = fs.readFileSync(
+      path.resolve(__dirname, '../../migrations/20260813_in_app_notifications.sql'),
+      'utf8'
+    );
+    expect(inAppMigration).toContain('deduplication_key varchar(200) NOT NULL UNIQUE');
+    expect(inAppMigration).toContain('recipient_user_id uuid NOT NULL REFERENCES app_user(id)');
   });
 });

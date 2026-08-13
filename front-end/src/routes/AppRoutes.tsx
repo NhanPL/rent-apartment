@@ -17,6 +17,9 @@ import type { AppRole } from '../features/auth/types/auth'
 import { useI18n } from '../i18n'
 import { ForbiddenPage } from '../pages/errors/ForbiddenPage'
 import { NotFoundPage } from '../pages/errors/NotFoundPage'
+import { NotificationBell } from '../features/notifications/NotificationBell'
+import { useFeatureFlags } from '../features/feature-flags/useFeatureFlags'
+import type { FeatureKey } from '../features/feature-flags/featureFlagsApi'
 
 const LoginPage = lazy(() => import('../features/auth/pages/LoginPage').then((module) => ({ default: module.LoginPage })))
 const ActivateAccountPage = lazy(() => import('../features/auth/pages/ActivateAccountPage').then((module) => ({ default: module.ActivateAccountPage })))
@@ -36,8 +39,18 @@ const UtilitiesPage = lazy(() => import('../pages/utilities/UtilitiesPage').then
 const PaymentsPage = lazy(() => import('../pages/payments/PaymentsPage').then((module) => ({ default: module.PaymentsPage })))
 const ReportsPage = lazy(() => import('../pages/reports/ReportsPage').then((module) => ({ default: module.ReportsPage })))
 const AuditLogsPage = lazy(() => import('../pages/audit-logs/AuditLogsPage').then((module) => ({ default: module.AuditLogsPage })))
+const SessionsPage = lazy(() => import('../features/auth/pages/SessionsPage').then((module) => ({ default: module.SessionsPage })))
+const ImportsPage = lazy(() => import('../pages/imports/ImportsPage').then((module) => ({ default: module.ImportsPage })))
+const InvoiceBrandingPage = lazy(() => import('../pages/invoice-branding/InvoiceBrandingPage').then((module) => ({ default: module.InvoiceBrandingPage })))
+const FeatureFlagsPage = lazy(() => import('../pages/feature-flags/FeatureFlagsPage').then((module) => ({ default: module.FeatureFlagsPage })))
 
-const managerPaths = new Set(routeItems.filter((item) => item.path !== '/my-room').map((item) => item.path))
+const routeFeature: Partial<Record<string, FeatureKey>> = {
+  '/imports': 'CSV_IMPORTS',
+  '/invoice-branding': 'INVOICE_BRANDING',
+}
+
+const sharedPaths = new Set(['/sessions'])
+const managerPaths = new Set(routeItems.filter((item) => item.path !== '/my-room' && !sharedPaths.has(item.path)).map((item) => item.path))
 
 function RouteFallback() {
   const { t } = useI18n()
@@ -76,6 +89,12 @@ function RoleRoute({ roles }: { roles: AppRole[] }) {
   return <Outlet />
 }
 
+function FeatureRoute({ feature, children }: { feature: FeatureKey; children: React.ReactNode }) {
+  const { loading, isEnabled } = useFeatureFlags()
+  if (loading) return <RouteFallback />
+  return isEnabled(feature) ? children : <NotFoundPage />
+}
+
 function RoleHome() {
   const { user } = useAuth()
   return <Navigate to={user ? homePathByRole(user.role) : '/login'} replace />
@@ -96,6 +115,7 @@ function AuthenticatedLayout() {
   const { t } = useI18n()
   const location = useLocation()
   const navigate = useNavigate()
+  const { isEnabled } = useFeatureFlags()
   if (!user) return null
 
   const basePath = location.pathname.startsWith('/rooms/') ? '/buildings' : location.pathname
@@ -104,7 +124,9 @@ function AuthenticatedLayout() {
     : location.pathname === '/403'
       ? t('Access denied')
       : t(routeItems.find((item) => item.path === location.pathname)?.label ?? 'Page not found')
-  const items = sidebarRouteItems.filter((item) => canAccess(item.path, user.role)).map((item) => ({ ...item, label: t(item.label) }))
+  const items = sidebarRouteItems
+    .filter((item) => canAccess(item.path, user.role) && (!routeFeature[item.path] || isEnabled(routeFeature[item.path]!)))
+    .map((item) => ({ ...item, label: t(item.label) }))
 
   const handleLogout = async () => {
     await logout()
@@ -122,6 +144,7 @@ function AuthenticatedLayout() {
       onLogout={handleLogout}
       onChangePassword={async (payload) => { await changePassword(payload); await handleLogout() }}
       onRevokeAllSessions={async () => { await revokeAllSessions(); await handleLogout() }}
+      notifications={user.role === 'TENANT' ? <NotificationBell /> : undefined}
     />
   )
 }
@@ -152,8 +175,12 @@ function AppRouteTree() {
             <Route path="/payments" element={<PaymentsPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/audit-logs" element={<AuditLogsPage />} />
+            <Route path="/imports" element={<FeatureRoute feature="CSV_IMPORTS"><ImportsPage /></FeatureRoute>} />
+            <Route path="/invoice-branding" element={<FeatureRoute feature="INVOICE_BRANDING"><InvoiceBrandingPage /></FeatureRoute>} />
+            <Route path="/feature-flags" element={<FeatureFlagsPage />} />
           </Route>
           <Route element={<RoleRoute roles={['TENANT']} />}><Route path="/my-room" element={<TenantRoomPage />} /></Route>
+          <Route path="/sessions" element={<SessionsPage />} />
           <Route path="/403" element={<ForbiddenPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>

@@ -7,6 +7,7 @@ import { AuthProvider } from './features/auth/AuthContext'
 import { I18nProvider } from './i18n'
 import { configureAntdFeedbackLocalization } from './i18n/antdFeedback'
 import { QueryProvider } from './query/QueryProvider'
+import { FeatureFlagsProvider } from './features/feature-flags/FeatureFlagsProvider'
 
 configureAntdFeedbackLocalization()
 
@@ -15,7 +16,7 @@ createRoot(document.getElementById('root')!).render(
     <I18nProvider>
       <QueryProvider>
         <AuthProvider>
-          <App />
+          <FeatureFlagsProvider><App /></FeatureFlagsProvider>
         </AuthProvider>
       </QueryProvider>
     </I18nProvider>

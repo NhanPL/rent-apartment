@@ -1,11 +1,12 @@
 import { Alert, Button, Card, Checkbox, Form, Input, Typography } from 'antd'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useAuth } from '../useAuth'
 import type { LoginFormValues } from '../types/auth'
 import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../../../services/errorMessage'
 import { useI18n } from '../../../i18n'
 import { LanguageSwitcher } from '../../../shared/components/LanguageSwitcher'
 import { PASSWORD_MAX_LENGTH } from '../passwordPolicy'
+import { ApiError } from '../../../services/apiClient'
 import './LoginForm.css'
 
 const { Title, Text } = Typography
@@ -24,9 +25,13 @@ export function LoginForm() {
   const [form] = Form.useForm<LoginFormValues>()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>('')
+  const [requiresTwoFactor, setRequiresTwoFactor] = useState(false)
+  const submittingRef = useRef(false)
   const { login } = useAuth()
 
   const onFinish = async (values: LoginFormValues) => {
+    if (submittingRef.current) return
+    submittingRef.current = true
     setLoading(true)
     setError('')
 
@@ -34,22 +39,27 @@ export function LoginForm() {
       const user = await login({
         identifier: values.identifier.trim(),
         password: values.password,
+        ...(values.twoFactorCode ? { twoFactorCode: values.twoFactorCode.trim() } : {}),
       })
 
       const targetPath = getHomePathByRole(user.role)
       window.history.replaceState(null, '', targetPath)
       window.dispatchEvent(new PopStateEvent('popstate'))
     } catch (loginError) {
+      if (loginError instanceof ApiError && loginError.code === 'TWO_FACTOR_REQUIRED') {
+        setRequiresTwoFactor(true)
+      }
       applyApiFieldErrors(form, loginError)
       setError(getUserErrorMessage(loginError, t('Unable to sign in. Please check your account details.')))
     } finally {
+      submittingRef.current = false
       setLoading(false)
     }
   }
 
   return (
     <>
-    <Card className="login-card" bordered={false}>
+    <Card className="login-card" variant="borderless">
       <div className="login-topbar">
         <Text className="login-eyebrow">{t("Rent Apartment Management")}</Text>
         <div className="login-language-switcher">
@@ -93,6 +103,24 @@ export function LoginForm() {
         >
           <Input.Password autoComplete="current-password" placeholder={t("Enter your password")} />
         </Form.Item>
+
+        {requiresTwoFactor ? (
+          <Form.Item
+            label={t('Authentication code')}
+            name="twoFactorCode"
+            rules={[
+              { required: true, message: t('Enter the six-digit code from your authenticator app.') },
+              { pattern: /^\d{6}$/, message: t('The authentication code must contain six digits.') },
+            ]}
+          >
+            <Input
+              autoComplete="one-time-code"
+              inputMode="numeric"
+              maxLength={6}
+              placeholder="000000"
+            />
+          </Form.Item>
+        ) : null}
 
         <Form.Item name="rememberMe" valuePropName="checked">
           <Checkbox>{t("Remember me")}</Checkbox>

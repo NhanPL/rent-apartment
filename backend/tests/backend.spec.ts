@@ -84,6 +84,7 @@ vi.mock('../src/modules/documents/document-assets.service', async (importOrigina
 import { app } from '../src/app';
 import { AppError } from '../src/shared/errors/app-error';
 import { cleanupExpiredSessions } from '../src/modules/auth/session.service';
+import { generate } from 'otplib';
 import { hashPassword } from '../src/shared/utils/password';
 import { logger } from '../src/shared/services/logger.service';
 import { fakeDb, ids } from './support/mock-db';
@@ -316,6 +317,104 @@ describe('backend API smoke tests', () => {
     expect(fakeDb.auditLogs).toContainEqual(expect.objectContaining({
       action: 'ALL_AUTH_SESSIONS_REVOKED'
     }));
+  });
+
+  it('lists and revokes only device sessions owned by the authenticated user', async () => {
+    const currentDevice = await login('manager@example.com');
+    const remoteDevice = await login('manager@example.com');
+    await login('tenant@example.com');
+    const managerSessions = fakeDb.authSessions.filter((item) => item.user_id === ids.managerAUser);
+
+    const listResponse = await request(app)
+      .get('/api/auth/sessions')
+      .set(auth(currentDevice.accessToken))
+      .expect(200);
+
+    expect(listResponse.body.items).toHaveLength(2);
+    expect(listResponse.body.items.filter((item: { current: boolean }) => item.current)).toHaveLength(1);
+    expect(listResponse.body.items.every((item: Record<string, unknown>) => !('ipHash' in item))).toBe(true);
+
+    await request(app)
+      .delete(`/api/auth/sessions/${fakeDb.authSessions.find((item) => item.user_id === ids.tenantAUser)!.id}`)
+      .set(auth(currentDevice.accessToken))
+      .expect(404);
+
+    const revokeResponse = await request(app)
+      .delete(`/api/auth/sessions/${managerSessions[1].id}`)
+      .set(auth(currentDevice.accessToken))
+      .expect(200, { revokedCurrent: false });
+    expect(revokeResponse.headers['set-cookie']).toBeUndefined();
+    await request(app).get('/api/auth/me').set(auth(currentDevice.accessToken)).expect(200);
+    await request(app).get('/api/auth/me').set(auth(remoteDevice.accessToken)).expect(401);
+
+    const currentResponse = await request(app)
+      .delete(`/api/auth/sessions/${managerSessions[0].id}`)
+      .set(auth(currentDevice.accessToken))
+      .set('Cookie', currentDevice.refreshCookie)
+      .expect(200, { revokedCurrent: true });
+    expect((currentResponse.headers['set-cookie'] as unknown as string[])[0]).toContain('Expires=Thu, 01 Jan 1970');
+    expect(fakeDb.auditLogs.filter((item) => item.action === 'AUTH_SESSION_REVOKED')).toHaveLength(2);
+  });
+
+  it('enables manager TOTP, requires it at login, and revokes sessions after security changes', async () => {
+    const manager = await login('manager@example.com');
+
+    await request(app)
+      .get('/api/auth/2fa')
+      .set(auth(manager.accessToken))
+      .expect(200, { enabled: false });
+
+    const setup = await request(app)
+      .post('/api/auth/2fa/setup')
+      .set(auth(manager.accessToken))
+      .expect(200);
+    expect(setup.body).toMatchObject({
+      secret: expect.any(String),
+      otpauthUri: expect.stringMatching(/^otpauth:\/\/totp\//)
+    });
+
+    const code = await generate({ secret: setup.body.secret });
+    const enabled = await request(app)
+      .post('/api/auth/2fa/enable')
+      .set(auth(manager.accessToken))
+      .set('Cookie', manager.refreshCookie)
+      .send({ code })
+      .expect(200, { success: true });
+    expect((enabled.headers['set-cookie'] as unknown as string[])[0]).toContain('Expires=Thu, 01 Jan 1970');
+    await request(app).get('/api/auth/me').set(auth(manager.accessToken)).expect(401);
+
+    const missingCode = await request(app)
+      .post('/api/auth/login')
+      .send({ identifier: 'manager@example.com', password: 'password' })
+      .expect(401);
+    expect(missingCode.body).toMatchObject({ code: 'TWO_FACTOR_REQUIRED' });
+
+    const invalidCode = await request(app)
+      .post('/api/auth/login')
+      .send({ identifier: 'manager@example.com', password: 'password', twoFactorCode: '000000' })
+      .expect(401);
+    expect(invalidCode.body).toMatchObject({ code: 'INVALID_TWO_FACTOR_CODE' });
+
+    const activeCode = await generate({ secret: setup.body.secret });
+    const verifiedManager = await request(app)
+      .post('/api/auth/login')
+      .send({ identifier: 'manager@example.com', password: 'password', twoFactorCode: activeCode })
+      .expect(200);
+
+    const disabled = await request(app)
+      .post('/api/auth/2fa/disable')
+      .set(auth(verifiedManager.body.accessToken))
+      .send({ currentPassword: 'password', code: activeCode })
+      .expect(200, { success: true });
+    expect((disabled.headers['set-cookie'] as unknown as string[])[0]).toContain('Expires=Thu, 01 Jan 1970');
+    expect(fakeDb.auditLogs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ action: 'MANAGER_TWO_FACTOR_SETUP_STARTED' }),
+      expect.objectContaining({ action: 'MANAGER_TWO_FACTOR_ENABLED' }),
+      expect.objectContaining({ action: 'MANAGER_TWO_FACTOR_DISABLED' })
+    ]));
+
+    const tenant = await login('tenant@example.com');
+    await request(app).get('/api/auth/2fa').set(auth(tenant.accessToken)).expect(403);
   });
 
   it('cleans up expired sessions while retaining active sessions', async () => {
@@ -782,7 +881,8 @@ describe('backend API smoke tests', () => {
       .expect(200);
 
     expect(emailServiceMocks.sendPasswordChangedEmail).toHaveBeenCalledWith({
-      to: 'manager@example.com'
+      to: 'manager@example.com',
+      locale: 'en'
     });
     expect(fakeDb.passwordResetTokens[0].used_at).toEqual(expect.any(String));
     expect(fakeDb.passwordResetTokens[1].revoked_at).toEqual(expect.any(String));
@@ -1323,6 +1423,16 @@ describe('backend API smoke tests', () => {
       room_id: ids.roomSmall,
       status: 'DRAFT',
       business_stage: 'RESERVED'
+    });
+
+    const reservedDetails = await request(app)
+      .get(`/api/contracts/${reservedForCancel.body.id}`)
+      .set(auth(managerSession.accessToken))
+      .expect(200);
+
+    expect(reservedDetails.body).toMatchObject({
+      id: reservedForCancel.body.id,
+      documents: []
     });
 
     const document = await request(app)
@@ -2052,5 +2162,68 @@ describe('backend API smoke tests', () => {
     expect(response.body).toMatchObject({ code: 'PAYMENT_EXCEEDS_INVOICE_BALANCE' });
     expect(fakeDb.paymentProofs.find((item) => item.id === proof.body.id)).toMatchObject({ status: 'PENDING' });
     expect(fakeDb.payments.some((item) => item.payment_proof_id === proof.body.id)).toBe(false);
+  });
+
+  it('issues eligible invoices in bulk and reports per-item failures', async () => {
+    const managerSession = await login('manager@example.com');
+    const generated = await request(app)
+      .post('/api/invoices/generate/room')
+      .set(auth(managerSession.accessToken))
+      .send({ month: '2026-06', room_id: ids.roomA })
+      .expect(201);
+    const draftId = generated.body.generated[0].id as string;
+
+    const response = await request(app)
+      .post('/api/invoices/bulk/issue')
+      .set(auth(managerSession.accessToken))
+      .send({
+        invoice_ids: [draftId, ids.invoiceIssued],
+        bank_code: issueBankPayload.bank_code,
+        bank_account_no: issueBankPayload.bank_account_no,
+        bank_account_name: issueBankPayload.bank_account_name
+      })
+      .expect(200);
+
+    expect(response.body).toMatchObject({ action: 'ISSUE', succeeded: [draftId], total: 2 });
+    expect(response.body.failed).toEqual([
+      expect.objectContaining({ id: ids.invoiceIssued, code: 'INVOICE_NOT_DRAFT' })
+    ]);
+    expect(fakeDb.invoices.find((invoice) => invoice.id === draftId)).toMatchObject({ status: 'ISSUED' });
+    expect(fakeDb.paymentRequests.filter((item) => item.invoice_id === draftId)).toHaveLength(1);
+  });
+
+  it('reviews pending payment proofs in bulk without duplicating ledger entries', async () => {
+    const managerSession = await login('manager@example.com');
+    const tenantSession = await login('tenant@example.com');
+    const paymentRequest = await request(app)
+      .post('/api/payments/requests')
+      .set(auth(managerSession.accessToken))
+      .send({ invoice_id: ids.invoiceIssued, ...issueBankPayload })
+      .expect(201);
+    const proof = await request(app)
+      .post(`/api/payments/requests/${paymentRequest.body.id}/proofs`)
+      .set(auth(tenantSession.accessToken))
+      .send({
+        file_name: 'bulk-proof.png',
+        file_url: 'https://example.com/bulk-proof.png',
+        mime_type: 'image/png',
+        file_size: 2048,
+        transfer_amount: 1200
+      })
+      .expect(201);
+    const missingProofId = '00000000-0000-4000-8000-000000009999';
+
+    const response = await request(app)
+      .post('/api/payments/proofs/bulk/review')
+      .set(auth(managerSession.accessToken))
+      .send({ proof_ids: [proof.body.id, missingProofId], action: 'APPROVE' })
+      .expect(200);
+
+    expect(response.body).toMatchObject({ action: 'APPROVE', succeeded: [proof.body.id], total: 2 });
+    expect(response.body.failed).toEqual([
+      expect.objectContaining({ id: missingProofId, code: 'PAYMENT_NOT_FOUND' })
+    ]);
+    expect(fakeDb.payments.filter((item) => item.payment_proof_id === proof.body.id)).toHaveLength(1);
+    expect(fakeDb.invoices.find((invoice) => invoice.id === ids.invoiceIssued)).toMatchObject({ status: 'PAID' });
   });
 });

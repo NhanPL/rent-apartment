@@ -7,6 +7,8 @@ process.env.JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET
   ?? 'test-access-secret-with-at-least-32-characters';
 process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET
   ?? 'test-refresh-secret-with-at-least-32-characters';
+process.env.MFA_ENCRYPTION_SECRET = process.env.MFA_ENCRYPTION_SECRET
+  ?? 'test-mfa-encryption-secret-with-at-least-32-characters';
 process.env.JWT_ACCESS_EXPIRES_IN = '15m';
 process.env.TRUST_PROXY_HOPS = process.env.TRUST_PROXY_HOPS ?? '0';
 process.env.RATE_LIMIT_GLOBAL_MAX = process.env.RATE_LIMIT_GLOBAL_MAX ?? '10000';

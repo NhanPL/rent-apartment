@@ -19,6 +19,7 @@ import {
   recordLoginFailure
 } from './login-throttle.service';
 import { writeAuditLog } from '../../shared/services/audit-log.service';
+import { assertManagerLoginTwoFactor } from './two-factor.service';
 
 interface UserRow {
   id: string;
@@ -29,6 +30,9 @@ interface UserRow {
   is_active: boolean;
   account_status: AccountStatus;
   session_version: number;
+  two_factor_enabled: boolean;
+  two_factor_secret_encrypted: string | null;
+  preferred_language: 'en' | 'vi';
 }
 
 
@@ -39,6 +43,7 @@ interface UserProfile {
   username: string | null;
   fullName: string | null;
   tenantId: string | null;
+  preferredLanguage: 'en' | 'vi';
 }
 
 export interface LoginResult {
@@ -69,7 +74,8 @@ const toUserProfile = async (user: UserRow): Promise<UserProfile> => {
     email: user.email,
     username: user.username,
     fullName: managerProfile.rows[0]?.full_name ?? tenant.rows[0]?.full_name ?? null,
-    tenantId: tenant.rows[0]?.id ?? null
+    tenantId: tenant.rows[0]?.id ?? null,
+    preferredLanguage: user.preferred_language ?? 'en'
   };
 };
 
@@ -119,12 +125,14 @@ const canAuthenticate = (user: UserRow | undefined): user is UserRow & { passwor
 export const authenticateLogin = async (
   identifier: string,
   password: string,
-  context: SessionRequestContext
+  context: SessionRequestContext,
+  twoFactorCode?: string
 ): Promise<LoginResult> => {
   await assertLoginNotThrottled(identifier, context.clientIp);
 
   const { rows } = await query<UserRow>(
-    `SELECT id, role, email, username, password_hash, is_active, account_status, session_version
+    `SELECT id, role, email, username, password_hash, is_active, account_status, session_version,
+            two_factor_enabled,two_factor_secret_encrypted,preferred_language
      FROM app_user
      WHERE email = $1 OR username = $1
      LIMIT 1`,
@@ -141,6 +149,20 @@ export const authenticateLogin = async (
   if (!passwordMatches) {
     await recordLoginFailure(identifier, context.clientIp);
     throw invalidCredentials();
+  }
+
+  if (user.role === 'MANAGER' && user.two_factor_enabled) {
+    if (!user.two_factor_secret_encrypted) {
+      throw new AppError(500, 'Two-factor authentication configuration is invalid', 'TWO_FACTOR_CONFIGURATION_INVALID');
+    }
+    try {
+      await assertManagerLoginTwoFactor(user.two_factor_secret_encrypted, twoFactorCode);
+    } catch (error) {
+      if (error instanceof AppError && error.code === 'INVALID_TWO_FACTOR_CODE') {
+        await recordLoginFailure(identifier, context.clientIp);
+      }
+      throw error;
+    }
   }
 
   const userProfile = await toUserProfile(user);
@@ -161,7 +183,7 @@ export const authenticateLogin = async (
 
 export const getCurrentUser = async (userId: string): Promise<UserProfile> => {
   const { rows } = await query<UserRow>(
-    'SELECT id, role, email, username, password_hash, is_active, account_status, session_version FROM app_user WHERE id = $1 LIMIT 1',
+    'SELECT id, role, email, username, password_hash, is_active, account_status, session_version, preferred_language FROM app_user WHERE id = $1 LIMIT 1',
     [userId]
   );
 
@@ -176,7 +198,7 @@ export const getCurrentUser = async (userId: string): Promise<UserProfile> => {
 export const changePassword = async (userId: string, currentPassword: string, newPassword: string): Promise<void> => {
   assertPasswordPolicy(newPassword);
   const { rows } = await query<UserRow>(
-    'SELECT id, role, email, username, password_hash, is_active, account_status, session_version FROM app_user WHERE id = $1 LIMIT 1',
+    'SELECT id, role, email, username, password_hash, is_active, account_status, session_version, preferred_language FROM app_user WHERE id = $1 LIMIT 1',
     [userId]
   );
 

@@ -390,7 +390,7 @@ export const reviewPaymentProof = async (proofId: string, approve: boolean, mana
       [proofId, managerId]
     );
     const proof = pfRs.rows[0];
-    if (!proof) throw new AppError(404, 'Proof not found');
+    if (!proof) throw new AppError(404, 'Payment proof not found', 'PAYMENT_NOT_FOUND');
 
     if (approve && proof.status === 'APPROVED') {
       const existingPayment = await client.query<PaymentBoundaryRow>(

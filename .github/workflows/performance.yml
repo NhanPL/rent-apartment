@@ -1,0 +1,107 @@
+name: Performance Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      peak_vus:
+        description: Peak virtual users for the ramping test
+        required: true
+        default: '20'
+  schedule:
+    - cron: '0 3 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-load-test:
+    name: Isolated API Load Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rentmate_load
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rentmate_load"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      APP_ENV: test
+      PORT: 4000
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/rentmate_load
+      DB_SSL: false
+      JWT_ACCESS_SECRET: load-access-secret-with-at-least-32-characters
+      JWT_REFRESH_SECRET: load-refresh-secret-different-and-at-least-32-characters
+      DOCUMENT_ACCESS_SECRET: load-document-secret-with-at-least-32-characters
+      AUDIT_IP_HASH_SECRET: load-audit-secret-with-at-least-32-characters
+      CORS_ALLOWED_ORIGINS: http://127.0.0.1:4173
+      FRONTEND_URL: http://127.0.0.1:4173
+      SMTP_ENABLED: false
+      RATE_LIMIT_GLOBAL_MAX: 100000
+      RATE_LIMIT_LOGIN_MAX: 1000
+      RATE_LIMIT_REFRESH_MAX: 1000
+      RATE_LIMIT_PASSWORD_RESET_MAX: 1000
+      RATE_LIMIT_UPLOAD_SIGNATURE_MAX: 1000
+      RATE_LIMIT_PAYMENT_PROOF_MAX: 1000
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: Migrate and seed load database
+        run: |
+          npm run db:migrate -- --seed
+          npm run db:seed:e2e
+        working-directory: backend
+
+      - name: Build and start backend
+        run: |
+          npm run build
+          npm run start > ../load-test-server.log 2>&1 &
+          for attempt in {1..30}; do
+            curl --fail --silent http://127.0.0.1:4000/ready && exit 0
+            sleep 1
+          done
+          cat ../load-test-server.log
+          exit 1
+        working-directory: backend
+
+      - name: Setup k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Run API smoke threshold
+        run: k6 run --summary-export=load-smoke-summary.json load-tests/api-smoke.js
+
+      - name: Run manager read load
+        env:
+          PEAK_VUS: ${{ inputs.peak_vus || '20' }}
+        run: k6 run --summary-export=load-read-summary.json load-tests/manager-read-load.js
+
+      - name: Upload performance summaries
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: performance-test-results
+          path: |
+            load-*-summary.json
+            load-test-server.log
+          retention-days: 14

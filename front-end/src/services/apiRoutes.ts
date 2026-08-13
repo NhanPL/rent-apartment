@@ -7,7 +7,13 @@ export const API_ROUTES = {
     password: '/auth/password',
     passwordResetRequest: '/auth/password-reset/request',
     passwordResetConfirm: '/auth/password-reset/confirm',
+    sessions: '/auth/sessions',
+    sessionDetail: (id: string) => `/auth/sessions/${id}`,
     revokeAllSessions: '/auth/sessions/revoke-all',
+    twoFactor: '/auth/2fa',
+    twoFactorSetup: '/auth/2fa/setup',
+    twoFactorEnable: '/auth/2fa/enable',
+    twoFactorDisable: '/auth/2fa/disable',
     activation: '/auth/activation',
     activate: '/auth/activate',
   },
@@ -38,6 +44,20 @@ export const API_ROUTES = {
   auditLogs: {
     list: '/audit-logs',
   },
+  notifications: {
+    list: '/notifications',
+    read: (id: string) => `/notifications/${id}/read`,
+    readAll: '/notifications/read-all',
+  },
+  imports: {
+    preview: '/imports/preview',
+    commit: '/imports/commit',
+  },
+  invoiceBranding: '/invoice-branding',
+  featureFlags: '/feature-flags',
+  preferences: {
+    language: '/preferences/language',
+  },
   contracts: {
     list: '/contracts',
     detail: (id: string) => `/contracts/${id}`,
@@ -64,6 +84,7 @@ export const API_ROUTES = {
     generateBuilding: '/invoices/generate/building',
     generateAll: '/invoices/generate/all',
     issue: (id: string) => `/invoices/${id}/issue`,
+    bulkIssue: '/invoices/bulk/issue',
     void: (id: string) => `/invoices/${id}/void`,
     replacement: (id: string) => `/invoices/${id}/replacement`,
     adjustments: (id: string) => `/invoices/${id}/adjustments`,
@@ -77,6 +98,7 @@ export const API_ROUTES = {
     submitProof: (id: string) => `/payments/requests/${id}/proofs`,
     approveProof: (id: string) => `/payments/proofs/${id}/approve`,
     rejectProof: (id: string) => `/payments/proofs/${id}/reject`,
+    bulkReviewProofs: '/payments/proofs/bulk/review',
     reversePayment: (id: string) => `/payments/ledger/${id}/reverse`,
   },
   fixedCharges: {

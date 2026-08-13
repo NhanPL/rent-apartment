@@ -17,6 +17,11 @@ import type {
 } from '../../shared/types/database';
 import { toDatabaseNumber, toDateString } from '../../shared/types/database';
 import {
+  getInvoiceBranding,
+  getInvoiceBrandingSnapshot,
+  type InvoiceBranding
+} from '../invoice-branding/invoice-branding.service';
+import {
   paginationOffset,
   sqlSortDirection,
   type PaginatedResult,
@@ -50,6 +55,7 @@ interface InvoiceBoundaryRow {
   deposit_amount: DatabaseNumeric;
   billing_day: number;
   building_id: string;
+  manager_user_id: string;
   building_name: string;
   room_code: string;
   base_rent: DatabaseNumeric;
@@ -76,6 +82,8 @@ interface InvoiceBoundaryRow {
   code: string;
   name: string;
   meta: Record<string, unknown> | null;
+  branding_snapshot: InvoiceBranding | null;
+  branding: InvoiceBranding;
   [column: string]: unknown;
 }
 type DbRow = InvoiceBoundaryRow;
@@ -87,7 +95,7 @@ const invoiceColumnNames = [
   'id', 'contract_id', 'room_id', 'utility_reading_id', 'month', 'status', 'issued_at',
   'due_date', 'note', 'subtotal', 'discount', 'total', 'approved_by_user_id', 'approved_at',
   'void_reason', 'voided_by_user_id', 'voided_at', 'adjustment_note', 'replaces_invoice_id',
-  'created_at', 'updated_at'
+  'branding_snapshot', 'created_at', 'updated_at'
 ] as const;
 const invoiceColumns = (alias?: string) => invoiceColumnNames
   .map((column) => alias ? `${alias}.${column}` : column)
@@ -200,6 +208,7 @@ const invoiceItemsSubtotal = (payload: InvoiceUpsertPayload) => {
 const invoiceListProjection = `
   ${invoiceColumns('i')},
   b.id AS building_id,
+  b.manager_user_id,
   b.name AS building_name,
   r.code AS room_code,
   tenant.id AS tenant_id,
@@ -609,16 +618,18 @@ export const updateInvoiceStatus = async (
         );
         paymentRequestCreated = true;
       }
-      const issued = await client.query<DbRow>(
+      const branding = await getInvoiceBrandingSnapshot(client, managerId);
+      const issuedInvoice = await client.query<DbRow>(
         `UPDATE invoice
          SET status='ISSUED', issued_at=now(),
              due_date=GREATEST(COALESCE(due_date, CURRENT_DATE), CURRENT_DATE),
-             approved_by_user_id=$2, approved_at=now()
+             approved_by_user_id=$2, approved_at=now(),
+             branding_snapshot=COALESCE(branding_snapshot, $3::jsonb)
          WHERE id=$1
          RETURNING ${invoiceColumns()}`,
-        [invoiceId, managerId]
+        [invoiceId, managerId, JSON.stringify(branding)]
       );
-      updatedInvoice = issued.rows[0];
+      updatedInvoice = issuedInvoice.rows[0];
       if (invoice.utility_reading_id) {
         await client.query(`UPDATE utility_reading SET status='INVOICED' WHERE id=$1 AND status='APPROVED'`, [invoice.utility_reading_id]);
       }
@@ -1040,7 +1051,9 @@ export const getInvoiceDetail = async (id: string, scope: AuthScope) => {
     query<DbRow>(`SELECT ${invoiceAdjustmentColumns} FROM invoice_adjustment WHERE invoice_id=$1 ORDER BY created_at`, [id])
   ]);
   if (!invoice.rows[0]) throw new AppError(404, 'Invoice not found');
-  return { ...invoice.rows[0], items: items.rows, adjustments: adjustments.rows };
+  const invoiceRow = invoice.rows[0];
+  const branding = invoiceRow.branding_snapshot ?? await getInvoiceBranding(invoiceRow.manager_user_id);
+  return { ...invoiceRow, branding, items: items.rows, adjustments: adjustments.rows };
 };
 
 export const createManualInvoice = async (payload: InvoiceUpsertPayload, managerId: string) => {

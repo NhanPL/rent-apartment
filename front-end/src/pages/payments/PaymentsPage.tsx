@@ -6,6 +6,7 @@ import dayjs from 'dayjs'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   approvePaymentProof,
+  bulkReviewPaymentProofs,
   getPaymentRequest,
   listPaymentRequests,
   rejectPaymentProof,
@@ -18,6 +19,7 @@ import {
 } from '../../services/paymentsService'
 import { applyApiFieldErrors, getFormErrorMessage, getUserErrorMessage } from '../../services/errorMessage'
 import { vndCurrency } from '../../i18n'
+import { useFeatureFlags } from '../../features/feature-flags/useFeatureFlags'
 
 const currency = vndCurrency
 
@@ -84,9 +86,12 @@ const initialPaymentFilters = (): PaymentRequestListFilters => {
 
 export function PaymentsPage() {
   const { t } = useI18n()
+  const { isEnabled } = useFeatureFlags()
+  const bulkActionsEnabled = isEnabled('BULK_BILLING_ACTIONS')
   const screens = Grid.useBreakpoint()
   const isMobile = !screens.md
   const [rejectForm] = Form.useForm<RejectFormValues>()
+  const [bulkRejectForm] = Form.useForm<RejectFormValues>()
   const [reverseForm] = Form.useForm<ReverseFormValues>()
   const [items, setItems] = useState<PaymentRequest[]>([])
   const [total, setTotal] = useState(0)
@@ -100,6 +105,9 @@ export function PaymentsPage() {
   const [filters, setFilters] = useState<PaymentRequestListFilters>(initialPaymentFilters)
   const [searchInput, setSearchInput] = useState(() => initialPaymentFilters().search ?? '')
   const [filterSourceItems, setFilterSourceItems] = useState<PaymentRequest[]>([])
+  const [selectedRequestIds, setSelectedRequestIds] = useState<string[]>([])
+  const [bulkRejectOpen, setBulkRejectOpen] = useState(false)
+  const [bulkReviewLoading, setBulkReviewLoading] = useState(false)
 
   const pendingProofs = useMemo(() => items.filter((item) => item.latest_proof_status === 'PENDING').length, [items])
   const buildingOptions = useMemo(() => Array.from(new Map(
@@ -259,6 +267,35 @@ export function PaymentsPage() {
     }
   }, [refreshDetail, reverseForm, reversePaymentId])
 
+  const selectedProofIds = useMemo(() => items
+    .filter((item) => selectedRequestIds.includes(item.id) && item.latest_proof_status === 'PENDING' && item.latest_proof_id)
+    .map((item) => item.latest_proof_id as string), [items, selectedRequestIds])
+
+  const runBulkReview = useCallback(async (action: 'APPROVE' | 'REJECT') => {
+    try {
+      const reason = action === 'REJECT' ? (await bulkRejectForm.validateFields()).reason.trim() : undefined
+      setBulkReviewLoading(true)
+      const result = await bulkReviewPaymentProofs(selectedProofIds, action, reason)
+      setSelectedRequestIds([])
+      setBulkRejectOpen(false)
+      bulkRejectForm.resetFields()
+      await loadData()
+      if (result.failed.length) {
+        Modal.warning({
+          title: t('Bulk payment review completed with errors'),
+          content: `${result.succeeded.length}/${result.total} ${t('payment proofs reviewed')}. ${result.failed.slice(0, 3).map((item) => item.message).join(' ')}`,
+        })
+      } else {
+        message.success(`${result.succeeded.length} ${t('payment proofs reviewed')}.`)
+      }
+    } catch (error) {
+      applyApiFieldErrors(bulkRejectForm, error)
+      message.error(getFormErrorMessage(error, t('Unable to review selected payment proofs.')))
+    } finally {
+      setBulkReviewLoading(false)
+    }
+  }, [bulkRejectForm, loadData, selectedProofIds, t])
+
   const columns: ColumnsType<PaymentRequest> = [
     { title: t("Month"), dataIndex: 'month', width: 110, render: (value: string) => (value ? dayjs(value).format('MM/YYYY') : '-') },
     { title: t("Building"), dataIndex: 'building_name', width: 170 },
@@ -406,7 +443,29 @@ export function PaymentsPage() {
         </Space>
       </Card>
 
-      <Card title={t("Payment requests")}>
+      <Card
+        title={t("Payment requests")}
+        extra={bulkActionsEnabled && selectedProofIds.length ? (
+          <Space>
+            <Button
+              type="primary"
+              icon={<CheckOutlined />}
+              loading={bulkReviewLoading}
+              onClick={() => Modal.confirm({
+                title: t('Approve selected payment proofs?'),
+                content: t('Approved proofs create immutable payment ledger entries.'),
+                okText: t('Approve selected'),
+                onOk: () => runBulkReview('APPROVE'),
+              })}
+            >
+              {t('Approve selected')} ({selectedProofIds.length})
+            </Button>
+            <Button danger icon={<CloseOutlined />} onClick={() => setBulkRejectOpen(true)}>
+              {t('Reject selected')}
+            </Button>
+          </Space>
+        ) : null}
+      >
         {loading ? (
           <Skeleton active paragraph={{ rows: 8 }} />
         ) : (
@@ -414,6 +473,14 @@ export function PaymentsPage() {
             rowKey="id"
             columns={columns}
             dataSource={items}
+            rowSelection={bulkActionsEnabled ? {
+              selectedRowKeys: selectedRequestIds,
+              onChange: (keys) => setSelectedRequestIds(keys.map(String)),
+              getCheckboxProps: (record) => ({
+                disabled: record.latest_proof_status !== 'PENDING' || !record.latest_proof_id,
+                name: `payment-request-${record.id}`,
+              }),
+            } : undefined}
             scroll={{ x: 1450 }}
             pagination={{
               current: filters.page,
@@ -545,6 +612,32 @@ export function PaymentsPage() {
           </Form.Item>
         </Form>
       </Modal>
+
+      {bulkActionsEnabled ? <Modal
+        open={bulkRejectOpen}
+        title={t('Reject selected payment proofs')}
+        okText={t('Reject selected')}
+        okButtonProps={{ danger: true }}
+        confirmLoading={bulkReviewLoading}
+        onOk={() => void runBulkReview('REJECT')}
+        onCancel={() => {
+          setBulkRejectOpen(false)
+          bulkRejectForm.resetFields()
+        }}
+        destroyOnHidden
+      >
+        <Alert
+          showIcon
+          type="warning"
+          message={`${selectedProofIds.length} ${t('pending payment proofs selected')}`}
+          style={{ marginBottom: 16 }}
+        />
+        <Form form={bulkRejectForm} layout="vertical">
+          <Form.Item name="reason" label={t('Reject reason')} rules={[{ required: true, whitespace: true, message: t('Please enter reject reason') }]}>
+            <Input.TextArea rows={3} maxLength={500} showCount />
+          </Form.Item>
+        </Form>
+      </Modal> : null}
 
       <Modal
         open={Boolean(reversePaymentId)}

@@ -23,7 +23,9 @@ import {
   requestPasswordReset
 } from './password-reset.service';
 import {
+  listUserSessions,
   revokeAllUserSessions,
+  revokeOwnSession,
   revokeSessionByRefreshToken,
   rotateRefreshToken
 } from './session.service';
@@ -37,13 +39,21 @@ import {
   passwordResetRateLimit,
   refreshRateLimit
 } from '../../config/rate-limit';
-import { parseBody, parseEmptyBody, parseQuery } from '../../shared/utils/validation';
+import { parseBody, parseEmptyBody, parseParams, parseQuery, uuidSchema } from '../../shared/utils/validation';
+import {
+  beginManagerTwoFactorSetup,
+  disableManagerTwoFactor,
+  enableManagerTwoFactor,
+  getManagerTwoFactorStatus
+} from './two-factor.service';
+import { requireRole } from '../../shared/middleware/auth';
 
 const router = Router();
 
 const loginSchema = z.object({
   identifier: z.string().trim().min(1),
-  password: z.string().min(1).max(PASSWORD_MAX_LENGTH)
+  password: z.string().min(1).max(PASSWORD_MAX_LENGTH),
+  twoFactorCode: z.string().trim().regex(/^\d{6}$/).optional()
 });
 
 const changePasswordSchema = z.object({
@@ -69,6 +79,11 @@ const confirmPasswordResetSchema = z.object({
   token: z.string().trim().min(1).max(256),
   newPassword: z.string().min(1),
   confirmPassword: z.string().min(1)
+});
+const sessionParamsSchema = z.object({ sessionId: uuidSchema });
+const twoFactorCodeSchema = z.object({ code: z.string().trim().regex(/^\d{6}$/) });
+const disableTwoFactorSchema = twoFactorCodeSchema.extend({
+  currentPassword: z.string().min(1).max(PASSWORD_MAX_LENGTH)
 });
 
 const validateNewPassword = (
@@ -105,7 +120,8 @@ router.post('/login', loginRateLimit, asyncHandler(async (req, res) => {
     {
       clientIp: req.ip || req.socket.remoteAddress || 'unknown',
       userAgent: req.header('user-agent') ?? null
-    }
+    },
+    parsed.data.twoFactorCode
   );
   setRefreshTokenCookie(res, result.refreshToken, result.refreshTokenExpiresAt);
   res.json({ accessToken: result.accessToken, user: result.user });
@@ -200,6 +216,43 @@ router.put('/password', requireAuth, asyncHandler(async (req, res) => {
 router.post('/sessions/revoke-all', requireAuth, asyncHandler(async (req, res) => {
   parseEmptyBody(req.body);
   await revokeAllUserSessions(req.auth!.userId);
+  clearRefreshTokenCookie(res);
+  res.json({ success: true });
+}));
+
+router.get('/sessions', requireAuth, asyncHandler(async (req, res) => {
+  res.json({
+    items: await listUserSessions(req.auth!.userId, req.auth!.sessionId)
+  });
+}));
+
+router.delete('/sessions/:sessionId', requireAuth, asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
+  const { sessionId } = parseParams(sessionParamsSchema, req.params);
+  const result = await revokeOwnSession(req.auth!.userId, sessionId, req.auth!.sessionId);
+  if (result.revokedCurrent) clearRefreshTokenCookie(res);
+  res.json(result);
+}));
+
+router.get('/2fa', requireAuth, requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  res.json(await getManagerTwoFactorStatus(req.auth!.userId));
+}));
+
+router.post('/2fa/setup', requireAuth, requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  parseEmptyBody(req.body);
+  res.json(await beginManagerTwoFactorSetup(req.auth!.userId));
+}));
+
+router.post('/2fa/enable', requireAuth, requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  const { code } = parseBody(twoFactorCodeSchema, req.body);
+  await enableManagerTwoFactor(req.auth!.userId, code);
+  clearRefreshTokenCookie(res);
+  res.json({ success: true });
+}));
+
+router.post('/2fa/disable', requireAuth, requireRole('MANAGER'), asyncHandler(async (req, res) => {
+  const { code, currentPassword } = parseBody(disableTwoFactorSchema, req.body);
+  await disableManagerTwoFactor(req.auth!.userId, currentPassword, code);
   clearRefreshTokenCookie(res);
   res.json({ success: true });
 }));

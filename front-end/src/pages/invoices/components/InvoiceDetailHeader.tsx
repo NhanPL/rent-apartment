@@ -2,6 +2,7 @@ import { CheckOutlined, DeleteOutlined, PlusOutlined, QrcodeOutlined, StopOutlin
 import { Button, Space, Typography } from 'antd'
 import dayjs from 'dayjs'
 import type { InvoiceDetail } from '../types'
+import { InvoiceBrandingHeader as BrandingHeader } from '../../../shared/components/InvoiceBrandingHeader'
 
 interface Props {
   invoice: InvoiceDetail
@@ -19,6 +20,8 @@ interface Props {
 export function InvoiceDetailHeader(props: Props) {
   const invoice = props.invoice
   return (
+    <Space direction="vertical" size={12} style={{ width: '100%' }}>
+      <BrandingHeader branding={invoice.branding} />
     <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
       <Space direction="vertical" size={2}>
         <Typography.Text strong>{invoice.building_name} / Room {invoice.room_code}</Typography.Text>
@@ -38,6 +41,7 @@ export function InvoiceDetailHeader(props: Props) {
           <Button type="primary" icon={<PlusOutlined />} loading={props.replacementLoading} onClick={props.onCreateReplacement}>Create replacement</Button>
         ) : null}
       </Space>
+    </Space>
     </Space>
   )
 }

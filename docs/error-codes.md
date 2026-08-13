@@ -41,6 +41,7 @@ All API errors use the same JSON shape:
 | `BAD_REQUEST` | Generic invalid request when a more specific code is unavailable. |
 | `UNAUTHORIZED` | Authentication is required or invalid. |
 | `FORBIDDEN` | The current account lacks permission. |
+| `FEATURE_DISABLED` | The manager has disabled this optional capability for the current portfolio. |
 | `NOT_FOUND` | Generic resource-not-found response. |
 | `CONFLICT` | Generic state conflict response. |
 | `ROUTE_NOT_FOUND` | The requested API route does not exist. |

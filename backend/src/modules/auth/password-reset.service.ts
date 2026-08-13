@@ -11,7 +11,8 @@ import {
 } from '../../shared/utils/password';
 import {
   sendPasswordChangedEmail,
-  sendPasswordResetEmail
+  sendPasswordResetEmail,
+  type EmailLocale
 } from '../../shared/services/email.service';
 import { revokeUserSessions } from './session.service';
 import { logger } from '../../shared/services/logger.service';
@@ -21,6 +22,7 @@ type PasswordResetClient = Pick<PoolClient, 'query'>;
 interface ResetAccountRow {
   id: string;
   email: string;
+  preferred_language: EmailLocale;
 }
 
 interface ResetTokenRow {
@@ -28,6 +30,7 @@ interface ResetTokenRow {
   user_id: string;
   email: string;
   password_hash: string;
+  preferred_language: EmailLocale;
 }
 
 interface RateLimitRow {
@@ -40,6 +43,7 @@ interface ResetDelivery {
   email: string;
   token: string;
   expiresAt: string;
+  locale: EmailLocale;
 }
 
 export const PASSWORD_RESET_REQUEST_MESSAGE =
@@ -104,7 +108,7 @@ export const requestPasswordReset = async (email: string, clientIp: string): Pro
 
     const rateLimit = await readRateLimit(client, identifierHash, ipHash);
     const accountResult = await client.query<ResetAccountRow>(
-      `SELECT id, email::text AS email
+      `SELECT id, email::text AS email, preferred_language
        FROM app_user
        WHERE email=$1
          AND account_status='ACTIVE'
@@ -162,7 +166,8 @@ export const requestPasswordReset = async (email: string, clientIp: string): Pro
       userId: account.id,
       email: account.email,
       token,
-      expiresAt
+      expiresAt,
+      locale: account.preferred_language
     };
   });
 
@@ -172,7 +177,8 @@ export const requestPasswordReset = async (email: string, clientIp: string): Pro
     await sendPasswordResetEmail({
       to: delivery.email,
       resetUrl: buildResetUrl(delivery.token),
-      expiresAt: delivery.expiresAt
+      expiresAt: delivery.expiresAt,
+      locale: delivery.locale
     });
   } catch (error) {
     logger.error({
@@ -190,7 +196,8 @@ const findValidResetToken = async (
 
   const result = await client.query<ResetTokenRow>(
     `SELECT reset_token.id, reset_token.user_id,
-            app_user.email::text AS email, app_user.password_hash
+            app_user.email::text AS email, app_user.password_hash,
+            app_user.preferred_language
      FROM password_reset_token reset_token
      JOIN app_user ON app_user.id=reset_token.user_id
      WHERE reset_token.token_hash=$1
@@ -210,7 +217,7 @@ const findValidResetToken = async (
 
 export const confirmPasswordReset = async (token: string, newPassword: string): Promise<void> => {
   assertPasswordPolicy(newPassword);
-  const completedReset = await withTransaction<{ email: string; userId: string }>(async (client) => {
+  const completedReset = await withTransaction<{ email: string; userId: string; locale: EmailLocale }>(async (client) => {
     const resetToken = await findValidResetToken(client, token);
     const applicationPasswordMatch = await verifyPasswordHash(
       newPassword,
@@ -271,12 +278,13 @@ export const confirmPasswordReset = async (token: string, newPassword: string): 
 
     return {
       email: resetToken.email,
-      userId: resetToken.user_id
+      userId: resetToken.user_id,
+      locale: resetToken.preferred_language
     };
   });
 
   try {
-    await sendPasswordChangedEmail({ to: completedReset.email });
+    await sendPasswordChangedEmail({ to: completedReset.email, locale: completedReset.locale });
   } catch (error) {
     logger.error({
       userId: completedReset.userId,

@@ -21,7 +21,7 @@ Sentry environments so staging cannot modify or notify production users.
 
 Every environment requires `DATABASE_URL`, `JWT_ACCESS_SECRET`, and
 `JWT_REFRESH_SECRET`. Staging and production additionally require explicit
-`CORS_ALLOWED_ORIGINS`, `TRUST_PROXY_HOPS`, `DOCUMENT_DELIVERY_BASE_URL`,
+`MFA_ENCRYPTION_SECRET`, `CORS_ALLOWED_ORIGINS`, `TRUST_PROXY_HOPS`, `DOCUMENT_DELIVERY_BASE_URL`,
 `DB_SSL=true`, and `DB_SSL_REJECT_UNAUTHORIZED=true`. Supply `DB_SSL_CA` when
 the database provider's CA is not in the Node.js trust store.
 

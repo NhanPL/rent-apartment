@@ -3,12 +3,15 @@ import { API_ROUTES } from '../../services/apiRoutes'
 import type {
   ActivateAccountPayload,
   ActivationTokenDetails,
+  AuthSession,
   AuthUser,
   ChangePasswordPayload,
   ConfirmPasswordResetPayload,
   LoginPayload,
   LoginResponse,
   RequestPasswordResetPayload,
+  TwoFactorSetup,
+  TwoFactorStatus,
 } from './types/auth'
 
 export function login(payload: LoginPayload) {
@@ -34,9 +37,48 @@ export function logoutApi() {
   })
 }
 
+export function updatePreferredLanguage(language: 'en' | 'vi') {
+  return apiRequest<{ preferredLanguage: 'en' | 'vi' }>(API_ROUTES.preferences.language, {
+    method: 'PUT',
+    body: { language },
+  })
+}
+
 export function revokeAllSessions() {
   return apiRequest<{ success: boolean }>(API_ROUTES.auth.revokeAllSessions, {
     method: 'POST',
+  })
+}
+
+export function listSessions() {
+  return apiRequest<{ items: AuthSession[] }>(API_ROUTES.auth.sessions)
+}
+
+export function revokeSession(id: string) {
+  return apiRequest<{ revokedCurrent: boolean }>(API_ROUTES.auth.sessionDetail(id), {
+    method: 'DELETE',
+  })
+}
+
+export function getTwoFactorStatus() {
+  return apiRequest<TwoFactorStatus>(API_ROUTES.auth.twoFactor)
+}
+
+export function beginTwoFactorSetup() {
+  return apiRequest<TwoFactorSetup>(API_ROUTES.auth.twoFactorSetup, { method: 'POST' })
+}
+
+export function enableTwoFactor(code: string) {
+  return apiRequest<{ success: boolean }>(API_ROUTES.auth.twoFactorEnable, {
+    method: 'POST',
+    body: { code },
+  })
+}
+
+export function disableTwoFactor(payload: { currentPassword: string; code: string }) {
+  return apiRequest<{ success: boolean }>(API_ROUTES.auth.twoFactorDisable, {
+    method: 'POST',
+    body: payload,
   })
 }
 

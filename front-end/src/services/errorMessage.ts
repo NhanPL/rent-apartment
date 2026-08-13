@@ -91,6 +91,11 @@ const errorMessages: Record<string, string> = {
   UPLOAD_SIZE_INVALID: 'The file exceeds the allowed size.',
   UPLOAD_URL_INVALID: 'The uploaded file URL is invalid.',
   INTERNAL_ERROR: 'The system encountered an internal error. Please try again later.',
+  TWO_FACTOR_REQUIRED: 'Enter the code from your authenticator app.',
+  INVALID_TWO_FACTOR_CODE: 'The authentication code is invalid or expired.',
+  TWO_FACTOR_ALREADY_ENABLED: 'Two-factor authentication is already enabled.',
+  TWO_FACTOR_NOT_ENABLED: 'Two-factor authentication is not enabled.',
+  TWO_FACTOR_SETUP_REQUIRED: 'Start two-factor setup before enabling it.',
   UNKNOWN_ERROR: 'An unexpected error occurred. Please try again.',
 }
 

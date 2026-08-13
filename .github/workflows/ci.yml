@@ -29,6 +29,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify lockfile is unchanged
+        run: git diff --exit-code -- package-lock.json
+
       - name: Type check
         run: npm run check
 
@@ -56,8 +59,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify lockfile is unchanged
+        run: git diff --exit-code -- package-lock.json
+
       - name: Run tests
-        run: npm test
+        run: npm test -- --reporter=default --reporter=junit --outputFile.junit=./test-results/backend-junit.xml
+
+      - name: Upload backend test report
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: backend-test-report
+          path: backend/test-results
+          retention-days: 7
 
   frontend-check:
     name: Frontend Lint And Build
@@ -79,6 +93,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Verify lockfile is unchanged
+        run: git diff --exit-code -- package-lock.json
 
       - name: Lint
         run: npm run lint
@@ -107,8 +124,184 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify lockfile is unchanged
+        run: git diff --exit-code -- package-lock.json
+
       - name: Run tests
-        run: npm test
+        run: npm run test:coverage -- --reporter=default --reporter=junit --outputFile.junit=./test-results/frontend-junit.xml
+
+      - name: Upload frontend coverage
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: frontend-coverage
+          path: front-end/coverage
+          retention-days: 7
+
+      - name: Upload frontend test report
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: frontend-test-report
+          path: front-end/test-results
+          retention-days: 7
+
+  backend-integration:
+    name: Backend PostgreSQL Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      TEST_DATABASE_ADMIN_URL: postgres://postgres:postgres@localhost:5432/postgres
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify lockfile is unchanged
+        run: git diff --exit-code -- package-lock.json
+
+      - name: Run PostgreSQL integration tests
+        run: npm run test:integration
+        env:
+          VITEST_JUNIT_OUTPUT_FILE: ./test-results/backend-integration-junit.xml
+
+      - name: Upload integration test report
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: backend-integration-test-report
+          path: backend/test-results
+          retention-days: 7
+
+  end-to-end:
+    name: Playwright Critical Workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rentmate_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rentmate_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI: true
+      NODE_ENV: test
+      APP_ENV: test
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/rentmate_e2e
+      DB_SSL: false
+      JWT_ACCESS_SECRET: e2e-access-secret-with-at-least-32-characters
+      JWT_REFRESH_SECRET: e2e-refresh-secret-different-and-at-least-32-characters
+      DOCUMENT_ACCESS_SECRET: e2e-document-secret-with-at-least-32-characters
+      AUDIT_IP_HASH_SECRET: e2e-audit-secret-with-at-least-32-characters
+      CORS_ALLOWED_ORIGINS: http://127.0.0.1:4173
+      FRONTEND_URL: http://127.0.0.1:4173
+      DOCUMENT_DELIVERY_BASE_URL: http://127.0.0.1:4000
+      CLOUDINARY_CLOUD_NAME: e2e
+      CLOUDINARY_API_KEY: e2e-api-key
+      CLOUDINARY_API_SECRET: e2e-api-secret
+      SMTP_ENABLED: false
+      RATE_LIMIT_GLOBAL_MAX: 10000
+      RATE_LIMIT_LOGIN_MAX: 10000
+      RATE_LIMIT_REFRESH_MAX: 10000
+      RATE_LIMIT_PASSWORD_RESET_MAX: 10000
+      RATE_LIMIT_UPLOAD_SIGNATURE_MAX: 10000
+      RATE_LIMIT_PAYMENT_PROOF_MAX: 10000
+      VITE_API_BASE_URL: http://127.0.0.1:4000/api
+      E2E_API_URL: http://127.0.0.1:4000
+      E2E_WEB_URL: http://127.0.0.1:4173
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            front-end/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci
+        working-directory: backend
+
+      - name: Verify backend lockfile is unchanged
+        run: git diff --exit-code -- package-lock.json
+        working-directory: backend
+
+      - name: Migrate and seed E2E database
+        run: |
+          npm run db:migrate -- --seed
+          npm run db:seed:e2e
+        working-directory: backend
+
+      - name: Build backend
+        run: npm run build
+        working-directory: backend
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: front-end
+
+      - name: Verify frontend lockfile is unchanged
+        run: git diff --exit-code -- package-lock.json
+        working-directory: front-end
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: front-end
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+        working-directory: front-end
+
+      - name: Run critical and accessibility E2E workflows
+        run: npm run test:e2e
+        working-directory: front-end
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: playwright-report
+          path: front-end/playwright-report
+          retention-days: 7
 
   dependency-audit:
     name: Dependency Audit (${{ matrix.project }})
@@ -133,6 +326,37 @@ jobs:
         run: npm ci
         working-directory: ${{ matrix.project }}
 
+      - name: Verify lockfile is unchanged
+        run: git diff --exit-code -- package-lock.json
+        working-directory: ${{ matrix.project }}
+
       - name: Audit dependencies
         run: npm run audit
         working-directory: ${{ matrix.project }}
+
+  quality-gate:
+    name: Quality Gate
+    if: always()
+    needs:
+      - backend-check
+      - backend-test
+      - frontend-check
+      - frontend-test
+      - backend-integration
+      - end-to-end
+      - dependency-audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all CI jobs to pass
+        env:
+          BACKEND_CHECK: ${{ needs.backend-check.result }}
+          BACKEND_TEST: ${{ needs.backend-test.result }}
+          FRONTEND_CHECK: ${{ needs.frontend-check.result }}
+          FRONTEND_TEST: ${{ needs.frontend-test.result }}
+          BACKEND_INTEGRATION: ${{ needs.backend-integration.result }}
+          END_TO_END: ${{ needs.end-to-end.result }}
+          DEPENDENCY_AUDIT: ${{ needs.dependency-audit.result }}
+        run: |
+          for result in "$BACKEND_CHECK" "$BACKEND_TEST" "$FRONTEND_CHECK" "$FRONTEND_TEST" "$BACKEND_INTEGRATION" "$END_TO_END" "$DEPENDENCY_AUDIT"; do
+            test "$result" = "success"
+          done

@@ -24,6 +24,7 @@ const tenantId = uuidPath('tenantId');
 const documentId = uuidPath('documentId');
 const invoiceId = uuidPath('invoiceId');
 const paymentId = uuidPath('paymentId');
+const sessionId = uuidPath('sessionId');
 const uuidQuery = (name: string, description: string) => queryParameter(name, { type: 'string', format: 'uuid' }, description);
 const searchQuery = queryParameter('search', { type: 'string', maxLength: 200 }, 'Case-insensitive search text.');
 
@@ -33,7 +34,7 @@ const authPaths = {
       description: 'Authenticates by username or email. Returns a short-lived access token and sets the refresh token as an HttpOnly cookie.',
       body: requestBody('LoginRequest'),
       responses: ok('LoginResponse'),
-      errorCodes: ['INVALID_CREDENTIALS', 'LOGIN_TEMPORARILY_LOCKED', 'LOGIN_RATE_LIMIT_EXCEEDED']
+      errorCodes: ['INVALID_CREDENTIALS', 'TWO_FACTOR_REQUIRED', 'INVALID_TWO_FACTOR_CODE', 'LOGIN_TEMPORARILY_LOCKED', 'LOGIN_RATE_LIMIT_EXCEEDED']
     })
   },
   '/auth/refresh': {
@@ -89,6 +90,42 @@ const authPaths = {
   '/auth/sessions/revoke-all': {
     post: operation('Auth', 'Revoke all sessions', 'AUTHENTICATED', {
       responses: ok('Success'), errorCodes: ['UNAUTHORIZED']
+    })
+  },
+  '/auth/sessions': {
+    get: operation('Auth', 'List active sessions', 'AUTHENTICATED', {
+      description: 'Lists active, unexpired browser/device sessions owned by the authenticated user.',
+      responses: ok('AuthSessionList'), errorCodes: ['UNAUTHORIZED']
+    })
+  },
+  '/auth/sessions/{sessionId}': {
+    delete: operation('Auth', 'Revoke a session', 'AUTHENTICATED', {
+      description: 'Revokes one browser/device session owned by the authenticated user.',
+      parameters: [sessionId],
+      responses: ok('AuthSessionRevokeResponse'),
+      errorCodes: ['UNAUTHORIZED', 'AUTH_SESSION_NOT_FOUND', 'VALIDATION_ERROR']
+    })
+  },
+  '/auth/2fa': {
+    get: operation('Auth', 'Get two-factor status', 'MANAGER', {
+      responses: ok('TwoFactorStatus'), errorCodes: ['UNAUTHORIZED', 'FORBIDDEN']
+    })
+  },
+  '/auth/2fa/setup': {
+    post: operation('Auth', 'Start two-factor setup', 'MANAGER', {
+      responses: ok('TwoFactorSetup'), errorCodes: ['TWO_FACTOR_ALREADY_ENABLED', 'TWO_FACTOR_MANAGER_ONLY']
+    })
+  },
+  '/auth/2fa/enable': {
+    post: operation('Auth', 'Enable two-factor authentication', 'MANAGER', {
+      body: requestBody('TwoFactorCodeRequest'), responses: ok('Success'),
+      errorCodes: ['INVALID_TWO_FACTOR_CODE', 'TWO_FACTOR_ALREADY_ENABLED', 'TWO_FACTOR_SETUP_REQUIRED']
+    })
+  },
+  '/auth/2fa/disable': {
+    post: operation('Auth', 'Disable two-factor authentication', 'MANAGER', {
+      body: requestBody('TwoFactorDisableRequest'), responses: ok('Success'),
+      errorCodes: ['CURRENT_PASSWORD_INCORRECT', 'INVALID_TWO_FACTOR_CODE', 'TWO_FACTOR_NOT_ENABLED']
     })
   }
 };
@@ -282,6 +319,9 @@ const invoicePaths = {
   '/invoices/{id}/issue': {
     post: operation('Invoices', 'Issue invoice and payment request', 'MANAGER', { parameters: [id], body: requestBody('InvoiceIssueRequest', false), responses: ok('Invoice'), errorCodes: ['INVOICE_NOT_FOUND', 'INVOICE_NOT_DRAFT', 'BANK_ACCOUNT_REQUIRED'] })
   },
+  '/invoices/bulk/issue': {
+    post: operation('Invoices', 'Issue selected draft invoices', 'MANAGER', { body: requestBody('InvoiceBulkIssueRequest'), responses: ok('BulkActionResult'), errorCodes: ['VALIDATION_ERROR', 'BULK_ITEM_FAILED'] })
+  },
   '/invoices/{id}/void': {
     post: operation('Invoices', 'Void issued invoice', 'MANAGER', { parameters: [id], body: requestBody('VoidReasonRequest'), responses: ok('Invoice'), errorCodes: ['INVOICE_NOT_FOUND', 'INVOICE_DRAFT_REQUIRES_DELETE', 'INVOICE_ALREADY_VOID', 'INVOICE_VOID_REASON_REQUIRED'] })
   },
@@ -329,11 +369,47 @@ const paymentPaths = {
   '/payments/proofs/{id}/approve': {
     post: operation('Payments', 'Approve payment proof', 'MANAGER', { parameters: [id], responses: ok('PaymentProofReviewResult'), errorCodes: ['PAYMENT_NOT_FOUND', 'PAYMENT_PROOF_ALREADY_APPROVED', 'PAYMENT_EXCEEDS_INVOICE_BALANCE', 'CONCURRENT_MODIFICATION'] })
   },
+  '/payments/proofs/bulk/review': {
+    post: operation('Payments', 'Review selected pending payment proofs', 'MANAGER', { body: requestBody('PaymentBulkReviewRequest'), responses: ok('BulkActionResult'), errorCodes: ['VALIDATION_ERROR', 'BULK_ITEM_FAILED'] })
+  },
   '/payments/proofs/{id}/reject': {
     post: operation('Payments', 'Reject payment proof', 'MANAGER', { parameters: [id], body: requestBody('OptionalReasonRequest', false), responses: ok('PaymentProof'), errorCodes: ['PAYMENT_NOT_FOUND', 'PAYMENT_PROOF_ALREADY_APPROVED'] })
   },
   '/payments/ledger/{paymentId}/reverse': {
     post: operation('Payments', 'Reverse approved payment', 'MANAGER', { parameters: [paymentId], body: requestBody('ReasonRequest'), responses: created('Payment'), errorCodes: ['PAYMENT_NOT_FOUND', 'PAYMENT_NOT_REVERSIBLE', 'PAYMENT_ALREADY_REVERSED', 'CONCURRENT_MODIFICATION'] })
+  }
+};
+
+const importPaths = {
+  '/imports/preview': {
+    post: operation('Imports', 'Validate imported rows without writing data', 'MANAGER', { body: requestBody('ImportRequest'), responses: ok('ImportPreview'), errorCodes: ['VALIDATION_ERROR', 'IMPORT_VALIDATION_FAILED'] })
+  },
+  '/imports/commit': {
+    post: operation('Imports', 'Import previously validated rows', 'MANAGER', { body: requestBody('ImportRequest'), responses: created('ImportResult'), errorCodes: ['VALIDATION_ERROR', 'IMPORT_VALIDATION_FAILED', 'IMPORT_ROW_FAILED'] })
+  }
+};
+
+const invoiceBrandingPaths = {
+  '/invoice-branding': {
+    get: operation('Invoice Branding', 'Get manager invoice branding', 'MANAGER', { responses: ok('InvoiceBranding'), errorCodes: ['FORBIDDEN'] }),
+    put: operation('Invoice Branding', 'Update manager invoice branding', 'MANAGER', { body: requestBody('InvoiceBranding'), responses: ok('InvoiceBranding'), errorCodes: ['VALIDATION_ERROR', 'FORBIDDEN'] })
+  }
+};
+
+const featureFlagPaths = {
+  '/feature-flags': {
+    get: operation('Feature Flags', 'List manager feature flags', 'MANAGER', { responses: ok('FeatureFlags'), errorCodes: ['FORBIDDEN'] }),
+    patch: operation('Feature Flags', 'Update manager feature flag', 'MANAGER', { body: requestBody('FeatureFlagUpdate'), responses: ok('FeatureFlags'), errorCodes: ['VALIDATION_ERROR', 'FORBIDDEN'] })
+  }
+};
+
+const preferencePaths = {
+  '/preferences/language': {
+    put: operation('Preferences', 'Update preferred language', 'AUTHENTICATED', {
+      body: requestBody('LanguagePreference'),
+      responses: ok('LanguagePreferenceResult'),
+      errorCodes: ['VALIDATION_ERROR', 'USER_NOT_FOUND']
+    })
   }
 };
 
@@ -343,5 +419,9 @@ export const openApiPaths = {
   ...contractPaths,
   ...utilityPaths,
   ...invoicePaths,
-  ...paymentPaths
+  ...paymentPaths,
+  ...importPaths,
+  ...invoiceBrandingPaths,
+  ...featureFlagPaths,
+  ...preferencePaths
 };

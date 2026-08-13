@@ -18,6 +18,7 @@ import type {
   Room,
   Tenant,
 } from '../pages/invoices/types'
+import type { InvoiceBranding } from './invoiceBrandingService'
 import { appendPaginationParams, type PaginatedResponse } from './pagination'
 
 interface TenantListResponse {
@@ -59,6 +60,7 @@ type InvoiceItemApiRow = Omit<InvoiceItem, 'quantity' | 'unit_price' | 'amount'>
   amount: number | string | null
 }
 type InvoiceDetailApiRow = InvoiceApiRow & {
+  branding?: InvoiceBranding | null
   items?: InvoiceItemApiRow[]
   adjustments?: InvoiceDetail['adjustments']
 }
@@ -94,6 +96,7 @@ const toInvoiceItem = (row: InvoiceItemApiRow): InvoiceItem => ({
 
 const toInvoiceDetail = (row: InvoiceDetailApiRow): InvoiceDetail => ({
   ...toInvoiceListItem(row),
+  branding: row.branding ?? null,
   items: row.items?.map(toInvoiceItem) ?? [],
   adjustments: row.adjustments ?? [],
 })
@@ -218,6 +221,20 @@ export async function generateInvoices(payload: InvoiceGeneratePayload): Promise
 export async function issueInvoice(id: string, payload?: InvoiceIssuePaymentPayload): Promise<InvoiceDetail> {
   const row = await apiRequest<InvoiceDetailApiRow>(API_ROUTES.invoices.issue(id), { method: 'POST', body: payload })
   return toInvoiceDetail(row)
+}
+
+export interface BulkActionResult {
+  action: string
+  succeeded: string[]
+  failed: Array<{ id: string; code: string; message: string }>
+  total: number
+}
+
+export function bulkIssueInvoices(invoiceIds: string[], payload: Omit<InvoiceIssuePaymentPayload, 'transfer_note'>): Promise<BulkActionResult> {
+  return apiRequest<BulkActionResult>(API_ROUTES.invoices.bulkIssue, {
+    method: 'POST',
+    body: { invoice_ids: invoiceIds, ...payload },
+  })
 }
 
 export async function addInvoiceAdjustment(id: string, amount: number, reason: string): Promise<InvoiceDetail> {

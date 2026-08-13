@@ -7,17 +7,20 @@ export interface AuthUser {
   username: string | null
   fullName: string | null
   tenantId: string | null
+  preferredLanguage: 'en' | 'vi'
 }
 
 export interface LoginFormValues {
   identifier: string
   password: string
   rememberMe: boolean
+  twoFactorCode?: string
 }
 
 export interface LoginPayload {
   identifier: string
   password: string
+  twoFactorCode?: string
 }
 
 export interface LoginResponse {
@@ -29,6 +32,24 @@ export interface ChangePasswordPayload {
   currentPassword: string
   newPassword: string
   confirmPassword: string
+}
+
+export interface AuthSession {
+  id: string
+  userAgent: string | null
+  createdAt: string
+  lastUsedAt: string
+  expiresAt: string
+  current: boolean
+}
+
+export interface TwoFactorStatus {
+  enabled: boolean
+}
+
+export interface TwoFactorSetup {
+  secret: string
+  otpauthUri: string
 }
 
 export interface ActivationTokenDetails {

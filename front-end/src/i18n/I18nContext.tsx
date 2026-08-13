@@ -59,7 +59,20 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   return (
     <I18nContext.Provider value={value}>
       <I18nextProvider i18n={i18nInstance}>
-        <ConfigProvider locale={language === 'vi' ? viVN : enUS}>{children}</ConfigProvider>
+        <ConfigProvider
+          locale={language === 'vi' ? viVN : enUS}
+          theme={{
+            token: {
+              colorPrimary: '#0958d9',
+              colorPrimaryHover: '#0647b5',
+              colorPrimaryActive: '#003f91',
+              colorLink: '#0958d9',
+              colorLinkHover: '#0647b5',
+              colorTextSecondary: '#4b5563',
+              colorTextTertiary: '#5b6472',
+            },
+          }}
+        >{children}</ConfigProvider>
       </I18nextProvider>
     </I18nContext.Provider>
   )

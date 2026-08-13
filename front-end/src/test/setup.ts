@@ -2,6 +2,13 @@ import '@testing-library/jest-dom/vitest'
 import { afterEach, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
 
+const jsdomGetComputedStyle = window.getComputedStyle.bind(window)
+
+Object.defineProperty(window, 'getComputedStyle', {
+  configurable: true,
+  value: (element: Element) => jsdomGetComputedStyle(element),
+})
+
 afterEach(() => {
   cleanup()
   localStorage.clear()

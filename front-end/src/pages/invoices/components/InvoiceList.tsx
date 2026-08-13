@@ -12,9 +12,11 @@ interface Props {
   total: number
   onRetry: () => void
   onPageChange: (page: number, pageSize: number) => void
+  selectedIds?: string[]
+  onSelectionChange?: (ids: string[]) => void
 }
 
-export function InvoiceList({ loading, error, items, columns, page, pageSize, total, onRetry, onPageChange }: Props) {
+export function InvoiceList({ loading, error, items, columns, page, pageSize, total, onRetry, onPageChange, selectedIds = [], onSelectionChange }: Props) {
   if (loading) return <Skeleton active paragraph={{ rows: 8 }} />
   if (error) return <Empty description={error}><Button onClick={onRetry}>Retry</Button></Empty>
 
@@ -23,6 +25,12 @@ export function InvoiceList({ loading, error, items, columns, page, pageSize, to
       rowKey="id"
       columns={columns}
       dataSource={items}
+      rowSelection={onSelectionChange ? {
+        selectedRowKeys: selectedIds,
+        onChange: (keys) => onSelectionChange(keys.map(String)),
+        getCheckboxProps: (record) => ({ disabled: record.status !== 'DRAFT', name: `invoice-${record.id}` }),
+        preserveSelectedRowKeys: true,
+      } : undefined}
       scroll={{ x: 1950 }}
       pagination={{
         current: page,

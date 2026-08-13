@@ -40,6 +40,8 @@ const result = <T extends Row>(rows: T[]) => ({
 class FakeDb {
   users: Row[] = [];
   managerProfiles: Row[] = [];
+  invoiceBrandings: Row[] = [];
+  managerFeatureFlags: Row[] = [];
   tenants: Row[] = [];
   buildings: Row[] = [];
   rooms: Row[] = [];
@@ -83,15 +85,17 @@ class FakeDb {
     this.transactionTail = Promise.resolve();
 
     this.users = [
-      { id: ids.managerAUser, role: 'MANAGER', email: 'manager@example.com', username: 'manager', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null },
-      { id: ids.managerBUser, role: 'MANAGER', email: 'manager-b@example.com', username: 'manager-b', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null },
-      { id: ids.tenantAUser, role: 'TENANT', email: 'tenant@example.com', username: 'tenant', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null },
-      { id: ids.tenantBUser, role: 'TENANT', email: 'tenant-b@example.com', username: 'tenant-b', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null }
+      { id: ids.managerAUser, role: 'MANAGER', email: 'manager@example.com', username: 'manager', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null, two_factor_enabled: false, two_factor_secret_encrypted: null, two_factor_pending_secret_encrypted: null, two_factor_enabled_at: null, preferred_language: 'en' },
+      { id: ids.managerBUser, role: 'MANAGER', email: 'manager-b@example.com', username: 'manager-b', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null, two_factor_enabled: false, two_factor_secret_encrypted: null, two_factor_pending_secret_encrypted: null, two_factor_enabled_at: null, preferred_language: 'en' },
+      { id: ids.tenantAUser, role: 'TENANT', email: 'tenant@example.com', username: 'tenant', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null, two_factor_enabled: false, two_factor_secret_encrypted: null, two_factor_pending_secret_encrypted: null, two_factor_enabled_at: null, preferred_language: 'en' },
+      { id: ids.tenantBUser, role: 'TENANT', email: 'tenant-b@example.com', username: 'tenant-b', password_hash: passwordHash, is_active: true, account_status: 'ACTIVE', session_version: 0, last_login_at: null, two_factor_enabled: false, two_factor_secret_encrypted: null, two_factor_pending_secret_encrypted: null, two_factor_enabled_at: null, preferred_language: 'en' }
     ];
     this.managerProfiles = [
       { user_id: ids.managerAUser, full_name: 'Manager A' },
       { user_id: ids.managerBUser, full_name: 'Manager B' }
     ];
+    this.invoiceBrandings = [];
+    this.managerFeatureFlags = [];
     this.buildings = [
       { id: ids.buildingA, name: 'Alpha Building', address: 'A Street', manager_user_id: ids.managerAUser },
       { id: ids.buildingB, name: 'Beta Building', address: 'B Street', manager_user_id: ids.managerBUser }
@@ -371,6 +375,17 @@ class FakeDb {
       return result<T>(session ? [session as T] : []);
     }
 
+    if (sql.startsWith('select id,user_agent,created_at,last_used_at,expires_at from auth_session')) {
+      return result<T>(this.authSessions
+        .filter((session) => session.user_id === params[0] && !session.revoked_at && new Date(session.expires_at).getTime() > Date.now())
+        .sort((left, right) => new Date(right.last_used_at).getTime() - new Date(left.last_used_at).getTime()) as T[]);
+    }
+
+    if (sql.startsWith('select id from auth_session where id=$1 and user_id=$2')) {
+      const session = this.authSessions.find((item) => item.id === params[0] && item.user_id === params[1]);
+      return result<T>(session ? [{ id: session.id } as T] : []);
+    }
+
     if (sql.startsWith('update app_user set session_version=session_version + 1 where id=$1')) {
       const user = this.users.find((item) => item.id === params[0]);
       if (user) user.session_version += 1;
@@ -416,14 +431,62 @@ class FakeDb {
       return result<T>([]);
     }
 
-    if (sql.startsWith('select id, email::text as email from app_user where email=$1')) {
+    if (sql.startsWith('select display_name, business_address, tax_code, logo_url, accent_color, invoice_title, default_note from invoice_branding')) {
+      return result<T>(this.invoiceBrandings.filter((branding) => branding.manager_user_id === params[0]) as T[]);
+    }
+
+    if (sql.startsWith('select enabled from manager_feature_flag where manager_user_id=$1 and feature_key=$2')) {
+      return result<T>(this.managerFeatureFlags.filter((flag) => flag.manager_user_id === params[0] && flag.feature_key === params[1]) as T[]);
+    }
+
+    if (sql.startsWith('select feature_key, enabled from manager_feature_flag where manager_user_id=$1')) {
+      return result<T>(this.managerFeatureFlags.filter((flag) => flag.manager_user_id === params[0]) as T[]);
+    }
+
+    if (sql.startsWith("select coalesce(mp.full_name, u.username::text, u.email::text, 'property manager') as display_name")) {
+      const profile = this.managerProfiles.find((item) => item.user_id === params[0]);
+      const user = this.users.find((item) => item.id === params[0]);
+      return result<T>(user ? [{ display_name: profile?.full_name ?? user.username ?? user.email ?? 'Property Manager' } as T] : []);
+    }
+
+    if (sql.startsWith('update app_user set two_factor_pending_secret_encrypted=$1')) {
+      const user = this.users.find((item) => item.id === params[1]);
+      if (user) user.two_factor_pending_secret_encrypted = params[0];
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('update app_user set two_factor_enabled=true')) {
+      const user = this.users.find((item) => item.id === params[0]);
+      if (user) {
+        user.two_factor_enabled = true;
+        user.two_factor_secret_encrypted = user.two_factor_pending_secret_encrypted;
+        user.two_factor_pending_secret_encrypted = null;
+        user.two_factor_enabled_at = now;
+        user.session_version += 1;
+      }
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('update app_user set two_factor_enabled=false')) {
+      const user = this.users.find((item) => item.id === params[0]);
+      if (user) {
+        user.two_factor_enabled = false;
+        user.two_factor_secret_encrypted = null;
+        user.two_factor_pending_secret_encrypted = null;
+        user.two_factor_enabled_at = null;
+        user.session_version += 1;
+      }
+      return result<T>([]);
+    }
+
+    if (sql.startsWith('select id, email::text as email') && sql.includes('from app_user') && sql.includes('where email=$1')) {
       const user = this.users.find((item) => (
         String(item.email).toLocaleLowerCase() === String(params[0]).toLocaleLowerCase()
         && item.account_status === 'ACTIVE'
         && item.is_active
         && Boolean(String(item.password_hash ?? '').trim())
       ));
-      return result<T>(user ? [{ id: user.id, email: user.email } as T] : []);
+      return result<T>(user ? [{ id: user.id, email: user.email, preferred_language: user.preferred_language } as T] : []);
     }
 
     if (sql.startsWith('update app_user set password_hash')) {
@@ -648,7 +711,8 @@ class FakeDb {
         id: resetToken.id,
         user_id: resetToken.user_id,
         email: user.email,
-        password_hash: user.password_hash
+        password_hash: user.password_hash,
+        preferred_language: user.preferred_language
       } as T] : []);
     }
 
@@ -1420,6 +1484,7 @@ class FakeDb {
         invoice.issued_at = now;
         invoice.approved_by_user_id = params[1];
         invoice.approved_at = now;
+        invoice.branding_snapshot = JSON.parse(String(params[2]));
       }
       return result<T>(invoice ? [invoice as T] : []);
     }

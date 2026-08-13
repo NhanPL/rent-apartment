@@ -23,6 +23,7 @@ import {
   type UtilityReadingSnapshot,
   type UtilityReadingStatus,
 } from '../../services/tenantRoomService'
+import { InvoiceBrandingHeader } from '../../shared/components/InvoiceBrandingHeader'
 import type { PaymentRequest, PaymentRequestStatus } from '../../services/paymentsService'
 import { CloudinaryUploadButton } from '../../shared/components/CloudinaryUploadButton'
 import { uploadFileToCloudinary, type UploadedCloudinaryFile } from '../../services/uploadService'
@@ -290,19 +291,19 @@ export function TenantRoomPage() {
     const validation = validateTenantUtilityReading(values, readingLocked)
     if (!validation.ok) {
       if (validation.reason === 'locked') {
-        message.warning('This month has already been submitted. You can update it only after the manager rejects it for correction.')
+        message.warning(t('This month has already been submitted. You can update it only after the manager rejects it for correction.'))
       } else if (validation.reason === 'missing-month') {
-        message.error('Vui lòng chọn tháng ghi chỉ số')
+        message.error(t('Please select the reading month.'))
       } else if (validation.reason === 'missing-reset-note') {
-        message.error('Please explain why the meter was reset or replaced.')
+        message.error(t('Please explain why the meter was reset or replaced.'))
       } else {
-        message.error('Vui lòng nhập đầy đủ chỉ số điện và nước hiện tại')
+        message.error(t('Please enter both current electricity and water readings.'))
       }
       return
     }
 
     if (!electricityEvidenceFile || !waterEvidenceFile) {
-      message.error('Please select both electricity and water evidence images.')
+      message.error(t('Please select both electricity and water evidence images.'))
       return
     }
 
@@ -321,9 +322,9 @@ export function TenantRoomPage() {
       })
 
       await hydrateFormByMonth(context.room.id, validation.formMonth)
-      message.success('Đã ghi nhận chỉ số điện nước thành công')
+      message.success(t('Utility readings recorded successfully.'))
     } catch (error) {
-      message.error(getUserErrorMessage(error, 'Khong the luu chi so dien nuoc.'))
+      message.error(getUserErrorMessage(error, t('Unable to save utility readings.')))
     } finally {
       setSubmitting(false)
     }
@@ -682,6 +683,7 @@ export function TenantRoomPage() {
           <Skeleton active paragraph={{ rows: 8 }} />
         ) : (
           <Space direction="vertical" size={16} style={{ width: '100%' }}>
+            <InvoiceBrandingHeader branding={billDetail.branding} />
             <Descriptions bordered size="small" column={isMobile ? 1 : 2}>
               <Descriptions.Item label={t("Kỳ hóa đơn")}>{dayjs(billDetail.month).format('MM/YYYY')}</Descriptions.Item>
               <Descriptions.Item label={t("Trạng thái")}><Tag color={invoiceStatusColor[billDetail.status]}>{billDetail.status}</Tag></Descriptions.Item>
