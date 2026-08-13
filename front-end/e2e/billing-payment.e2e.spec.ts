@@ -224,7 +224,10 @@ test('utility approval produces payable invoices and an immutable payment histor
   })).status()).toBe(409);
 
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Current month invoice' }).locator('..')).toContainText('PAID');
+  const currentInvoiceCard = page
+    .getByText('Current month invoice', { exact: true })
+    .locator('xpath=ancestor::div[contains(concat(" ", normalize-space(@class), " "), " ant-card ")][1]');
+  await expect(currentInvoiceCard).toContainText('PAID');
   await manager.api.dispose();
   await tenant.api.dispose();
   await managerContext.close();
