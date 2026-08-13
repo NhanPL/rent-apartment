@@ -14,6 +14,8 @@ const previousMonthDate = new Date(`${currentMonth}-01T00:00:00Z`);
 previousMonthDate.setUTCMonth(previousMonthDate.getUTCMonth() - 1);
 const previousMonth = previousMonthDate.toISOString().slice(0, 7);
 
+test.describe.configure({ retries: 0 });
+
 test('utility approval produces payable invoices and an immutable payment history', async ({ browser, page }) => {
   const tenantUploadCount = await mockCloudinaryUploads(page);
   await loginBrowser(page, 'tenant', TENANT_PASSWORD);

@@ -1425,6 +1425,16 @@ describe('backend API smoke tests', () => {
       business_stage: 'RESERVED'
     });
 
+    const reservedDetails = await request(app)
+      .get(`/api/contracts/${reservedForCancel.body.id}`)
+      .set(auth(managerSession.accessToken))
+      .expect(200);
+
+    expect(reservedDetails.body).toMatchObject({
+      id: reservedForCancel.body.id,
+      documents: []
+    });
+
     const document = await request(app)
       .post(`/api/contracts/${reservedForCancel.body.id}/documents`)
       .set(auth(managerSession.accessToken))

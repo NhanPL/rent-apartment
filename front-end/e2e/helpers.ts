@@ -36,21 +36,25 @@ export async function mockCloudinaryUploads(page: Page): Promise<() => number> {
   let uploadCount = 0;
   await page.route('https://api.cloudinary.com/**', async (route) => {
     uploadCount += 1;
-    const contentType = route.request().postDataBuffer()?.includes(Buffer.from('%PDF'))
-      ? 'raw'
-      : 'image';
+    const request = route.request();
+    const requestBody = request.postDataBuffer()?.toString('utf8') ?? '';
+    const folder = requestBody.match(/name="folder"\r?\n\r?\n([^\r\n]+)/)?.[1]
+      ?? 'rent-apartment/e2e';
+    const contentType = request.url().includes('/raw/upload') ? 'raw' : 'image';
+    const extension = contentType === 'raw' ? 'pdf' : 'png';
+    const publicId = `${folder}/upload-${uploadCount}`;
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        secure_url: `https://res.cloudinary.com/e2e/${contentType}/authenticated/v1/e2e/upload-${uploadCount}`,
+        secure_url: `https://res.cloudinary.com/e2e/${contentType}/authenticated/v1/${publicId}.${extension}`,
         original_filename: `upload-${uploadCount}`,
         bytes: 128,
         resource_type: contentType,
-        public_id: `rent-apartment/e2e/upload-${uploadCount}`,
+        public_id: publicId,
         asset_id: `e2e-asset-${uploadCount}`,
         version: 1,
-        format: contentType === 'raw' ? 'pdf' : 'png',
+        format: extension,
         type: 'authenticated'
       })
     });

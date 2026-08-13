@@ -399,7 +399,7 @@ export const getContractDetails = async (contractId: string, managerId: string) 
   const [tenants, documents] = await Promise.all([
     getContractParticipants({ query }, contractId),
     query<DbRow>(
-      `SELECT ${contractTenantColumns}
+      `SELECT ${contractDocumentColumns}
        FROM contract_document
        WHERE contract_id=$1
        ORDER BY uploaded_at DESC NULLS LAST, created_at DESC`,

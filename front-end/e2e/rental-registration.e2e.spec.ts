@@ -7,6 +7,8 @@ import {
   pdfFile
 } from './helpers';
 
+test.describe.configure({ retries: 0 });
+
 test('manager completes rental registration from vacancy through handover', async ({ page }) => {
   const uploadCount = await mockCloudinaryUploads(page);
   await loginBrowser(page, 'e2e-manager');
