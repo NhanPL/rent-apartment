@@ -169,7 +169,7 @@ test('utility approval produces payable invoices and an immutable payment histor
     body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
   }));
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Current month invoice' })).toBeVisible();
+  await expect(page.getByText('Current month invoice', { exact: true })).toBeVisible();
   await expect(page.getByText('1900123456789')).toBeVisible();
   await expect(page.getByRole('img', { name: /VietQR payment/ })).toBeVisible();
   await expect(page.getByRole('button', { name: `View invoice ${previousMonthDate.toLocaleDateString('en-GB', { month: '2-digit', year: 'numeric' })}` })).toBeVisible();
