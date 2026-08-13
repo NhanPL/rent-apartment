@@ -1,6 +1,7 @@
 import dayjs from 'dayjs'
 import { apiRequest } from './apiClient'
 import { API_ROUTES } from './apiRoutes'
+import type { PaginatedResponse } from './pagination'
 import {
   getPaymentRequestByInvoice,
   submitPaymentProof,
@@ -398,14 +399,24 @@ export async function getMyInvoiceDetail(invoiceId: string): Promise<InvoiceDeta
 }
 
 export async function getCurrentAndPreviousUtilityReadings(roomId: string, month: string): Promise<UtilityReadingSnapshot> {
-  const rows = await apiRequest<Array<Omit<UtilityReading, 'electricity_prev' | 'electricity_curr' | 'water_prev' | 'water_curr' | 'evidence_count'> & {
+  type UtilityReadingApiRow = Omit<UtilityReading, 'electricity_prev' | 'electricity_curr' | 'water_prev' | 'water_curr' | 'evidence_count'> & {
     electricity_prev: number | string | null
     electricity_curr: number | string | null
     water_prev: number | string | null
     water_curr: number | string | null
     evidence_count: number | string | null
-  }>>(API_ROUTES.utilityReadings.list)
-  const normalizedRows: UtilityReading[] = rows.map((row) => ({
+  }
+  const searchParams = new URLSearchParams({
+    room_id: roomId,
+    page: '1',
+    pageSize: '100',
+    sortBy: 'month',
+    sortOrder: 'desc',
+  })
+  const response = await apiRequest<PaginatedResponse<UtilityReadingApiRow>>(
+    `${API_ROUTES.utilityReadings.list}?${searchParams.toString()}`,
+  )
+  const normalizedRows: UtilityReading[] = response.items.map((row) => ({
     ...row,
     electricity_prev: row.electricity_prev === null ? null : Number(row.electricity_prev),
     electricity_curr: row.electricity_curr === null ? null : Number(row.electricity_curr),
