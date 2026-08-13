@@ -89,8 +89,19 @@ const readingRecipient = async (client: PoolClient, readingId: string): Promise<
             COALESCE(app_user.preferred_language, 'en') AS locale
      FROM utility_reading reading
      JOIN room ON room.id=reading.room_id
-     JOIN contract_tenant assignment ON assignment.contract_id=reading.contract_id
-       AND assignment.is_primary=true
+     JOIN LATERAL (
+       SELECT contract_tenant.tenant_id, contract_tenant.joined_at
+       FROM contract
+       JOIN contract_tenant ON contract_tenant.contract_id=contract.id
+         AND contract_tenant.is_primary=true
+       WHERE contract.room_id=reading.room_id
+         AND contract.start_date < reading.month + INTERVAL '1 month'
+         AND COALESCE(contract.move_out_date, contract.end_date, 'infinity'::date) >= reading.month
+         AND contract_tenant.joined_at < reading.month + INTERVAL '1 month'
+         AND COALESCE(contract_tenant.left_at, 'infinity'::date) >= reading.month
+       ORDER BY (contract.status='ACTIVE') DESC, contract.start_date DESC, contract_tenant.joined_at DESC
+       LIMIT 1
+     ) assignment ON true
      JOIN tenant ON tenant.id=assignment.tenant_id
      LEFT JOIN app_user ON app_user.id=tenant.user_id
      WHERE reading.id=$1

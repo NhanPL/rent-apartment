@@ -57,5 +57,8 @@ describe('tenant notification outbox', () => {
     expect(vi.mocked(client.query).mock.calls[1][1]).toEqual(expect.arrayContaining([
       'in-app:utility-reading:00000000-0000-4000-8000-000000000801:rejected:2026-08-10T12:00:00.000Z'
     ]));
+    const recipientQuery = vi.mocked(client.query).mock.calls[0][0];
+    expect(recipientQuery).toContain('contract.room_id=reading.room_id');
+    expect(recipientQuery).not.toContain('reading.contract_id');
   });
 });
