@@ -36,8 +36,8 @@ test.describe('authentication lifecycle', () => {
     const activatedPassword = 'Activated tenant passphrase 2026';
     await page.goto(`/activate-account?token=${ACTIVATION_TOKEN}`);
     await expect(page.getByText('Set your password')).toBeVisible();
-    await page.getByLabel('New password').fill(activatedPassword);
-    await page.getByLabel('Confirm password').fill(activatedPassword);
+    await page.getByLabel('New password', { exact: true }).fill(activatedPassword);
+    await page.getByLabel('Confirm new password', { exact: true }).fill(activatedPassword);
     await page.getByRole('button', { name: 'Activate account' }).click();
     await expect(page.getByText('Account activated')).toBeVisible();
 
@@ -114,13 +114,13 @@ test.describe('authentication lifecycle', () => {
   test('forgot password is enumeration-safe and reset signs the account in only with the new password', async ({ page }) => {
     await page.goto('/forgot-password');
     await page.getByLabel('Email').fill('unknown-account@example.test');
-    await page.getByRole('button', { name: 'Send reset instructions' }).click();
+    await page.getByRole('button', { name: 'Send reset link' }).click();
     await expect(page.getByText(/If an active account exists/i)).toBeVisible();
 
     const nextPassword = 'Reset tenant passphrase 2026';
     await page.goto(`/reset-password?token=${RESET_TOKEN}`);
-    await page.getByLabel('New password').fill(nextPassword);
-    await page.getByLabel('Confirm password').fill(nextPassword);
+    await page.getByLabel('New password', { exact: true }).fill(nextPassword);
+    await page.getByLabel('Confirm new password', { exact: true }).fill(nextPassword);
     await page.getByRole('button', { name: 'Reset password' }).click();
     await expect(page.getByText('Password changed')).toBeVisible();
 

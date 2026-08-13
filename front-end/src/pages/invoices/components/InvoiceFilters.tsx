@@ -1,6 +1,7 @@
 import { ReloadOutlined } from '@ant-design/icons'
 import { Button, Input, Select } from 'antd'
 import type { InvoiceStatus, PaymentStatus } from '../types'
+import { useI18n } from '../../../i18n'
 
 interface Option { id: string; name?: string; code?: string; full_name?: string }
 
@@ -28,16 +29,17 @@ interface Props {
 }
 
 export function InvoiceFilters(props: Props) {
+  const { t } = useI18n()
   return (
     <div className="invoices-filters">
-      <Input placeholder="Search building, room, tenant" value={props.search} onChange={(event) => props.onSearchChange(event.target.value)} allowClear />
-      <Input aria-label="Invoice month" type="month" value={props.month} onChange={(event) => props.onMonthChange(event.target.value)} />
-      <Select allowClear placeholder="Invoice status" value={props.invoiceStatus} onChange={props.onInvoiceStatusChange} options={props.invoiceStatuses} />
-      <Select allowClear placeholder="Payment status" value={props.paymentStatus} onChange={props.onPaymentStatusChange} options={props.paymentStatuses} />
-      <Select allowClear placeholder="Building" value={props.buildingId} onChange={props.onBuildingChange} options={props.buildings.map((item) => ({ label: item.name, value: item.id }))} />
-      <Select allowClear placeholder="Room" value={props.roomId} onChange={props.onRoomChange} options={props.rooms.map((item) => ({ label: item.code, value: item.id }))} />
-      <Select allowClear placeholder="Tenant" value={props.tenantId} onChange={props.onTenantChange} options={props.tenants.map((item) => ({ label: item.full_name, value: item.id }))} />
-      <Button icon={<ReloadOutlined />} onClick={props.onRefresh}>Refresh</Button>
+      <Input aria-label={t("Search invoices")} placeholder={t("Search building, room, tenant")} value={props.search} onChange={(event) => props.onSearchChange(event.target.value)} allowClear />
+      <Input aria-label={t("Invoice month")} type="month" value={props.month} onChange={(event) => props.onMonthChange(event.target.value)} />
+      <Select aria-label={t("Invoice status")} allowClear placeholder={t("Invoice status")} value={props.invoiceStatus} onChange={props.onInvoiceStatusChange} options={props.invoiceStatuses} />
+      <Select aria-label={t("Payment status")} allowClear placeholder={t("Payment status")} value={props.paymentStatus} onChange={props.onPaymentStatusChange} options={props.paymentStatuses} />
+      <Select aria-label={t("Building filter")} allowClear placeholder={t("Building")} value={props.buildingId} onChange={props.onBuildingChange} options={props.buildings.map((item) => ({ label: item.name, value: item.id }))} />
+      <Select aria-label={t("Room filter")} allowClear placeholder={t("Room")} value={props.roomId} onChange={props.onRoomChange} options={props.rooms.map((item) => ({ label: item.code, value: item.id }))} />
+      <Select aria-label={t("Tenant filter")} allowClear placeholder={t("Tenant")} value={props.tenantId} onChange={props.onTenantChange} options={props.tenants.map((item) => ({ label: item.full_name, value: item.id }))} />
+      <Button icon={<ReloadOutlined />} onClick={props.onRefresh}>{t("Refresh")}</Button>
     </div>
   )
 }

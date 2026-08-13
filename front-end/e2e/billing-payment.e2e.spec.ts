@@ -22,9 +22,12 @@ test('utility approval produces payable invoices and an immutable payment histor
   await page.getByLabel('Reading month').fill(currentMonth);
   await page.getByLabel('Current electricity reading').fill('150');
   await page.getByLabel('Current water reading').fill('35');
-  const utilityInputs = page.locator('input[type=file][accept*="image/jpeg"]');
-  await utilityInputs.nth(0).setInputFiles(imageFile('electricity-meter.png'));
-  await utilityInputs.nth(1).setInputFiles(imageFile('water-meter.png'));
+  const electricityInput = page.getByRole('button', { name: 'Select electricity image' })
+    .locator('xpath=preceding-sibling::input[@type="file"]');
+  const waterInput = page.getByRole('button', { name: 'Select water image' })
+    .locator('xpath=preceding-sibling::input[@type="file"]');
+  await electricityInput.setInputFiles(imageFile('electricity-meter.png'));
+  await waterInput.setInputFiles(imageFile('water-meter.png'));
   expect(tenantUploadCount()).toBe(0);
   await page.getByRole('button', { name: 'Save monthly readings' }).click();
   await expect(page.getByText('Đã ghi nhận chỉ số điện nước thành công')).toBeVisible();
@@ -52,8 +55,8 @@ test('utility approval produces payable invoices and an immutable payment histor
   await expect(page.getByRole('button', { name: 'Save monthly readings' })).toBeEnabled();
   await page.getByLabel('Current electricity reading').fill('151');
   await page.getByLabel('Current water reading').fill('36');
-  await utilityInputs.nth(0).setInputFiles(imageFile('electricity-meter-retake.png'));
-  await utilityInputs.nth(1).setInputFiles(imageFile('water-meter-retake.png'));
+  await electricityInput.setInputFiles(imageFile('electricity-meter-retake.png'));
+  await waterInput.setInputFiles(imageFile('water-meter-retake.png'));
   await page.getByRole('button', { name: 'Save monthly readings' }).click();
   await expect(page.getByText('Đã ghi nhận chỉ số điện nước thành công')).toBeVisible();
   expect(tenantUploadCount()).toBe(4);

@@ -116,6 +116,7 @@ export function DashboardPage({ onNavigate }: DashboardPageProps) {
             onChange={(value) => setMonth((value ?? dayjs()).startOf('month'))}
           />
           <Select
+            aria-label={t("Building filter")}
             allowClear
             showSearch
             optionFilterProp="label"

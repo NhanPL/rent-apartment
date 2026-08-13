@@ -719,6 +719,7 @@ const invoicesAndPayments = [
   entry('Partial payments are allowed. The invoice becomes PAID only after approved payments cover the invoice total.', 'Cho phép thanh toán một phần. Hóa đơn chỉ chuyển sang ĐÃ THANH TOÁN khi tổng khoản được duyệt đủ giá trị hóa đơn.'),
   entry('Review manual bank transfer proofs and track invoice payment history.', 'Duyệt minh chứng chuyển khoản thủ công và theo dõi lịch sử thanh toán hóa đơn.'),
   entry('Search building, room, tenant', 'Tìm tòa nhà, phòng hoặc người thuê'),
+  entry('Search invoices', 'Tìm kiếm hóa đơn'),
   entry('Month filter', 'Lọc theo tháng'),
   entry('Building filter', 'Lọc theo tòa nhà'),
   entry('Room filter', 'Lọc theo phòng'),

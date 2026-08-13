@@ -17,9 +17,10 @@ test('manager completes rental registration from vacancy through handover', asyn
   await expect(roomRow).toContainText('E2E Building');
   await roomRow.getByRole('button', { name: 'Select' }).click();
 
-  const tenantSelectors = page.getByLabel('Tenant');
-  await tenantSelectors.nth(1).click();
-  await page.getByRole('option', { name: /E2E Available Tenant/ }).click();
+  const tenantSelector = page.locator('#tenant_id');
+  await tenantSelector.click();
+  await tenantSelector.fill('E2E Available Tenant');
+  await page.keyboard.press('Enter');
   await page.getByRole('button', { name: 'Create draft reservation' }).click();
   await expect(page.getByText('Room reserved. Documents and handover can be completed later.')).toBeVisible();
   await expect(page.getByText(/Room reserved for E2E Available Tenant/)).toBeVisible();
