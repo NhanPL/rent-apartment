@@ -52,17 +52,17 @@ test('utility approval produces payable invoices and an immutable payment histor
   await expect(detail.getByRole('link', { name: 'electricity-meter.png' })).toBeVisible();
   await expect(detail.getByRole('link', { name: 'water-meter.png' })).toBeVisible();
   await detail.getByRole('button', { name: 'Reject' }).click();
-  const rejectDialog = managerPage.getByRole('dialog', { name: 'Reject utility reading' });
-  await expect(rejectDialog).toBeVisible();
-  await rejectDialog.getByLabel('Reject reason').fill('Please retake both meter photos');
+  const rejectModal = managerPage.locator('.ant-modal').filter({ hasText: 'Reject utility reading' });
+  await expect(rejectModal).toBeVisible();
+  await rejectModal.getByLabel('Reject reason').fill('Please retake both meter photos');
   const rejectResponse = managerPage.waitForResponse((response) =>
     response.request().method() === 'POST'
       && /\/api\/utility-readings\/[^/]+\/reject$/.test(response.url())
   );
-  await rejectDialog.getByRole('button', { name: 'Reject' }).click();
+  await rejectModal.getByRole('button', { name: 'Reject', exact: true }).click();
   const rejectResult = await rejectResponse;
   expect(rejectResult.ok(), await rejectResult.text()).toBeTruthy();
-  await expect(rejectDialog).toBeHidden();
+  await expect(rejectModal).toBeHidden();
 
   await page.reload();
   await expect(page.getByText('Please retake both meter photos')).toBeVisible();
