@@ -88,7 +88,7 @@ test('utility approval produces payable invoices and an immutable payment histor
   expect(readingsResponse.ok(), await readingsResponse.text()).toBeTruthy();
   const readings = await readingsResponse.json() as { items: Array<{ id: string; evidence_count: number }> };
   const reading = readings.items[0];
-  expect(reading.evidence_count).toBe(2);
+  expect(reading.evidence_count).toBe(4);
   expect((await manager.api.post(`/api/utility-readings/${reading.id}/approve`, {
     headers: authHeaders(manager.accessToken),
     data: {}
