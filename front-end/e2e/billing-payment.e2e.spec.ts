@@ -209,7 +209,7 @@ test('utility approval produces payable invoices and an immutable payment histor
     data: {}
   });
   expect(partialApproval.ok(), await partialApproval.text()).toBeTruthy();
-  expect((await partialApproval.json() as { invoice: { status: string } }).invoice.status).toBe('PARTIALLY_PAID');
+  expect((await partialApproval.json() as { invoice_status: string }).invoice_status).toBe('PARTIALLY_PAID');
 
   const remaining = paymentRequest.amount - partialAmount;
   const finalProof = await submitProof(remaining, 'proof-final-003');
@@ -218,7 +218,7 @@ test('utility approval produces payable invoices and an immutable payment histor
     data: {}
   });
   expect(finalApproval.ok(), await finalApproval.text()).toBeTruthy();
-  expect((await finalApproval.json() as { invoice: { status: string } }).invoice.status).toBe('PAID');
+  expect((await finalApproval.json() as { invoice_status: string }).invoice_status).toBe('PAID');
   expect((await manager.api.delete(`/api/invoices/${invoice.id}`, {
     headers: authHeaders(manager.accessToken)
   })).status()).toBe(409);
