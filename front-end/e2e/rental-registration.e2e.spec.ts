@@ -61,8 +61,14 @@ test('manager completes rental registration from vacancy through handover', asyn
   const handover = page.getByRole('dialog', { name: /Room handover/ });
   await handover.getByLabel('Initial electricity reading').fill('125');
   await handover.getByLabel('Initial water reading').fill('42');
+  const handoverResponse = page.waitForResponse((response) =>
+    response.request().method() === 'POST'
+      && /\/api\/rental-registration\/[^/]+\/handover$/.test(response.url())
+  );
   await handover.getByRole('button', { name: 'Handover and activate' }).click();
-  await expect(page.getByText('Contract activated and initial utility readings recorded.')).toBeVisible();
+  const handoverResult = await handoverResponse;
+  expect(handoverResult.ok(), await handoverResult.text()).toBeTruthy();
+  await expect(handover).toBeHidden();
   await expect(page.getByRole('row', { name: /E2E-201/ })).toHaveCount(0);
 
   const manager = await createApiSession('e2e-manager');

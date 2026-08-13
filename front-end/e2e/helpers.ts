@@ -6,14 +6,14 @@ export const DEFAULT_PASSWORD = 'E2E secure passphrase 2026';
 export async function createApiSession(
   identifier: string,
   password = DEFAULT_PASSWORD
-): Promise<{ api: APIRequestContext; accessToken: string }> {
+): Promise<{ api: APIRequestContext; accessToken: string; userId: string }> {
   const api = await request.newContext({ baseURL: API_URL });
   const response = await api.post('/api/auth/login', {
     data: { identifier, password }
   });
   expect(response.ok(), await response.text()).toBeTruthy();
-  const body = await response.json() as { accessToken: string };
-  return { api, accessToken: body.accessToken };
+  const body = await response.json() as { accessToken: string; user: { id: string } };
+  return { api, accessToken: body.accessToken, userId: body.user.id };
 }
 
 export const authHeaders = (accessToken: string): Record<string, string> => ({

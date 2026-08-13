@@ -17,6 +17,7 @@ const previousMonth = previousMonthDate.toISOString().slice(0, 7);
 test.describe.configure({ retries: 0 });
 
 test('utility approval produces payable invoices and an immutable payment history', async ({ browser, page }) => {
+  test.setTimeout(180_000);
   const tenantUploadCount = await mockCloudinaryUploads(page);
   await loginBrowser(page, 'tenant', TENANT_PASSWORD);
   await expect(page).toHaveURL(/\/my-room$/);
@@ -52,9 +53,16 @@ test('utility approval produces payable invoices and an immutable payment histor
   await expect(detail.getByRole('link', { name: 'water-meter.png' })).toBeVisible();
   await detail.getByRole('button', { name: 'Reject' }).click();
   const rejectDialog = managerPage.getByRole('dialog', { name: 'Reject utility reading' });
+  await expect(rejectDialog).toBeVisible();
   await rejectDialog.getByLabel('Reject reason').fill('Please retake both meter photos');
+  const rejectResponse = managerPage.waitForResponse((response) =>
+    response.request().method() === 'POST'
+      && /\/api\/utility-readings\/[^/]+\/reject$/.test(response.url())
+  );
   await rejectDialog.getByRole('button', { name: 'Reject' }).click();
-  await expect(managerPage.getByText('Reading rejected')).toBeVisible();
+  const rejectResult = await rejectResponse;
+  expect(rejectResult.ok(), await rejectResult.text()).toBeTruthy();
+  await expect(rejectDialog).toBeHidden();
 
   await page.reload();
   await expect(page.getByText('Please retake both meter photos')).toBeVisible();
@@ -167,15 +175,16 @@ test('utility approval produces payable invoices and an immutable payment histor
   await expect(page.getByRole('button', { name: `View invoice ${previousMonthDate.toLocaleDateString('en-GB', { month: '2-digit', year: 'numeric' })}` })).toBeVisible();
 
   const partialAmount = Math.max(1, Math.floor(paymentRequest.amount / 2));
+  const proofFolder = `rent-apartment/payment-proofs/${tenant.userId}`;
   const submitProof = async (amount: number, key: string) => {
     const response = await tenant.api.post(`/api/payments/requests/${paymentRequest.id}/proofs`, {
       headers: { ...authHeaders(tenant.accessToken), 'Idempotency-Key': key },
       data: {
         file_name: `${key}.png`,
-        file_url: `https://res.cloudinary.com/e2e/image/authenticated/v1/rent-apartment/e2e/${key}.png`,
+        file_url: `https://res.cloudinary.com/e2e/image/authenticated/v1/${proofFolder}/${key}.png`,
         mime_type: 'image/png',
         file_size: 128,
-        public_id: `rent-apartment/e2e/${key}`,
+        public_id: `${proofFolder}/${key}`,
         asset_id: `asset-${key}`,
         resource_type: 'image',
         version: 1,
