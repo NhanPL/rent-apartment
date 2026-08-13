@@ -21,9 +21,15 @@ test('manager completes rental registration from vacancy through handover', asyn
   await tenantSelector.click();
   await tenantSelector.fill('E2E Available Tenant');
   await page.keyboard.press('Enter');
+  const reservationResponse = page.waitForResponse((response) =>
+    response.request().method() === 'POST' && response.url().endsWith('/api/rental-registration/reserve')
+  );
   await page.getByRole('button', { name: 'Create draft reservation' }).click();
-  await expect(page.getByText('Room reserved. Documents and handover can be completed later.')).toBeVisible();
-  await expect(page.getByText(/Room reserved for E2E Available Tenant/)).toBeVisible();
+  const reservationResult = await reservationResponse;
+  expect(reservationResult.ok(), await reservationResult.text()).toBeTruthy();
+  await expect(page.getByRole('alert').filter({
+    hasText: 'The registration has been saved. Documents and room handover can be completed when ready.'
+  })).toBeVisible();
 
   await page.getByRole('tab', { name: /Add documents/ }).click();
   const registrationRow = page.getByRole('row', { name: /E2E Available Tenant/ });

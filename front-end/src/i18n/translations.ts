@@ -854,6 +854,7 @@ const tenantRoom = [
   entry('Please enter both current electricity and water readings.', 'Vui lòng nhập đầy đủ chỉ số điện và nước hiện tại.', 'Vui lòng nhập đầy đủ chỉ số điện và nước hiện tại'),
   entry('Please select both electricity and water evidence images.', 'Vui lòng chọn ảnh minh chứng cho cả điện và nước.'),
   entry('Utility readings recorded successfully.', 'Đã ghi nhận chỉ số điện nước thành công.', 'Đã ghi nhận chỉ số điện nước thành công'),
+  entry('Unable to save utility readings.', 'Không thể lưu chỉ số điện nước. Vui lòng thử lại.'),
   entry('This month has already been submitted. You can update it only after the manager rejects it for correction.', 'Tháng này đã được gửi. Bạn chỉ có thể cập nhật sau khi quản lý từ chối và yêu cầu chỉnh sửa.'),
   entry('This month has already been submitted. The saved readings are shown above and can only be updated after the manager rejects them for correction.', 'Tháng này đã được gửi. Chỉ số đã lưu được hiển thị phía trên và chỉ có thể cập nhật sau khi quản lý yêu cầu chỉnh sửa.'),
   entry('No reading exists for this month. Enter and save the readings below.', 'Chưa có chỉ số cho tháng này. Vui lòng nhập và lưu bên dưới.', 'Chưa có chỉ số cho tháng này. Vui lòng nhập và lưu bên dưới.'),

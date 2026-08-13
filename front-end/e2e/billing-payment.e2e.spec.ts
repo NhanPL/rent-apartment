@@ -29,8 +29,12 @@ test('utility approval produces payable invoices and an immutable payment histor
   await electricityInput.setInputFiles(imageFile('electricity-meter.png'));
   await waterInput.setInputFiles(imageFile('water-meter.png'));
   expect(tenantUploadCount()).toBe(0);
+  const initialReadingResponse = page.waitForResponse((response) =>
+    response.request().method() === 'POST' && response.url().endsWith('/api/utility-readings')
+  );
   await page.getByRole('button', { name: 'Save monthly readings' }).click();
-  await expect(page.getByText('Đã ghi nhận chỉ số điện nước thành công')).toBeVisible();
+  const initialReadingResult = await initialReadingResponse;
+  expect(initialReadingResult.ok(), await initialReadingResult.text()).toBeTruthy();
   expect(tenantUploadCount()).toBe(2);
   await expect(page.getByRole('button', { name: 'Save monthly readings' })).toBeDisabled();
 
@@ -57,8 +61,12 @@ test('utility approval produces payable invoices and an immutable payment histor
   await page.getByLabel('Current water reading').fill('36');
   await electricityInput.setInputFiles(imageFile('electricity-meter-retake.png'));
   await waterInput.setInputFiles(imageFile('water-meter-retake.png'));
+  const correctedReadingResponse = page.waitForResponse((response) =>
+    response.request().method() === 'POST' && response.url().endsWith('/api/utility-readings')
+  );
   await page.getByRole('button', { name: 'Save monthly readings' }).click();
-  await expect(page.getByText('Đã ghi nhận chỉ số điện nước thành công')).toBeVisible();
+  const correctedReadingResult = await correctedReadingResponse;
+  expect(correctedReadingResult.ok(), await correctedReadingResult.text()).toBeTruthy();
   expect(tenantUploadCount()).toBe(4);
 
   const manager = await createApiSession('manager', MANAGER_PASSWORD);

@@ -291,19 +291,19 @@ export function TenantRoomPage() {
     const validation = validateTenantUtilityReading(values, readingLocked)
     if (!validation.ok) {
       if (validation.reason === 'locked') {
-        message.warning('This month has already been submitted. You can update it only after the manager rejects it for correction.')
+        message.warning(t('This month has already been submitted. You can update it only after the manager rejects it for correction.'))
       } else if (validation.reason === 'missing-month') {
-        message.error('Vui lòng chọn tháng ghi chỉ số')
+        message.error(t('Please select the reading month.'))
       } else if (validation.reason === 'missing-reset-note') {
-        message.error('Please explain why the meter was reset or replaced.')
+        message.error(t('Please explain why the meter was reset or replaced.'))
       } else {
-        message.error('Vui lòng nhập đầy đủ chỉ số điện và nước hiện tại')
+        message.error(t('Please enter both current electricity and water readings.'))
       }
       return
     }
 
     if (!electricityEvidenceFile || !waterEvidenceFile) {
-      message.error('Please select both electricity and water evidence images.')
+      message.error(t('Please select both electricity and water evidence images.'))
       return
     }
 
@@ -322,9 +322,9 @@ export function TenantRoomPage() {
       })
 
       await hydrateFormByMonth(context.room.id, validation.formMonth)
-      message.success('Đã ghi nhận chỉ số điện nước thành công')
+      message.success(t('Utility readings recorded successfully.'))
     } catch (error) {
-      message.error(getUserErrorMessage(error, 'Khong the luu chi so dien nuoc.'))
+      message.error(getUserErrorMessage(error, t('Unable to save utility readings.')))
     } finally {
       setSubmitting(false)
     }

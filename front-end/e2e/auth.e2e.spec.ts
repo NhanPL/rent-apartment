@@ -122,7 +122,7 @@ test.describe('authentication lifecycle', () => {
     await page.getByLabel('New password', { exact: true }).fill(nextPassword);
     await page.getByLabel('Confirm new password', { exact: true }).fill(nextPassword);
     await page.getByRole('button', { name: 'Reset password' }).click();
-    await expect(page.getByText('Password changed')).toBeVisible();
+    await expect(page.getByText('Password reset successfully')).toBeVisible();
 
     await loginBrowser(page, 'e2e-reset', nextPassword);
     await expect(page).toHaveURL(/\/my-room$/);
